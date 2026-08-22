@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -88,7 +89,12 @@ export class ClassSectionsService {
   async findGrades(user: AuthUser, id: string) {
     const section = await this.prisma.classSection.findUnique({
       where: { id },
-      include: {
+      // select tường minh đúng 4 trường theo hợp đồng — không lộ các trường
+      // scalar khác (room, capacity, startDate...) ra ngoài (fix vòng 1, mục 5).
+      select: {
+        id: true,
+        code: true,
+        term: true,
         subject: { select: { code: true, name: true } },
         enrollments: {
           // RULE 2: lưới điểm chạm sinh viên nên PHẢI đi qua deptFilter —
@@ -129,6 +135,23 @@ export class ClassSectionsService {
     id: string,
     dto: UpdateSectionGradesDto,
   ): Promise<{ updated: number }> {
+    // Trùng enrollmentId trong cùng payload → dòng sau âm thầm ghi đè dòng
+    // trước trong transaction, "updated" đếm sai số bản ghi thực đổi
+    // (fix vòng 1, mục 7). Kiểm TRƯỚC khi chạm DB.
+    const seen = new Set<string>();
+    const duplicated = new Set<string>();
+    for (const row of dto.rows) {
+      if (seen.has(row.enrollmentId)) {
+        duplicated.add(row.enrollmentId);
+      }
+      seen.add(row.enrollmentId);
+    }
+    if (duplicated.size > 0) {
+      throw new BadRequestException(
+        `Có enrollmentId bị lặp trong payload: ${[...duplicated].join(', ')}.`,
+      );
+    }
+
     const section = await this.prisma.classSection.findUnique({
       where: { id },
       select: {
@@ -137,7 +160,7 @@ export class ClassSectionsService {
         // "owned", nên vòng kiểm tra bên dưới chặn luôn (RULE 2).
         enrollments: {
           where: { student: deptFilter(user) },
-          select: { id: true },
+          select: { id: true, totalScore: true, result: true },
         },
       },
     });
@@ -146,7 +169,7 @@ export class ClassSectionsService {
     }
 
     // Chặn sửa điểm lớp khác bằng cách nhét enrollmentId lạ vào payload.
-    const owned = new Set(section.enrollments.map((item) => item.id));
+    const owned = new Map(section.enrollments.map((item) => [item.id, item]));
     const foreign = dto.rows.find((row) => !owned.has(row.enrollmentId));
     if (foreign) {
       throw new NotFoundException(
@@ -154,8 +177,15 @@ export class ClassSectionsService {
       );
     }
 
+    // Thiếu key totalScore trong payload nghĩa xác định là "xóa điểm"
+    // (fix vòng 1, mục 6) — khớp kiểu number | null đã khai trong DTO.
+    const normalizedRows = dto.rows.map((row) => ({
+      ...row,
+      totalScore: row.totalScore ?? null,
+    }));
+
     await this.prisma.$transaction(
-      dto.rows.map((row) =>
+      normalizedRows.map((row) =>
         this.prisma.enrollment.update({
           where: { id: row.enrollmentId },
           data: { totalScore: row.totalScore, result: row.result },
@@ -163,12 +193,37 @@ export class ClassSectionsService {
       ),
     );
 
+    // Chỉ ghi vào audit các dòng THỰC SỰ đổi giá trị — đủ để tra "ai sửa từ
+    // bao nhiêu sang bao nhiêu" mà không phình log với dòng gửi lại y nguyên
+    // (fix vòng 1, mục 4). UUID/mã lớp/điểm số không phải PII theo RULE 1 —
+    // TUYỆT ĐỐI không ghi họ tên sinh viên vào đây.
+    const changes = normalizedRows.flatMap((row) => {
+      const before = owned.get(row.enrollmentId);
+      if (
+        before &&
+        before.totalScore === row.totalScore &&
+        before.result === row.result
+      ) {
+        return [];
+      }
+      return [
+        {
+          enrollmentId: row.enrollmentId,
+          from: {
+            totalScore: before?.totalScore ?? null,
+            result: before?.result ?? null,
+          },
+          to: { totalScore: row.totalScore, result: row.result },
+        },
+      ];
+    });
+
     await this.audit.log({
       staffId: user.id,
       action: 'SECTION_GRADES_UPDATE',
       entity: 'ClassSection',
       entityId: id,
-      metadata: { rowCount: dto.rows.length },
+      metadata: { rowCount: dto.rows.length, changes },
     });
 
     return { updated: dto.rows.length };

@@ -169,15 +169,31 @@ export class StudentsService {
     user: AuthUser,
     dto: BulkAssignMajorDto,
   ): Promise<{ updated: number }> {
+    // Nạp Major TRƯỚC khi update — cùng cơ chế với create()/update() — để
+    // biết ngành thuộc bộ môn nào và chặn người dùng bị scope gán ngành của
+    // bộ môn khác (fix vòng 1, mục 1).
+    const major = await this.prisma.major.findUnique({
+      where: { id: dto.majorId },
+    });
+    if (!major) {
+      throw new NotFoundException('Ngành học không tồn tại.');
+    }
+    this.assertDeptAllowed(user, major.departmentId);
+
     let result: { count: number };
     try {
       result = await this.prisma.student.updateMany({
         // deptFilter nằm trong where: sinh viên ngoài bộ môn không bị đụng tới,
         // và người gọi cũng không biết được id đó có tồn tại hay không (RULE 2).
         where: { id: { in: dto.studentIds }, ...deptFilter(user) },
-        data: { majorId: dto.majorId },
+        // departmentId phải đồng bộ theo major — RULE 2 (deptFilter) chỉ soi
+        // departmentId, ghi lệch sẽ làm sinh viên rơi ra ngoài phạm vi bộ môn
+        // thực tế của ngành mới (fix vòng 1, mục 2).
+        data: { majorId: dto.majorId, departmentId: major.departmentId },
       });
     } catch (error) {
+      // Nhánh phòng thủ: chỉ còn xảy ra khi major bị xóa xen giữa lần
+      // findUnique ở trên và updateMany này.
       if (isPrismaError(error, 'P2003')) {
         throw new NotFoundException('Ngành học không tồn tại.');
       }
@@ -194,7 +210,11 @@ export class StudentsService {
       staffId: user.id,
       action: 'STUDENT_BULK_ASSIGN_MAJOR',
       entity: 'Student',
-      metadata: { majorId: dto.majorId, updated: result.count },
+      metadata: {
+        majorId: dto.majorId,
+        studentIds: dto.studentIds,
+        updated: result.count,
+      },
     });
 
     return { updated: result.count };
