@@ -1,0 +1,39 @@
+/* FCare design tokens — FPT Education brand */
+:root {
+  /* Brand */
+  --color-fpt-orange: #f27227;
+  --color-fpt-orange-600: #d95e1a;
+  --color-fpt-orange-50: #fef3ec;
+  --color-fpt-blue: #0066b3;
+  --color-fpt-blue-700: #004e88;
+  --color-fpt-blue-900: #0b2e4f;
+  --color-fpt-green: #58b947;
+
+  /* Surfaces & ink */
+  --color-surface: oklch(99% 0 0);
+  --color-surface-raised: #ffffff;
+  --color-ink: oklch(22% 0.02 250);
+  --color-muted: oklch(52% 0.02 250);
+  --color-border: oklch(90% 0.01 250);
+
+  /* Semantic */
+  --color-success: #2e9e44;
+  --color-warning: #e8a10f;
+  --color-danger: #d5393c;
+
+  /* Typography */
+  --font-display: var(--font-be-vietnam), system-ui, sans-serif;
+  --font-body: var(--font-inter), system-ui, sans-serif;
+  --text-base: clamp(1rem, 0.95rem + 0.25vw, 1.0625rem);
+  --text-hero: clamp(2.25rem, 1.25rem + 4vw, 4.25rem);
+
+  /* Rhythm */
+  --space-section: clamp(4rem, 3rem + 5vw, 8rem);
+  --radius-card: 12px;
+  --shadow-card: 0 1px 3px rgb(0 0 0 / 0.04), 0 8px 24px rgb(0 102 179 / 0.06);
+
+  /* Motion */
+  --duration-fast: 150ms;
+  --duration-normal: 300ms;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}

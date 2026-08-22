@@ -1,0 +1,20 @@
+# --- Build stage ---
+FROM node:20-alpine AS build
+RUN corepack enable
+WORKDIR /repo
+
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY packages ./packages
+COPY apps/api ./apps/api
+
+RUN pnpm install --frozen-lockfile --filter @fcare/api...
+RUN pnpm --filter @fcare/shared-types build && pnpm --filter @fcare/api build
+RUN pnpm --filter @fcare/api deploy --prod /out
+
+# --- Runtime stage ---
+FROM node:20-alpine
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build /out .
+EXPOSE 3001
+CMD ["node", "dist/main"]

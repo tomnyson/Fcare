@@ -1,0 +1,327 @@
+// FCare — Prisma schema
+//
+// NGUYÊN TẮC BẢO MẬT (từ tài liệu nghiệp vụ — TUYỆT ĐỐI tuân thủ):
+// - CẤM lưu CCCD/CMND, số điện thoại, email, địa chỉ của sinh viên và nhân viên/giảng viên.
+// - Giảng viên chỉ quản lý sinh viên thuộc bộ môn mình (scoping ở tầng service).
+// - Không có email trong DB → reset mật khẩu qua mật khẩu tạm do admin cấp.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===== Tổ chức =====
+
+model Department {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  majors   Major[]
+  subjects Subject[]
+  staff    Staff[]
+  students Student[]
+
+  @@map("departments")
+}
+
+model Major {
+  id           String   @id @default(uuid())
+  code         String   @unique
+  name         String
+  departmentId String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  department Department @relation(fields: [departmentId], references: [id])
+  students   Student[]
+
+  @@map("majors")
+}
+
+model Subject {
+  id           String   @id @default(uuid())
+  code         String   @unique
+  name         String
+  credits      Int
+  departmentId String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  department    Department     @relation(fields: [departmentId], references: [id])
+  classSections ClassSection[]
+
+  @@map("subjects")
+}
+
+// Lớp học phần: môn học + giảng viên + học kỳ
+model ClassSection {
+  id         String   @id @default(uuid())
+  code       String   @unique
+  subjectId  String
+  lecturerId String
+  term       String // vd: "SU25"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  subject     Subject      @relation(fields: [subjectId], references: [id])
+  lecturer    Staff        @relation(fields: [lecturerId], references: [id])
+  enrollments Enrollment[]
+
+  @@map("class_sections")
+}
+
+// ===== Nhân sự & phân quyền =====
+
+// Chỉ lưu: mã NV, họ tên, bộ môn. KHÔNG email/SĐT/địa chỉ/CCCD.
+model Staff {
+  id                 String    @id @default(uuid())
+  staffCode          String    @unique // mã nhân viên — dùng để đăng nhập
+  fullName           String
+  departmentId       String?
+  passwordHash       String
+  mustChangePassword Boolean   @default(false)
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  department    Department?    @relation(fields: [departmentId], references: [id])
+  roles         StaffRole[]
+  consentLogs   ConsentLog[]
+  refreshTokens RefreshToken[]
+  classSections ClassSection[]
+  evaluations   Evaluation[]
+  careLogs      CareLog[]
+  raisedAlerts  Alert[]        @relation("AlertRaisedBy")
+  resolvedAlerts Alert[]       @relation("AlertResolvedBy")
+  notifications Notification[]
+  auditLogs     AuditLog[]
+
+  @@map("staff")
+}
+
+model Role {
+  id   String @id @default(uuid())
+  key  String @unique // ADMIN | HEAD_OF_DEPT | LECTURER | TRAINING_OFFICER | SA_OFFICER | SA_HEAD
+  name String
+
+  staff StaffRole[]
+
+  @@map("roles")
+}
+
+model StaffRole {
+  staffId String
+  roleId  String
+
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  role  Role  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([staffId, roleId])
+  @@map("staff_roles")
+}
+
+// Cam kết không chia sẻ dữ liệu — bắt buộc mỗi lần đăng nhập
+model ConsentLog {
+  id          String   @id @default(uuid())
+  staffId     String
+  consentedAt DateTime @default(now())
+  userAgent   String?
+
+  staff         Staff          @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
+
+  @@map("consent_logs")
+}
+
+model RefreshToken {
+  id           String    @id @default(uuid())
+  staffId      String
+  tokenHash    String    @unique
+  consentLogId String?
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  staff      Staff       @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  consentLog ConsentLog? @relation(fields: [consentLogId], references: [id])
+
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  staffId   String?
+  action    String // vd: EXCEL_IMPORT_STUDENTS, EXCEL_EXPORT_GRADES, RESET_PASSWORD
+  entity    String
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  staff Staff? @relation(fields: [staffId], references: [id])
+
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+// ===== Sinh viên & học vụ =====
+
+enum StudentStatus {
+  STUDYING // đang học
+  RESERVED // bảo lưu
+  WARNED // cảnh báo học vụ
+  DROPPED_OUT // thôi học
+  GRADUATED // tốt nghiệp
+}
+
+// Chỉ lưu: MSSV, họ tên, ngày sinh, giới tính, ngành, khóa, lớp, trạng thái.
+// KHÔNG CCCD/SĐT/email/địa chỉ.
+model Student {
+  id           String        @id @default(uuid())
+  studentCode  String        @unique // MSSV
+  fullName     String
+  dateOfBirth  DateTime?
+  gender       String?
+  majorId      String
+  departmentId String // denormalized từ major — phục vụ scoping theo bộ môn
+  cohort       String // khóa, vd: "K19"
+  classCode    String // lớp hành chính, vd: "SE1901"
+  status       StudentStatus @default(STUDYING)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  major       Major        @relation(fields: [majorId], references: [id])
+  department  Department   @relation(fields: [departmentId], references: [id])
+  enrollments Enrollment[]
+  evaluations Evaluation[]
+  careLogs    CareLog[]
+  alerts      Alert[]
+
+  @@index([departmentId])
+  @@index([classCode])
+  @@map("students")
+}
+
+enum EnrollmentResult {
+  IN_PROGRESS
+  PASS
+  FAIL
+}
+
+model Enrollment {
+  id             String           @id @default(uuid())
+  studentId      String
+  classSectionId String
+  attendanceRate Float? // 0..100
+  midtermScore   Float? // 0..10
+  finalScore     Float? // 0..10
+  totalScore     Float? // 0..10
+  isExamBanned   Boolean          @default(false)
+  result         EnrollmentResult @default(IN_PROGRESS)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  classSection ClassSection @relation(fields: [classSectionId], references: [id])
+
+  @@unique([studentId, classSectionId])
+  @@map("enrollments")
+}
+
+// ===== Chăm sóc & cảnh báo =====
+
+// Đánh giá SV: học lực 1-10, thái độ 1-10, nhóm vấn đề 1-4
+model Evaluation {
+  id            String   @id @default(uuid())
+  studentId     String
+  lecturerId    String
+  term          String
+  academicScore Int // 1..10
+  attitudeScore Int // 1..10
+  issueGroup    Int? // 1..4 — nhóm vấn đề cần can thiệp
+  note          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  student  Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  lecturer Staff   @relation(fields: [lecturerId], references: [id])
+
+  @@index([studentId, term])
+  @@map("evaluations")
+}
+
+enum CareChannel {
+  IN_PERSON // gặp trực tiếp
+  ONLINE // trao đổi online qua kênh nội bộ
+}
+
+model CareLog {
+  id         String      @id @default(uuid())
+  studentId  String
+  staffId    String
+  channel    CareChannel
+  content    String
+  outcome    String?
+  nextAction String?
+  createdAt  DateTime    @default(now())
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  staff   Staff   @relation(fields: [staffId], references: [id])
+
+  @@index([studentId, createdAt])
+  @@map("care_logs")
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+// Cảnh báo mức độ khẩn 1-4; mức 4 yêu cầu lý do >= 40 ký tự (validate tầng DTO)
+model Alert {
+  id             String      @id @default(uuid())
+  studentId      String
+  raisedById     String
+  level          Int // 1..4
+  reason         String
+  status         AlertStatus @default(OPEN)
+  resolvedById   String?
+  resolvedAt     DateTime?
+  resolutionNote String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  student       Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  raisedBy      Staff          @relation("AlertRaisedBy", fields: [raisedById], references: [id])
+  resolvedBy    Staff?         @relation("AlertResolvedBy", fields: [resolvedById], references: [id])
+  notifications Notification[]
+
+  @@index([studentId, status])
+  @@index([level, status])
+  @@map("alerts")
+}
+
+model Notification {
+  id          String    @id @default(uuid())
+  recipientId String
+  alertId     String?
+  title       String
+  body        String
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  recipient Staff  @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  alert     Alert? @relation(fields: [alertId], references: [id], onDelete: SetNull)
+
+  // Idempotency cho queue escalation: retry không tạo trùng thông báo cùng cảnh báo.
+  @@unique([alertId, recipientId])
+  @@index([recipientId, readAt])
+  @@map("notifications")
+}
