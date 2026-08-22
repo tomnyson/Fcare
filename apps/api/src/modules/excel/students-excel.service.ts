@@ -11,8 +11,9 @@ import { deptFilter, isDeptScoped } from '../../common/utils/dept-scope';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   assertNoForbiddenColumns,
+  assertNoForbiddenValues,
   cellText,
-  loadFirstWorksheet,
+  loadWorkbook,
   readHeaderRow,
   workbookToFile,
   type RowError,
@@ -67,7 +68,9 @@ export class StudentsExcelService {
   ) {}
 
   async import(user: AuthUser, buffer: Buffer) {
-    const worksheet = await loadFirstWorksheet(buffer);
+    const workbook = await loadWorkbook(buffer);
+    assertNoForbiddenValues(workbook);
+    const worksheet = workbook.worksheets[0];
     assertNoForbiddenColumns(readHeaderRow(worksheet));
 
     const majors = await this.prisma.major.findMany();

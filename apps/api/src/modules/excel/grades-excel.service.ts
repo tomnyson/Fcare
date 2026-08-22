@@ -12,9 +12,10 @@ import { isDeptScoped } from '../../common/utils/dept-scope';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   assertNoForbiddenColumns,
+  assertNoForbiddenValues,
   cellNumber,
   cellText,
-  loadFirstWorksheet,
+  loadWorkbook,
   readHeaderRow,
   workbookToFile,
   type RowError,
@@ -56,7 +57,9 @@ export class GradesExcelService {
   ) {}
 
   async import(user: AuthUser, buffer: Buffer) {
-    const worksheet = await loadFirstWorksheet(buffer);
+    const workbook = await loadWorkbook(buffer);
+    assertNoForbiddenValues(workbook);
+    const worksheet = workbook.worksheets[0];
     assertNoForbiddenColumns(readHeaderRow(worksheet));
 
     const [sections, students] = await Promise.all([
