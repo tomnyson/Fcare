@@ -54,9 +54,9 @@ export class CatalogParser implements ImportParser {
     // Parser thuần không dùng ImportContext (term/user) — chỉ giữ tham số để
     // khớp chữ ký ImportParser.parse.
     void ctx;
-    // `await` không có tác dụng — chỉ để giữ hàm async: throw bên dưới
-    // (thiếu sheet) phải trở thành promise bị reject, không phải throw đồng bộ,
-    // vì ImportsService.upload gọi `await parser.parse(...)`.
+    // Parser chạy hoàn toàn đồng bộ nhưng ImportParser.parse trả Promise, nên
+    // cần một `await` để thoả rule `@typescript-eslint/require-await`. Không
+    // liên quan tới ngữ nghĩa throw: hàm `async` luôn reject khi throw.
     await Promise.resolve();
     const worksheet = getWorksheet(workbook, CATALOG_SHEET);
     if (!worksheet) {
