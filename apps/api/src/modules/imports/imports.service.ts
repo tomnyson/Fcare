@@ -152,7 +152,11 @@ export class ImportsService {
   async preview(user: AuthUser, batchId: string) {
     const batch = await this.prisma.importBatch.findUnique({
       where: { id: batchId },
-      include: { rows: { orderBy: [{ sheet: 'asc' }, { rowIndex: 'asc' }] } },
+      include: {
+        rows: { orderBy: [{ sheet: 'asc' }, { rowIndex: 'asc' }] },
+        // RULE 1: chỉ họ tên — tuyệt đối không select email/SĐT/CCCD/địa chỉ.
+        uploadedBy: { select: { fullName: true } },
+      },
     });
     if (!batch) {
       throw new NotFoundException('Không tìm thấy lượt import.');
@@ -167,6 +171,7 @@ export class ImportsService {
       summary: batch.summary,
       createdAt: batch.createdAt,
       committedAt: batch.committedAt,
+      uploadedByName: batch.uploadedBy?.fullName ?? null,
       rows: batch.rows.map((row) => ({
         sheet: row.sheet,
         rowIndex: row.rowIndex,
@@ -254,6 +259,8 @@ export class ImportsService {
       where: isDeptScoped(user) ? { uploadedById: user.id } : undefined,
       orderBy: { createdAt: 'desc' },
       take: 50,
+      // RULE 1: chỉ họ tên — tuyệt đối không select email/SĐT/CCCD/địa chỉ.
+      include: { uploadedBy: { select: { fullName: true } } },
     });
     return batches.map((batch) => ({
       id: batch.id,
@@ -264,9 +271,15 @@ export class ImportsService {
       summary: batch.summary,
       createdAt: batch.createdAt,
       committedAt: batch.committedAt,
+      uploadedByName: batch.uploadedBy?.fullName ?? null,
     }));
   }
 
+  /**
+   * Soft-cancel: giữ lại ImportBatch trong lịch sử (status = CANCELLED),
+   * chỉ xoá các ImportRow con (dữ liệu staging, không cần giữ). Batch đã
+   * CANCELLED gọi lại discard là idempotent (không chặn) — vẫn cùng kết quả.
+   */
   async discard(user: AuthUser, batchId: string) {
     const batch = await this.prisma.importBatch.findUnique({
       where: { id: batchId },
@@ -278,7 +291,13 @@ export class ImportsService {
     if (batch.status === ImportStatus.COMMITTED) {
       throw new BadRequestException('Lượt import đã commit, không thể huỷ.');
     }
-    await this.prisma.importBatch.delete({ where: { id: batchId } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.importRow.deleteMany({ where: { batchId } });
+      await tx.importBatch.update({
+        where: { id: batchId },
+        data: { status: ImportStatus.CANCELLED },
+      });
+    });
     await this.auditService.log({
       staffId: user.id,
       action: 'IMPORT_DISCARD',

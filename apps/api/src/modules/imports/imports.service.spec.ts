@@ -54,6 +54,9 @@ function makePrismaMock() {
     fileName: 'a.xlsx',
     term: 'SU26',
     uploadedById: 'staff-1',
+    // RULE 1: chỉ họ tên — test dưới đây khẳng định select thật của quan hệ
+    // này (không phải fixture) không nới ra quá fullName.
+    uploadedBy: { fullName: 'Nguyễn Văn A' },
     summary: {},
     createdAt: new Date(),
     committedAt: null,
@@ -78,11 +81,16 @@ function makePrismaMock() {
   };
   // Mock client transaction (tx): commit() phải gọi tx.importBatch.update
   // để việc ghi dữ liệu committer và chuyển trạng thái COMMITTED cùng
-  // thành công/thất bại trong một transaction duy nhất.
+  // thành công/thất bại trong một transaction duy nhất. discard() dùng
+  // cùng cơ chế: tx.importRow.deleteMany + tx.importBatch.update(CANCELLED).
   const txImportBatchUpdate = jest
     .fn()
     .mockResolvedValue({ ...batch, status: ImportStatus.COMMITTED });
-  const tx = { importBatch: { update: txImportBatchUpdate } };
+  const txImportRowDeleteMany = jest.fn().mockResolvedValue({ count: 1 });
+  const tx = {
+    importBatch: { update: txImportBatchUpdate },
+    importRow: { deleteMany: txImportRowDeleteMany },
+  };
   return {
     importBatch: {
       create: jest.fn().mockResolvedValue(batch),
@@ -93,9 +101,13 @@ function makePrismaMock() {
       findMany: jest.fn().mockResolvedValue([batch]),
       delete: jest.fn().mockResolvedValue(batch),
     },
-    importRow: { createMany: jest.fn().mockResolvedValue({ count: 2 }) },
+    importRow: {
+      createMany: jest.fn().mockResolvedValue({ count: 2 }),
+      deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
+    },
     departmentAlias: { findMany: jest.fn().mockResolvedValue([]) },
     txImportBatchUpdate,
+    txImportRowDeleteMany,
     $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(tx)),
   };
 }
@@ -311,10 +323,43 @@ describe('ImportsService', () => {
       expect(prisma.importBatch.delete).not.toHaveBeenCalled();
     });
 
-    it('discard: chủ sở hữu xoá được batch PENDING của chính mình', async () => {
+    it('discard: chủ sở hữu huỷ mềm được batch PENDING của chính mình (soft-cancel, không xoá cứng)', async () => {
       await service.discard(user, 'batch-1');
-      expect(prisma.importBatch.delete).toHaveBeenCalledWith({
+      expect(prisma.txImportRowDeleteMany).toHaveBeenCalledWith({
+        where: { batchId: 'batch-1' },
+      });
+      expect(prisma.txImportBatchUpdate).toHaveBeenCalledWith({
         where: { id: 'batch-1' },
+        data: { status: ImportStatus.CANCELLED },
+      });
+      expect(prisma.importBatch.delete).not.toHaveBeenCalled();
+    });
+
+    it('discard: batch COMMITTED → BadRequestException, không đụng DB', async () => {
+      prisma.importBatch.findUnique.mockResolvedValue({
+        id: 'batch-1',
+        status: ImportStatus.COMMITTED,
+        uploadedById: 'staff-1',
+      });
+      await expect(service.discard(user, 'batch-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.importBatch.delete).not.toHaveBeenCalled();
+    });
+
+    it('discard: batch đã CANCELLED gọi discard lần nữa → idempotent, không ném lỗi', async () => {
+      prisma.importBatch.findUnique.mockResolvedValue({
+        id: 'batch-1',
+        status: ImportStatus.CANCELLED,
+        uploadedById: 'staff-1',
+      });
+      await expect(service.discard(user, 'batch-1')).resolves.toEqual({
+        id: 'batch-1',
+      });
+      expect(prisma.txImportBatchUpdate).toHaveBeenCalledWith({
+        where: { id: 'batch-1' },
+        data: { status: ImportStatus.CANCELLED },
       });
     });
 
@@ -330,6 +375,53 @@ describe('ImportsService', () => {
       expect(prisma.importBatch.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: undefined }),
       );
+    });
+  });
+
+  describe('item 2 — list()/preview() trả tên người upload', () => {
+    it('list: trả uploadedByName đọc từ quan hệ uploadedBy', async () => {
+      const result = await service.list(user);
+      expect(result[0]).toMatchObject({ uploadedByName: 'Nguyễn Văn A' });
+    });
+
+    it('preview: trả uploadedByName đọc từ quan hệ uploadedBy', async () => {
+      const result = await service.preview(user, 'batch-1');
+      expect(result).toMatchObject({ uploadedByName: 'Nguyễn Văn A' });
+    });
+
+    it('list: uploadedByName null khi quan hệ không trả fullName (batch mồ côi)', async () => {
+      prisma.importBatch.findMany.mockResolvedValue([
+        {
+          id: 'batch-2',
+          kind: ImportKind.CATALOG,
+          status: ImportStatus.PENDING,
+          fileName: 'b.xlsx',
+          term: 'SU26',
+          summary: {},
+          createdAt: new Date(),
+          committedAt: null,
+          uploadedBy: null,
+        },
+      ]);
+      const result = await service.list(user);
+      expect(result[0]).toMatchObject({ uploadedByName: null });
+    });
+
+    it('RULE 1: select của quan hệ uploadedBy trong list() CHỈ chứa fullName', async () => {
+      await service.list(user);
+      const [args] = prisma.importBatch.findMany.mock.calls[0] as [
+        { include?: { uploadedBy?: { select?: Record<string, boolean> } } },
+      ];
+      expect(args.include?.uploadedBy?.select).toEqual({ fullName: true });
+    });
+
+    it('RULE 1: select của quan hệ uploadedBy trong preview() CHỈ chứa fullName', async () => {
+      await service.preview(user, 'batch-1');
+      const calls = prisma.importBatch.findUnique.mock.calls as Array<
+        [{ include?: { uploadedBy?: { select?: Record<string, boolean> } } }]
+      >;
+      const [args] = calls[calls.length - 1];
+      expect(args.include?.uploadedBy?.select).toEqual({ fullName: true });
     });
   });
 });

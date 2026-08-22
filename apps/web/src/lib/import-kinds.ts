@@ -61,6 +61,7 @@ export const IMPORT_PAYLOAD_COLUMNS: Record<ImportKind, Array<{ key: string; lab
     { key: 'room', label: 'Phòng' },
     { key: 'capacity', label: 'Sĩ số' },
     { key: 'trainingTime', label: 'Thời lượng' },
+    { key: 'lecturerName', label: 'Giảng viên' },
   ],
   GRADEBOOK: [
     { key: 'subjectCode', label: 'Mã môn' },

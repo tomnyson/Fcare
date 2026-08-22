@@ -2,7 +2,7 @@
 
 import { Button, SurfaceCard } from '@fcare/ui-kit';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ImportPreview } from './import-preview';
 import { FormError, FormSuccess, Input, Label } from '../ui/form';
 import { ApiError, apiFetch, apiUpload } from '../../lib/api';
@@ -12,7 +12,31 @@ import type { ImportBatchDetail, ImportCommitResult, ImportDiscardResult } from 
 const TERM_PATTERN = /^[A-Z]{2}\d{2}$/;
 const STEP_LABELS = ['Chọn loại', 'Tải file', 'Xem trước', 'Xác nhận'];
 
-export function ImportWizard() {
+/** Query key đã bị các thao tác import commit chạm tới, liệt kê tường minh
+ * (thay cho invalidateQueries() không tham số làm mất cache toàn app):
+ * - imports: lịch sử import vừa đổi trạng thái
+ * - subjects: CATALOG tạo/cập nhật môn học
+ * - admin-staff / admin-staff-lecturers: LECTURER tạo tài khoản giảng viên
+ * - class-sections: SCHEDULE tạo/cập nhật lớp học phần
+ * - students / enrollments: GRADEBOOK tạo/cập nhật sinh viên và điểm */
+const COMMIT_AFFECTED_QUERY_KEYS: string[][] = [
+  ['imports'],
+  ['subjects'],
+  ['admin-staff'],
+  ['admin-staff-lecturers'],
+  ['class-sections'],
+  ['students'],
+  ['enrollments'],
+];
+
+interface ImportWizardProps {
+  /** Batch PENDING được chọn từ lịch sử (import-history.tsx) để nạp lại vào
+   * wizard ở bước xem trước — null khi không có lượt nào đang được nạp lại. */
+  resumeBatchId: string | null;
+  onResumeHandled: () => void;
+}
+
+export function ImportWizard({ resumeBatchId, onResumeHandled }: ImportWizardProps) {
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [slug, setSlug] = useState<ImportKindSlug | null>(null);
@@ -20,11 +44,16 @@ export function ImportWizard() {
   const [batch, setBatch] = useState<ImportBatchDetail | null>(null);
   const [error, setError] = useState('');
   const [done, setDone] = useState('');
+  // true ngay sau khi commit thành công — giữ bước 4 "Xác nhận" sáng cho tới
+  // khi người dùng bắt đầu một lượt import mới (chọn lại loại dữ liệu hoặc
+  // huỷ lô). Không dùng chung với `batch` vì commit xong sẽ setBatch(null).
+  const [committed, setCommitted] = useState(false);
 
   function resetFile() {
     setBatch(null);
     setError('');
     setDone('');
+    setCommitted(false);
     if (fileRef.current) {
       fileRef.current.value = '';
     }
@@ -35,6 +64,7 @@ export function ImportWizard() {
       apiUpload<ImportBatchDetail>(`/imports/${slug}/upload`, file, { term }),
     onSuccess: (result) => {
       setBatch(result);
+      setCommitted(false);
       setError('');
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Không đọc được file.'),
@@ -48,7 +78,10 @@ export function ImportWizard() {
         `Đã ghi: ${result.created} tạo mới, ${result.updated} cập nhật, ${result.skipped} bỏ qua.`,
       );
       setBatch(null);
-      queryClient.invalidateQueries();
+      setCommitted(true);
+      for (const queryKey of COMMIT_AFFECTED_QUERY_KEYS) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Ghi dữ liệu thất bại.'),
   });
@@ -62,8 +95,32 @@ export function ImportWizard() {
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Huỷ lô thất bại.'),
   });
 
+  // Lô PENDING bị bỏ rơi (refresh trang mất state) vẫn còn trong DB — hàng
+  // lịch sử gọi onResume(batchId), nạp lại bản xem trước qua GET preview để
+  // người dùng commit hoặc huỷ, thay vì không có đường quay lại.
+  const resume = useMutation({
+    mutationFn: (batchId: string) =>
+      apiFetch<ImportBatchDetail>(`/imports/${batchId}/preview`),
+    onSuccess: (result) => {
+      setBatch(result);
+      setCommitted(false);
+      setError('');
+      setDone('');
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : 'Không tải được lượt import.'),
+    onSettled: () => onResumeHandled(),
+  });
+
+  const resumeMutate = resume.mutate;
+  useEffect(() => {
+    if (resumeBatchId) {
+      resumeMutate(resumeBatchId);
+    }
+  }, [resumeBatchId, resumeMutate]);
+
   const termValid = TERM_PATTERN.test(term);
-  const currentStep = batch ? 2 : slug ? 1 : 0;
+  const currentStep = batch ? 2 : committed ? 3 : slug ? 1 : 0;
 
   return (
     <SurfaceCard className="border-t-4 border-t-fpt-blue">

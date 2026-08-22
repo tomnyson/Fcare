@@ -242,6 +242,8 @@ export interface ImportBatchSummary {
   summary: ImportSummary;
   createdAt: string;
   committedAt: string | null;
+  /** Họ tên người đã upload — null nếu quan hệ không giải quyết được. RULE 1: chỉ họ tên. */
+  uploadedByName: string | null;
 }
 
 export interface ImportBatchDetail extends ImportBatchSummary {

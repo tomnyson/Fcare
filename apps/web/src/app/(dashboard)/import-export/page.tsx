@@ -47,6 +47,8 @@ export default function ImportExportPage() {
   const [gradesResult, setGradesResult] = useState<ImportResult | null>(null);
   const [exportSectionId, setExportSectionId] = useState('');
   const [error, setError] = useState('');
+  // Lô PENDING chọn từ lịch sử để nạp lại vào wizard — xem import-wizard.tsx.
+  const [resumeBatchId, setResumeBatchId] = useState<string | null>(null);
 
   const { data: classSections } = useQuery({
     queryKey: ['class-sections'],
@@ -87,7 +89,10 @@ export default function ImportExportPage() {
         description="Nhập dữ liệu từ file Excel của trường theo 4 bước có xem trước. Chỉ Trưởng bộ môn, Cán bộ Đào tạo và CTSV được sử dụng. Mọi thao tác đều ghi audit log."
       />
 
-      <ImportWizard />
+      <ImportWizard
+        resumeBatchId={resumeBatchId}
+        onResumeHandled={() => setResumeBatchId(null)}
+      />
 
       <section aria-labelledby="legacy-heading" className="mt-10">
         <h2
@@ -103,9 +108,9 @@ export default function ImportExportPage() {
 
         <div className="grid gap-6 lg:grid-cols-2">
           <SurfaceCard className="border-t-4 border-t-fpt-blue">
-            <h2 className="font-[family-name:var(--font-display)] text-lg font-bold text-fpt-blue-900">
+            <h3 className="font-[family-name:var(--font-display)] text-lg font-bold text-fpt-blue-900">
               Danh sách sinh viên
-            </h2>
+            </h3>
             <p className="mt-1 text-sm text-muted">
               Cột hợp lệ: MSSV · Họ tên · Ngày sinh · Giới tính · Mã ngành · Khóa · Lớp · Trạng
               thái. File chứa cột CCCD/SĐT/email/địa chỉ sẽ bị <strong>từ chối toàn bộ</strong>.
@@ -148,9 +153,9 @@ export default function ImportExportPage() {
           </SurfaceCard>
 
           <SurfaceCard className="border-t-4 border-t-fpt-orange">
-            <h2 className="font-[family-name:var(--font-display)] text-lg font-bold text-fpt-blue-900">
+            <h3 className="font-[family-name:var(--font-display)] text-lg font-bold text-fpt-blue-900">
               Bảng điểm lớp học phần
-            </h2>
+            </h3>
             <p className="mt-1 text-sm text-muted">
               Cột hợp lệ: Mã lớp học phần · MSSV · Chuyên cần (%) · Điểm giữa kỳ · Điểm cuối kỳ ·
               Điểm tổng kết · Cấm thi · Kết quả.
@@ -217,7 +222,7 @@ export default function ImportExportPage() {
         </div>
       </section>
 
-      <ImportHistory />
+      <ImportHistory onResume={setResumeBatchId} />
     </>
   );
 }

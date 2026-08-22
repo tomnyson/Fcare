@@ -15,7 +15,7 @@ interface ImportPreviewProps {
 }
 
 export function ImportPreview({ batch, isCommitting, onCommit, onDiscard }: ImportPreviewProps) {
-  const okCount = batch.summary.totalRows - batch.summary.errorCount;
+  const okCount = batch.summary.validRows;
   const visible = batch.rows.slice(0, MAX_VISIBLE_ROWS);
   // Allowlist theo loại import — KHÔNG đổ nguyên Object.entries(payload) ra
   // bảng, tránh hiện field lạ nếu parser backend đổi mà UI chưa cập nhật.
@@ -44,8 +44,8 @@ export function ImportPreview({ batch, isCommitting, onCommit, onDiscard }: Impo
 
       {batch.summary.warnings.length > 0 ? (
         <ul role="status" className="space-y-1 rounded-md bg-warning/10 p-4 text-sm text-ink">
-          {batch.summary.warnings.map((warning) => (
-            <li key={warning}>⚠ {warning}</li>
+          {batch.summary.warnings.map((warning, index) => (
+            <li key={`${index}-${warning}`}>⚠ {warning}</li>
           ))}
         </ul>
       ) : null}
