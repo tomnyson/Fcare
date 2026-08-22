@@ -84,6 +84,7 @@ function makePrismaMock() {
       delete: jest.fn().mockResolvedValue(batch),
     },
     importRow: { createMany: jest.fn().mockResolvedValue({ count: 2 }) },
+    departmentAlias: { findMany: jest.fn().mockResolvedValue([]) },
     txImportBatchUpdate,
     $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(tx)),
   };
@@ -239,6 +240,28 @@ describe('ImportsService', () => {
     prisma.importBatch.findUnique.mockResolvedValue(null);
     await expect(service.preview(user, 'khong-co')).rejects.toThrow(
       NotFoundException,
+    );
+  });
+
+  it('gom alias bộ môn chưa ánh xạ từ payload vào summary', async () => {
+    prisma.departmentAlias = {
+      findMany: jest.fn().mockResolvedValue([{ alias: 'CNTT' }]),
+    };
+    (parser.parse as jest.Mock).mockResolvedValue({
+      rows: [
+        { sheet: 'S', rowIndex: 3, payload: { deptAlias: 'CNTT' } },
+        { sheet: 'S', rowIndex: 4, payload: { deptAlias: 'THUC-TAP-TN' } },
+      ],
+      warnings: [],
+      unmappedAliases: [],
+    });
+    const buffer = await workbookBuffer(['Mã môn']);
+    await service.upload(user, ImportKind.CATALOG, buffer, 'a.xlsx', 'SU26');
+    const [createArgs] = prisma.importBatch.create.mock.calls[0] as [
+      CreateBatchArgs,
+    ];
+    expect(createArgs.data.summary).toEqual(
+      expect.objectContaining({ unmappedAliases: ['THUC-TAP-TN'] }),
     );
   });
 

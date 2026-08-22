@@ -1,6 +1,9 @@
 import { Module, type OnModuleInit } from '@nestjs/common';
+import { ImportKind } from '@prisma/client';
+import { CatalogCommitter } from './committers/catalog.committer';
 import { ImportsController } from './imports.controller';
 import { ImportsService } from './imports.service';
+import { CatalogParser } from './parsers/catalog.parser';
 
 @Module({
   controllers: [ImportsController],
@@ -10,8 +13,12 @@ import { ImportsService } from './imports.service';
 export class ImportsModule implements OnModuleInit {
   constructor(private readonly importsService: ImportsService) {}
 
-  // Task 6–9 cắm parser/committer vào đây.
+  // Task 7–9 cắm thêm parser/committer vào đây.
   onModuleInit(): void {
-    // (chưa có loại nào — Task 6 thêm CATALOG)
+    this.importsService.register(
+      ImportKind.CATALOG,
+      new CatalogParser(),
+      new CatalogCommitter(),
+    );
   }
 }

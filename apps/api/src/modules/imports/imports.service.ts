@@ -63,6 +63,32 @@ export class ImportsService {
 
     const ctx: ImportContext = { term, user, prisma: this.prisma };
     const result = await parser.parse(workbook, ctx);
+
+    // Alias bộ môn có trong file nhưng chưa có trong bảng ánh xạ → hiện ở
+    // bản xem trước để admin gán trước khi commit (spec §8 rủi ro 3).
+    const fileAliases = new Set(
+      result.rows
+        .map((row) =>
+          typeof row.payload.deptAlias === 'string'
+            ? row.payload.deptAlias.trim()
+            : '',
+        )
+        .filter((alias) => alias !== ''),
+    );
+    if (fileAliases.size > 0) {
+      const known = await this.prisma.departmentAlias.findMany({
+        select: { alias: true },
+      });
+      const knownKeys = new Set(
+        known.map((entry) => entry.alias.trim().toLowerCase()),
+      );
+      for (const alias of fileAliases) {
+        if (!knownKeys.has(alias.toLowerCase())) {
+          result.unmappedAliases.push(alias);
+        }
+      }
+    }
+
     const errorCount = result.rows.filter((row) => row.error).length;
 
     const batch = await this.prisma.importBatch.create({
