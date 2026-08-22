@@ -60,7 +60,7 @@ describe('LecturerParser', () => {
 
   it('KHÔNG đọc cột I dù cột đó có dữ liệu — payload không chứa email', async () => {
     const workbook = buildWorkbook([
-      { 1: 'a3', 6: 'Full', 7: 'Nguyễn Văn C', 9: 'nguyenvanc@fe.edu.vn' },
+      { 1: 'a3', 6: 'Full', 7: 'Nguyễn Văn C', 9: 'canary@example.com' },
     ]);
     const result = await parser.parse(workbook, ctx);
     expect(JSON.stringify(result.rows[0].payload)).not.toContain('@');
