@@ -21,6 +21,7 @@ import { EnrollmentsModule } from './modules/enrollments/enrollments.module';
 import { EvaluationsModule } from './modules/evaluations/evaluations.module';
 import { ExcelModule } from './modules/excel/excel.module';
 import { HealthModule } from './modules/health/health.module';
+import { ImportsModule } from './modules/imports/imports.module';
 import { MasterDataModule } from './modules/master-data/master-data.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
 import { StudentsModule } from './modules/students/students.module';
@@ -73,6 +74,7 @@ import { PrismaModule } from './prisma/prisma.module';
     AlertsModule,
     StatisticsModule,
     ExcelModule,
+    ImportsModule,
     AdminModule,
   ],
   providers: [

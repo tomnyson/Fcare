@@ -67,4 +67,23 @@ describe('AbilityFactory — ma trận phân quyền theo Quy định chung', ()
     expect(ability.can('import', 'Excel')).toBe(true);
     expect(ability.can('resolve', 'Alert')).toBe(true);
   });
+
+  it('LECTURER không có quyền import — chặn cả module imports mới', () => {
+    const ability = factory.createForUser(makeUser(['LECTURER']));
+    expect(ability.can('import', 'Excel')).toBe(false);
+    expect(ability.can('export', 'Excel')).toBe(false);
+  });
+
+  it('HEAD_OF_DEPT, TRAINING_OFFICER, SA_OFFICER, SA_HEAD, ADMIN đều import được', () => {
+    for (const role of [
+      'HEAD_OF_DEPT',
+      'TRAINING_OFFICER',
+      'SA_OFFICER',
+      'SA_HEAD',
+      'ADMIN',
+    ] as const) {
+      const ability = factory.createForUser(makeUser([role]));
+      expect(ability.can('import', 'Excel')).toBe(true);
+    }
+  });
 });
