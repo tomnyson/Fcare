@@ -27,6 +27,7 @@ model Department {
   subjects Subject[]
   staff    Staff[]
   students Student[]
+  aliases  DepartmentAlias[]
 
   @@map("departments")
 }
@@ -39,8 +40,9 @@ model Major {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  department Department @relation(fields: [departmentId], references: [id])
-  students   Student[]
+  department      Department       @relation(fields: [departmentId], references: [id])
+  students        Student[]
+  classMajorRules ClassMajorRule[]
 
   @@map("majors")
 }
@@ -54,6 +56,13 @@ model Subject {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  subjectGroup           String?
+  hoursTotal             Int?
+  learningMethod         String? // TRA | BLE | ONL
+  maxStudents            Int?
+  examForm               String?
+  attendanceRateRequired Float? // file lưu dạng tỉ lệ 0.8, KHÔNG phải 80
+
   department    Department     @relation(fields: [departmentId], references: [id])
   classSections ClassSection[]
 
@@ -62,18 +71,27 @@ model Subject {
 
 // Lớp học phần: môn học + giảng viên + học kỳ
 model ClassSection {
-  id         String   @id @default(uuid())
-  code       String   @unique
-  subjectId  String
-  lecturerId String
-  term       String // vd: "SU25"
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id           String    @id @default(uuid())
+  code         String
+  subjectId    String
+  lecturerId   String? // nullable: 76/94 lớp trong file nguồn chưa phân công GV
+  term         String // vd: "SU25"
+  block        Int? // 1 | 2
+  slot         String? // ca học, vd "S1".."S6"
+  weekdays     String? // mã thứ, vd "246" | "357"
+  room         String?
+  capacity     Int?
+  trainingTime String? // AM | PM | EV
+  startDate    DateTime?
+  totalHours   Int?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   subject     Subject      @relation(fields: [subjectId], references: [id])
-  lecturer    Staff        @relation(fields: [lecturerId], references: [id])
+  lecturer    Staff?       @relation(fields: [lecturerId], references: [id])
   enrollments Enrollment[]
 
+  @@unique([code, term])
   @@map("class_sections")
 }
 
@@ -88,6 +106,8 @@ model Staff {
   passwordHash       String
   mustChangePassword Boolean   @default(false)
   isActive           Boolean   @default(true)
+  username           String?   @unique // username nội bộ từ file phân công, KHÔNG phải email
+  lecturerType       String? // FULL | PART
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -102,6 +122,7 @@ model Staff {
   resolvedAlerts Alert[]       @relation("AlertResolvedBy")
   notifications Notification[]
   auditLogs     AuditLog[]
+  importBatches ImportBatch[]
 
   @@map("staff")
 }
@@ -188,15 +209,15 @@ model Student {
   fullName     String
   dateOfBirth  DateTime?
   gender       String?
-  majorId      String
+  majorId      String? // nullable: SV chờ admin gán ngành
   departmentId String // denormalized từ major — phục vụ scoping theo bộ môn
-  cohort       String // khóa, vd: "K19"
+  cohort       String? // khóa, vd: "K19" — nullable: không suy được từ mã lớp học phần
   classCode    String // lớp hành chính, vd: "SE1901"
   status       StudentStatus @default(STUDYING)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
-  major       Major        @relation(fields: [majorId], references: [id])
+  major       Major?       @relation(fields: [majorId], references: [id])
   department  Department   @relation(fields: [departmentId], references: [id])
   enrollments Enrollment[]
   evaluations Evaluation[]
@@ -324,4 +345,79 @@ model Notification {
   @@unique([alertId, recipientId])
   @@index([recipientId, readAt])
   @@map("notifications")
+}
+
+// ===== Ánh xạ danh mục từ file nguồn =====
+
+// Hai file nguồn dùng hai hệ mã bộ môn khác nhau ("CONG-NGHE-THONG-TIN" vs "CNTT").
+// Bảng này để admin tự sửa ánh xạ mà không phải đụng code.
+model DepartmentAlias {
+  id           String   @id @default(uuid())
+  alias        String   @unique
+  departmentId String
+  createdAt    DateTime @default(now())
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@map("department_aliases")
+}
+
+// Suy ngành từ tiền tố mã lớp hành chính: "AI21301" → ngành LTAI.
+model ClassMajorRule {
+  id          String   @id @default(uuid())
+  classPrefix String   @unique
+  majorId     String
+  createdAt   DateTime @default(now())
+
+  major Major @relation(fields: [majorId], references: [id], onDelete: Cascade)
+
+  @@map("class_major_rules")
+}
+
+// ===== Staging import Excel =====
+
+enum ImportKind {
+  CATALOG
+  LECTURER
+  SCHEDULE
+  GRADEBOOK
+}
+
+enum ImportStatus {
+  PENDING
+  COMMITTED
+  FAILED
+  CANCELLED
+}
+
+model ImportBatch {
+  id           String       @id @default(uuid())
+  kind         ImportKind
+  status       ImportStatus @default(PENDING)
+  fileName     String
+  term         String
+  uploadedById String
+  summary      Json // { toCreate, toUpdate, errorCount, warnings, unmappedAliases }
+  createdAt    DateTime     @default(now())
+  committedAt  DateTime?
+
+  uploadedBy Staff       @relation(fields: [uploadedById], references: [id])
+  rows       ImportRow[]
+
+  @@index([kind, status])
+  @@map("import_batches")
+}
+
+model ImportRow {
+  id       String  @id @default(uuid())
+  batchId  String
+  sheet    String
+  rowIndex Int
+  payload  Json // dữ liệu đã parse + chuẩn hoá — KHÔNG BAO GIỜ chứa PII
+  error    String?
+
+  batch ImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@map("import_rows")
 }

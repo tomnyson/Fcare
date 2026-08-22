@@ -220,10 +220,10 @@ export class StudentsExcelService {
           ? student.dateOfBirth.toISOString().slice(0, 10)
           : '',
         student.gender ?? '',
-        student.major.code,
-        student.major.name,
+        student.major?.code ?? '',
+        student.major?.name ?? '',
         student.department.code,
-        student.cohort,
+        student.cohort ?? '',
         student.classCode,
         STATUS_LABELS[student.status],
       ]);

@@ -38,6 +38,8 @@ export class CreateStudentDto {
   @MaxLength(10)
   gender?: string;
 
+  // BẮT BUỘC dù schema cho nullable: tạo tay qua UI luôn phải chọn ngành để
+  // suy ra departmentId (trục của deptFilter). Chỉ importer mới để trống.
   @ApiProperty({ description: 'ID ngành học' })
   @IsUUID()
   majorId!: string;

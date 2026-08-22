@@ -69,7 +69,7 @@ export default function StudentDetailPage() {
         </div>
         <div>
           <dt className="text-xs font-bold uppercase tracking-wide text-muted">Khóa</dt>
-          <dd className="mt-1 font-medium text-ink">{student.cohort}</dd>
+          <dd className="mt-1 font-medium text-ink">{student.cohort ?? '—'}</dd>
         </div>
         <div>
           <dt className="text-xs font-bold uppercase tracking-wide text-muted">Bộ môn</dt>

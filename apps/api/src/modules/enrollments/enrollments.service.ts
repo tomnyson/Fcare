@@ -111,7 +111,7 @@ export class EnrollmentsService {
    */
   private assertCanUpdateGrades(
     user: AuthUser,
-    lecturerId: string,
+    lecturerId: string | null,
     studentDepartmentId: string,
   ): void {
     if (
@@ -120,7 +120,7 @@ export class EnrollmentsService {
     ) {
       return;
     }
-    if (user.id === lecturerId) {
+    if (lecturerId !== null && user.id === lecturerId) {
       return;
     }
     if (

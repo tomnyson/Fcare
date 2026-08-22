@@ -187,7 +187,7 @@ async function main(): Promise<void> {
 
   for (const sectionPlan of sections) {
     const section = await prisma.classSection.upsert({
-      where: { code: sectionPlan.code },
+      where: { code_term: { code: sectionPlan.code, term: sectionPlan.term } },
       update: {},
       create: {
         code: sectionPlan.code,

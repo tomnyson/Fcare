@@ -21,9 +21,12 @@ export class CreateClassSectionDto {
   @IsUUID()
   subjectId!: string;
 
-  @ApiProperty({ description: 'ID giảng viên phụ trách' })
+  @ApiPropertyOptional({
+    description: 'ID giảng viên phụ trách — để trống nếu chưa phân công',
+  })
+  @IsOptional()
   @IsUUID()
-  lecturerId!: string;
+  lecturerId?: string;
 
   @ApiProperty({ example: 'SU25', description: 'Học kỳ' })
   @IsString()

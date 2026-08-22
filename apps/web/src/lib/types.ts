@@ -69,7 +69,15 @@ export interface ClassSection {
   code: string;
   term: string;
   subjectId: string;
-  lecturerId: string;
+  lecturerId: string | null;
+  block?: number | null;
+  slot?: string | null;
+  weekdays?: string | null;
+  room?: string | null;
+  capacity?: number | null;
+  trainingTime?: string | null;
+  startDate?: string | null;
+  totalHours?: number | null;
   subject?: Subject;
   lecturer?: StaffRef;
   _count?: { enrollments: number };
@@ -81,10 +89,10 @@ export interface Student {
   fullName: string;
   dateOfBirth: string | null;
   gender: string | null;
-  cohort: string;
+  cohort: string | null;
   classCode: string;
   status: StudentStatus;
-  major?: { id: string; code: string; name: string };
+  major?: { id: string; code: string; name: string } | null;
   department?: { id: string; code: string; name: string };
   _count?: Record<string, number>;
 }
@@ -190,6 +198,7 @@ export interface StaffMember {
   mustChangePassword: boolean;
   isActive: boolean;
   createdAt: string;
+  lecturerType?: string | null;
   department: { id: string; code: string; name: string } | null;
   roles: Array<{ role: { key: RoleKey; name: string } }>;
 }
