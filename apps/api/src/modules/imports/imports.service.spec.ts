@@ -66,6 +66,13 @@ function makePrismaMock() {
       },
     ],
   };
+  // Mock client transaction (tx): commit() phải gọi tx.importBatch.update
+  // để việc ghi dữ liệu committer và chuyển trạng thái COMMITTED cùng
+  // thành công/thất bại trong một transaction duy nhất.
+  const txImportBatchUpdate = jest
+    .fn()
+    .mockResolvedValue({ ...batch, status: ImportStatus.COMMITTED });
+  const tx = { importBatch: { update: txImportBatchUpdate } };
   return {
     importBatch: {
       create: jest.fn().mockResolvedValue(batch),
@@ -77,7 +84,8 @@ function makePrismaMock() {
       delete: jest.fn().mockResolvedValue(batch),
     },
     importRow: { createMany: jest.fn().mockResolvedValue({ count: 2 }) },
-    $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn({})),
+    txImportBatchUpdate,
+    $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(tx)),
   };
 }
 
@@ -203,6 +211,26 @@ describe('ImportsService', () => {
       'vi phạm ràng buộc',
     );
     // $transaction đã rollback; batch giữ nguyên PENDING nên commit lại được sau khi sửa dữ liệu.
+    expect(prisma.importBatch.update).not.toHaveBeenCalled();
+    expect(audit.log).not.toHaveBeenCalled();
+  });
+
+  it('update trạng thái COMMITTED thất bại trong transaction → rollback cùng dữ liệu committer, không đánh dấu COMMITTED, không audit', async () => {
+    prisma.txImportBatchUpdate.mockRejectedValue(
+      new Error('mất kết nối khi cập nhật trạng thái'),
+    );
+
+    await expect(service.commit(user, 'batch-1')).rejects.toThrow(
+      'mất kết nối khi cập nhật trạng thái',
+    );
+
+    // Việc cập nhật trạng thái được thử NGAY TRONG transaction (cùng khối
+    // với committer.commit), nên khi nó lỗi, toàn bộ transaction rollback:
+    // dữ liệu committer đã ghi cũng bị huỷ theo, batch không bị đánh dấu
+    // COMMITTED một cách "mồ côi", và không ghi audit log cho một lượt
+    // commit thất bại.
+    expect(commitMock).toHaveBeenCalledTimes(1);
+    expect(prisma.txImportBatchUpdate).toHaveBeenCalledTimes(1);
     expect(prisma.importBatch.update).not.toHaveBeenCalled();
     expect(audit.log).not.toHaveBeenCalled();
   });

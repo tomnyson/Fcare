@@ -160,20 +160,25 @@ export class ImportsService {
       prisma: this.prisma,
     };
 
-    const result = await this.prisma.$transaction((tx) =>
-      committer.commit(validRows, tx, ctx),
-    );
-
-    await this.prisma.importBatch.update({
-      where: { id: batch.id },
-      data: {
-        status: ImportStatus.COMMITTED,
-        committedAt: new Date(),
-        summary: {
-          ...(batch.summary as Prisma.JsonObject),
-          ...result,
+    // Ghi kết quả committer VÀ chuyển trạng thái batch trong CÙNG một
+    // transaction: nếu update trạng thái thất bại (mất kết nối, deadlock),
+    // toàn bộ giao dịch rollback theo — tránh trường hợp dữ liệu đã ghi
+    // nhưng batch vẫn PENDING (dẫn đến commit lại double-apply dữ liệu vì
+    // ImportCommitter không đảm bảo idempotent).
+    const result = await this.prisma.$transaction(async (tx) => {
+      const commitResult = await committer.commit(validRows, tx, ctx);
+      await tx.importBatch.update({
+        where: { id: batch.id },
+        data: {
+          status: ImportStatus.COMMITTED,
+          committedAt: new Date(),
+          summary: {
+            ...(batch.summary as Prisma.JsonObject),
+            ...commitResult,
+          },
         },
-      },
+      });
+      return commitResult;
     });
 
     await this.auditService.log({
