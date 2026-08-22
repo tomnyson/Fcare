@@ -12,6 +12,16 @@ const user = {
   departmentId: null,
 } as unknown as AuthUser;
 
+// Vai trò bị scope (không thuộc UNSCOPED_ROLES) — dùng để test item 1: một
+// lượt import chỉ thuộc về người đã upload nó, batch fixture có
+// uploadedById: 'staff-1' nên user này (staff-2) KHÔNG phải chủ sở hữu.
+const scopedUser = {
+  id: 'staff-2',
+  staffCode: 'lecturer',
+  roles: ['HEAD_OF_DEPT'],
+  departmentId: 'dept-1',
+} as unknown as AuthUser;
+
 /** Hình dạng tham số gọi `importBatch.create` — chỉ để test đọc lại an toàn kiểu. */
 interface CreateBatchArgs {
   data: {
@@ -270,5 +280,56 @@ describe('ImportsService', () => {
     await expect(
       service.upload(user, ImportKind.SCHEDULE, buffer, 'a.xlsx', 'SU26'),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  describe('item 1 — một lượt import chỉ thuộc về người đã upload nó', () => {
+    it('preview: người dùng bị scope xem batch của người khác → 404', async () => {
+      await expect(service.preview(scopedUser, 'batch-1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('preview: người dùng KHÔNG bị scope xem được batch của người khác', async () => {
+      await expect(service.preview(user, 'batch-1')).resolves.toMatchObject({
+        id: 'batch-1',
+      });
+    });
+
+    it('commit: người dùng bị scope commit batch của người khác → 404, committer không được gọi', async () => {
+      await expect(service.commit(scopedUser, 'batch-1')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(commitMock).not.toHaveBeenCalled();
+    });
+
+    it('discard: người dùng bị scope xoá batch của người khác → 404, không xoá', async () => {
+      // discard chỉ findUnique (không include rows) — mock findUnique trả
+      // batch PENDING đã có sẵn từ makePrismaMock().
+      await expect(service.discard(scopedUser, 'batch-1')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.importBatch.delete).not.toHaveBeenCalled();
+    });
+
+    it('discard: chủ sở hữu xoá được batch PENDING của chính mình', async () => {
+      await service.discard(user, 'batch-1');
+      expect(prisma.importBatch.delete).toHaveBeenCalledWith({
+        where: { id: 'batch-1' },
+      });
+    });
+
+    it('list: người dùng bị scope chỉ thấy batch của chính họ (where lọc uploadedById)', async () => {
+      await service.list(scopedUser);
+      expect(prisma.importBatch.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { uploadedById: 'staff-2' } }),
+      );
+    });
+
+    it('list: người dùng KHÔNG bị scope thấy tất cả (where không lọc)', async () => {
+      await service.list(user);
+      expect(prisma.importBatch.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: undefined }),
+      );
+    });
   });
 });

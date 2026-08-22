@@ -62,8 +62,8 @@ export class ImportsController {
 
   @Get()
   @CheckPolicies((ability: AppAbility) => ability.can('import', 'Excel'))
-  list() {
-    return this.importsService.list();
+  list(@CurrentUser() user: AuthUser) {
+    return this.importsService.list(user);
   }
 
   @Post(':kind/upload')

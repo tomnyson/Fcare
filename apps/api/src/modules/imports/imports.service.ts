@@ -6,6 +6,7 @@ import {
 import { ImportKind, ImportStatus, Prisma } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
 import type { AuthUser } from '../../common/types/auth-user';
+import { isDeptScoped } from '../../common/utils/dept-scope';
 import { PrismaService } from '../../prisma/prisma.service';
 import { assertNoForbiddenValues, loadWorkbook } from '../excel/excel-utils';
 import type {
@@ -46,6 +47,23 @@ export class ImportsService {
       );
     }
     return registration;
+  }
+
+  /**
+   * Một lượt import thuộc về người đã upload nó — ImportBatch không có
+   * departmentId nên `deptFilter` không áp được lên nó (RULE 2). Từ Task 9
+   * payload các dòng chứa dữ liệu sinh viên (studentCode/fullName/điểm), nên
+   * một HEAD_OF_DEPT xem được batchId của bộ môn khác sẽ đọc được sinh viên
+   * bộ môn đó. Ném NotFoundException (KHÔNG ForbiddenException) để không xác
+   * nhận sự tồn tại của batch người khác.
+   */
+  private requireOwnBatch(
+    user: AuthUser,
+    batch: { uploadedById: string },
+  ): void {
+    if (isDeptScoped(user) && batch.uploadedById !== user.id) {
+      throw new NotFoundException('Không tìm thấy lượt import.');
+    }
   }
 
   async upload(
@@ -139,6 +157,7 @@ export class ImportsService {
     if (!batch) {
       throw new NotFoundException('Không tìm thấy lượt import.');
     }
+    this.requireOwnBatch(user, batch);
     return {
       id: batch.id,
       kind: batch.kind,
@@ -165,6 +184,7 @@ export class ImportsService {
     if (!batch) {
       throw new NotFoundException('Không tìm thấy lượt import.');
     }
+    this.requireOwnBatch(user, batch);
     if (batch.status !== ImportStatus.PENDING) {
       throw new BadRequestException(
         'Lượt import này đã được xử lý, không thể commit lại.',
@@ -191,21 +211,29 @@ export class ImportsService {
     // toàn bộ giao dịch rollback theo — tránh trường hợp dữ liệu đã ghi
     // nhưng batch vẫn PENDING (dẫn đến commit lại double-apply dữ liệu vì
     // ImportCommitter không đảm bảo idempotent).
-    const result = await this.prisma.$transaction(async (tx) => {
-      const commitResult = await committer.commit(validRows, tx, ctx);
-      await tx.importBatch.update({
-        where: { id: batch.id },
-        data: {
-          status: ImportStatus.COMMITTED,
-          committedAt: new Date(),
-          summary: {
-            ...(batch.summary as Prisma.JsonObject),
-            ...commitResult,
+    //
+    // maxWait/timeout tăng so với mặc định Prisma (2s/5s): import là thao
+    // tác dài (committer chạy ~2 round-trip DB mỗi dòng, file thật ~300+
+    // dòng), không phải request nóng — timeout 5s mặc định làm rollback
+    // toàn bộ transaction (P2028) trên DB chậm hơn máy dev hoặc file lớn.
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        const commitResult = await committer.commit(validRows, tx, ctx);
+        await tx.importBatch.update({
+          where: { id: batch.id },
+          data: {
+            status: ImportStatus.COMMITTED,
+            committedAt: new Date(),
+            summary: {
+              ...(batch.summary as Prisma.JsonObject),
+              ...commitResult,
+            },
           },
-        },
-      });
-      return commitResult;
-    });
+        });
+        return commitResult;
+      },
+      { maxWait: 15_000, timeout: 120_000 },
+    );
 
     await this.auditService.log({
       staffId: user.id,
@@ -218,11 +246,12 @@ export class ImportsService {
     return result;
   }
 
-  // Không cần dept scope: ImportBatch không có departmentId (thao tác ở tầng
-  // toàn trường, quyền đã chặn ở CASL — chỉ HEAD_OF_DEPT/TRAINING_OFFICER/
-  // SA_OFFICER/SA_HEAD/ADMIN mới truy cập được endpoint này).
-  async list() {
+  // ImportBatch không có departmentId nên deptFilter không áp được (RULE 2):
+  // lọc theo người đã upload thay vì bộ môn — người dùng bị scope chỉ thấy
+  // lượt import của chính mình, vai trò không bị scope thấy tất cả.
+  async list(user: AuthUser) {
     const batches = await this.prisma.importBatch.findMany({
+      where: isDeptScoped(user) ? { uploadedById: user.id } : undefined,
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
@@ -245,6 +274,7 @@ export class ImportsService {
     if (!batch) {
       throw new NotFoundException('Không tìm thấy lượt import.');
     }
+    this.requireOwnBatch(user, batch);
     if (batch.status === ImportStatus.COMMITTED) {
       throw new BadRequestException('Lượt import đã commit, không thể huỷ.');
     }

@@ -1,4 +1,5 @@
 import { BadRequestException, StreamableFile } from '@nestjs/common';
+import { EnrollmentResult } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 
 /**
@@ -119,6 +120,24 @@ export function assertNoForbiddenValues(workbook: ExcelJS.Workbook): void {
       );
     }
   }
+}
+
+/**
+ * Nguồn DUY NHẤT cho nhãn "Trạng thái"/"Kết quả" tiếng Việt trong Excel →
+ * EnrollmentResult. Trước đây bị nhân bản ở gradebook.parser.ts và
+ * grades-excel.service.ts với hai cách chuẩn hoá khác nhau (một bên gộp
+ * khoảng trắng, một bên chỉ lowercase) — "Không  đạt" (2 dấu cách, có trong
+ * file thật) nhận đúng ở bên này nhưng không nhận ở bên kia. Gộp về một chỗ.
+ */
+const RESULT_BY_LABEL: Record<string, EnrollmentResult> = {
+  đạt: EnrollmentResult.PASS,
+  trượt: EnrollmentResult.FAIL,
+  'không đạt': EnrollmentResult.FAIL,
+  'đang học': EnrollmentResult.IN_PROGRESS,
+};
+
+export function resultFromLabel(text: string): EnrollmentResult | undefined {
+  return RESULT_BY_LABEL[text.replace(/\s+/g, ' ').trim().toLowerCase()];
 }
 
 export function cellText(row: ExcelJS.Row, column: number): string {

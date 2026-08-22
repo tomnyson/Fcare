@@ -17,6 +17,26 @@ interface GradebookPayload {
   resultLabel: string;
 }
 
+interface CachedStudent {
+  id: string;
+  studentCode: string;
+  fullName: string;
+  majorId: string | null;
+  cohort: string | null;
+  classCode: string;
+}
+
+interface CachedSection {
+  id: string;
+  subjectId: string;
+}
+
+/** "20" → "K20" — cả hệ thống dùng định dạng K + hai chữ số khoá (seed,
+ * schema.prisma), không phải hai chữ số thô mà `parseClassCode` trả ra. */
+function cohortLabel(digits: string): string {
+  return `K${digits}`;
+}
+
 export class GradebookCommitter implements ImportCommitter {
   async commit(
     rows: ParsedRow[],
@@ -42,25 +62,54 @@ export class GradebookCommitter implements ImportCommitter {
 
     const students = await tx.student.findMany({
       where: { studentCode: { in: payloads.map((p) => p.studentCode) } },
-      select: { id: true, studentCode: true, majorId: true, cohort: true },
+      select: {
+        id: true,
+        studentCode: true,
+        fullName: true,
+        majorId: true,
+        cohort: true,
+        classCode: true,
+      },
     });
-    const studentByCode = new Map(students.map((s) => [s.studentCode, s]));
+    const studentByCode = new Map<string, CachedStudent>(
+      students.map((s) => [s.studentCode, s]),
+    );
 
+    // subjectId đi kèm để phát hiện tái dùng lớp học phần sai môn: với lớp
+    // hành chính buildSectionCode nhúng subjectCode vào mã, nhưng với lớp
+    // học phần (SECTION) thì không — hai môn khác nhau có thể đụng cùng
+    // sectionCode nếu tái dùng mã lớp thô.
     const sections = await tx.classSection.findMany({
       where: { term: ctx.term },
-      select: { id: true, code: true },
+      select: { id: true, code: true, subjectId: true },
     });
-    const sectionIdByCode = new Map(sections.map((s) => [s.code, s.id]));
+    const sectionByCode = new Map<string, CachedSection>(
+      sections.map((s) => [s.code, { id: s.id, subjectId: s.subjectId }]),
+    );
 
     let created = 0;
-    let updated = 0;
     let skipped = 0;
+    const updatedStudentIds = new Set<string>();
 
     for (const payload of payloads) {
       const subject = subjectByCode.get(payload.subjectCode);
       const parsed = parseClassCode(payload.rawClass);
       // Môn chưa có trong danh mục → bỏ qua; chạy importer danh mục trước.
       if (!subject || !parsed) {
+        skipped += 1;
+        continue;
+      }
+
+      const sectionCode = buildSectionCode(
+        payload.subjectCode,
+        parsed,
+        ctx.term,
+      );
+      const existingSection = sectionByCode.get(sectionCode);
+      // Lớp đã tồn tại nhưng thuộc môn khác → KHÔNG ghi enrollment, tính vào
+      // skipped. Mất dữ liệu nhìn thấy được tốt hơn gán nhầm môn âm thầm
+      // (nguyên tắc đã chốt ở Task 8).
+      if (existingSection && existingSection.subjectId !== subject.id) {
         skipped += 1;
         continue;
       }
@@ -72,29 +121,62 @@ export class GradebookCommitter implements ImportCommitter {
         parsed.majorPrefix !== null
           ? (majorIdByPrefix.get(parsed.majorPrefix) ?? null)
           : null;
+      const cohort = parsed.cohort !== null ? cohortLabel(parsed.cohort) : null;
 
       const existing = studentByCode.get(payload.studentCode);
       let studentId: string;
 
       if (existing) {
+        // Chỉ ghi trường thực sự đổi — tránh UPDATE vô ích ghi lại đúng giá
+        // trị cũ mỗi dòng lặp lại của cùng sinh viên.
+        const data: Record<string, unknown> = {};
+        if (existing.fullName !== payload.fullName) {
+          data.fullName = payload.fullName;
+        }
         // Chỉ lấp chỗ trống — KHÔNG ghi đè ngành/khoá admin đã gán tay.
-        const data: Record<string, unknown> = { fullName: payload.fullName };
         if (existing.majorId === null && majorId !== null) {
           data.majorId = majorId;
         }
-        if (existing.cohort === null && parsed.cohort !== null) {
-          data.cohort = parsed.cohort;
+        if (existing.cohort === null && cohort !== null) {
+          data.cohort = cohort;
         }
-        await tx.student.update({ where: { id: existing.id }, data });
+        // Ưu tiên: lớp hành chính (ADMIN) thắng lớp học phần (SECTION) —
+        // không bao giờ ghi đè một classCode hành chính đã có bằng mã lớp
+        // học phần. Chỉ lấp khi dòng hiện tại là ADMIN mà classCode hiện
+        // tại KHÔNG phải lớp hành chính.
+        const currentKind = existing.classCode
+          ? parseClassCode(existing.classCode)?.kind
+          : undefined;
+        if (parsed.kind === 'ADMIN' && currentKind !== 'ADMIN') {
+          data.classCode = parsed.raw;
+        }
+
+        if (Object.keys(data).length > 0) {
+          await tx.student.update({ where: { id: existing.id }, data });
+          updatedStudentIds.add(existing.id);
+          // Đồng bộ cache: dòng tiếp theo của CÙNG sinh viên trong batch này
+          // phải thấy giá trị mới, không thì sẽ tính lại "thay đổi" và ghi
+          // UPDATE thừa lần nữa.
+          studentByCode.set(payload.studentCode, {
+            ...existing,
+            fullName:
+              (data.fullName as string | undefined) ?? existing.fullName,
+            majorId:
+              (data.majorId as string | null | undefined) ?? existing.majorId,
+            cohort:
+              (data.cohort as string | null | undefined) ?? existing.cohort,
+            classCode:
+              (data.classCode as string | undefined) ?? existing.classCode,
+          });
+        }
         studentId = existing.id;
-        updated += 1;
       } else {
         const student = await tx.student.create({
           data: {
             studentCode: payload.studentCode,
             fullName: payload.fullName,
             classCode: parsed.raw,
-            cohort: parsed.cohort,
+            cohort,
             majorId,
             departmentId,
           },
@@ -103,19 +185,16 @@ export class GradebookCommitter implements ImportCommitter {
         studentByCode.set(payload.studentCode, {
           id: student.id,
           studentCode: payload.studentCode,
+          fullName: payload.fullName,
           majorId,
-          cohort: parsed.cohort,
+          cohort,
+          classCode: parsed.raw,
         });
         studentId = student.id;
         created += 1;
       }
 
-      const sectionCode = buildSectionCode(
-        payload.subjectCode,
-        parsed,
-        ctx.term,
-      );
-      let classSectionId = sectionIdByCode.get(sectionCode);
+      let classSectionId = existingSection?.id;
       if (!classSectionId) {
         const section = await tx.classSection.create({
           data: {
@@ -127,7 +206,10 @@ export class GradebookCommitter implements ImportCommitter {
           select: { id: true },
         });
         classSectionId = section.id;
-        sectionIdByCode.set(sectionCode, section.id);
+        sectionByCode.set(sectionCode, {
+          id: section.id,
+          subjectId: subject.id,
+        });
       }
 
       // Chỉ ghi điểm tổng kết + kết quả (quyết định §3). Không đụng
@@ -143,6 +225,6 @@ export class GradebookCommitter implements ImportCommitter {
       });
     }
 
-    return { created, updated, skipped };
+    return { created, updated: updatedStudentIds.size, skipped };
   }
 }

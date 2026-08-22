@@ -109,7 +109,7 @@ describe('GradebookCommitter', () => {
     expect(createArgs.data).toMatchObject({
       studentCode: 'PK1',
       classCode: 'SD20301',
-      cohort: '20',
+      cohort: 'K20',
       majorId: 'major-ptpm',
       departmentId: 'dept-cntt',
     });
@@ -175,7 +175,7 @@ describe('GradebookCommitter', () => {
     const [updateArgs] = tx.student.update.mock.calls[0] as [UpdateStudentArgs];
     expect(updateArgs.data).toMatchObject({
       majorId: 'major-ptpm',
-      cohort: '20',
+      cohort: 'K20',
     });
   });
 
@@ -275,5 +275,154 @@ describe('GradebookCommitter', () => {
     );
     expect(tx.student.create).toHaveBeenCalledTimes(1);
     expect(tx.enrollment.upsert).toHaveBeenCalledTimes(2);
+  });
+
+  it('item 2: lớp học phần đã tồn tại nhưng thuộc môn khác → bỏ qua, không ghi enrollment', async () => {
+    const tx = makeTx();
+    // sectionCode cho SECTION 'WEB2064.02' + môn 'PMA1011' = 'WEB2064.02-SU26'
+    // (buildSectionCode không nhúng subjectCode với kind SECTION). Lớp này đã
+    // tồn tại sẵn nhưng thuộc môn khác ('sub-khac-mon').
+    tx.subject.findMany.mockResolvedValue([
+      { id: 'sub-1', code: 'PMA1011', departmentId: 'dept-cntt' },
+    ]);
+    tx.classSection.findMany.mockResolvedValue([
+      { id: 'cs-1', code: 'WEB2064.02-SU26', subjectId: 'sub-khac-mon' },
+    ]);
+    const result = await committer.commit(
+      [
+        row({
+          ...BASE,
+          subjectCode: 'PMA1011',
+          studentCode: 'PK1',
+          rawClass: 'WEB2064.02',
+        }),
+      ],
+      tx,
+      ctx,
+    );
+    expect(tx.enrollment.upsert).not.toHaveBeenCalled();
+    expect(result).toEqual({ created: 0, updated: 0, skipped: 1 });
+  });
+
+  it('item 3: classCode="WEB2064.02" gặp dòng hành chính SD20301 → cập nhật classCode', async () => {
+    const tx = makeTx();
+    tx.student.findMany.mockResolvedValue([
+      {
+        id: 'stu-1',
+        studentCode: 'PK1',
+        fullName: 'Nguyễn Văn A',
+        majorId: 'major-ptpm',
+        cohort: 'K19',
+        classCode: 'WEB2064.02',
+      },
+    ]);
+    await committer.commit(
+      [row({ ...BASE, studentCode: 'PK1', rawClass: 'SD20301' })],
+      tx,
+      ctx,
+    );
+    const [updateArgs] = tx.student.update.mock.calls[0] as [
+      { data: { classCode?: string } },
+    ];
+    expect(updateArgs.data.classCode).toBe('SD20301');
+  });
+
+  it('item 3: classCode="SD20301" (đã hành chính) gặp dòng lớp học phần WEB2064.02 → giữ nguyên, không ghi đè', async () => {
+    const tx = makeTx();
+    tx.student.findMany.mockResolvedValue([
+      {
+        id: 'stu-1',
+        studentCode: 'PK1',
+        fullName: 'Nguyễn Văn A',
+        majorId: 'major-ptpm',
+        cohort: 'K20',
+        classCode: 'SD20301',
+      },
+    ]);
+    await committer.commit(
+      [row({ ...BASE, studentCode: 'PK1', rawClass: 'WEB2064.02' })],
+      tx,
+      ctx,
+    );
+    // Không có trường nào thay đổi (fullName/majorId/cohort trùng, classCode
+    // không bị ghi đè) → student.update không được gọi (item 4).
+    expect(tx.student.update).not.toHaveBeenCalled();
+  });
+
+  it('item 4 + 9: dòng thứ hai của cùng sinh viên với dữ liệu giống hệt không gọi lại update, updated đếm theo sinh viên', async () => {
+    const tx = makeTx();
+    tx.subject.findMany.mockResolvedValue([
+      { id: 'sub-1', code: 'SOF1021', departmentId: 'dept-cntt' },
+      { id: 'sub-2', code: 'WEB2064', departmentId: 'dept-cntt' },
+    ]);
+    tx.student.findMany.mockResolvedValue([
+      {
+        id: 'stu-1',
+        studentCode: 'PK1',
+        fullName: 'Nguyễn Văn A',
+        majorId: 'major-ptpm',
+        cohort: 'K20',
+        classCode: 'SD20301',
+      },
+    ]);
+    const result = await committer.commit(
+      [
+        row({ ...BASE, studentCode: 'PK1', rawClass: 'SD20301' }),
+        row(
+          {
+            ...BASE,
+            subjectCode: 'WEB2064',
+            studentCode: 'PK1',
+            rawClass: 'SD20301',
+          },
+          3,
+        ),
+      ],
+      tx,
+      ctx,
+    );
+    // Cả hai dòng đều không đổi field nào so với dữ liệu đã có → update
+    // không bị gọi lần nào, và updated = 0 (không phải 2).
+    expect(tx.student.update).not.toHaveBeenCalled();
+    expect(result.updated).toBe(0);
+  });
+
+  it('item 9: hai dòng cùng đổi cùng một sinh viên chỉ đếm 1 updated dù update được gọi 2 lần', async () => {
+    const tx = makeTx();
+    tx.subject.findMany.mockResolvedValue([
+      { id: 'sub-1', code: 'SOF1021', departmentId: 'dept-cntt' },
+      { id: 'sub-2', code: 'WEB2064', departmentId: 'dept-cntt' },
+    ]);
+    tx.student.findMany.mockResolvedValue([
+      {
+        id: 'stu-1',
+        studentCode: 'PK1',
+        fullName: 'Tên Cũ',
+        majorId: 'major-ptpm',
+        cohort: 'K20',
+        classCode: 'SD20301',
+      },
+    ]);
+    const result = await committer.commit(
+      [
+        row({ ...BASE, studentCode: 'PK1', rawClass: 'SD20301' }),
+        row(
+          {
+            ...BASE,
+            subjectCode: 'WEB2064',
+            studentCode: 'PK1',
+            rawClass: 'SD20301',
+          },
+          3,
+        ),
+      ],
+      tx,
+      ctx,
+    );
+    // fullName trong BASE ('Nguyễn Văn A') khác 'Tên Cũ' → dòng đầu ghi
+    // update thật; cache được đồng bộ nên dòng hai (cùng payload) không phát
+    // hiện thay đổi nữa → update chỉ gọi 1 lần, updated = 1 sinh viên.
+    expect(tx.student.update).toHaveBeenCalledTimes(1);
+    expect(result.updated).toBe(1);
   });
 });

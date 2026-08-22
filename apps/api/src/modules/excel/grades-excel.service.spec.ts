@@ -17,4 +17,8 @@ describe('parseResult', () => {
   it('rỗng → undefined', () => {
     expect(parseResult('')).toBeUndefined();
   });
+
+  it('item 6: "Không  đạt" (hai dấu cách) → FAIL — nguồn chuẩn hoá dùng chung với gradebook.parser', () => {
+    expect(parseResult('Không  đạt')).toBe(EnrollmentResult.FAIL);
+  });
 });

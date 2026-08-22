@@ -17,16 +17,10 @@ import {
   cellText,
   loadWorkbook,
   readHeaderRow,
+  resultFromLabel,
   workbookToFile,
   type RowError,
 } from './excel-utils';
-
-const RESULT_BY_LABEL: Record<string, EnrollmentResult> = {
-  đạt: EnrollmentResult.PASS,
-  trượt: EnrollmentResult.FAIL,
-  'không đạt': EnrollmentResult.FAIL,
-  'đang học': EnrollmentResult.IN_PROGRESS,
-};
 
 const RESULT_LABELS: Record<EnrollmentResult, string> = {
   PASS: 'Đạt',
@@ -34,12 +28,17 @@ const RESULT_LABELS: Record<EnrollmentResult, string> = {
   IN_PROGRESS: 'Đang học',
 };
 
+/** Wrapper mỏng quanh nguồn chuẩn hoá duy nhất `resultFromLabel`
+ * (excel-utils.ts) — ở đây vẫn trả undefined khi rỗng hoặc không nhận ra
+ * (khác với gradebook.parser.parseEnrollmentResult mặc định IN_PROGRESS).
+ * Chủ ý, không phải lỗi: hai chỗ gọi có ngữ nghĩa khác nhau. Fallback theo
+ * tên enum (vd: "PASS") vẫn giữ nguyên cho tương thích ngược. */
 export function parseResult(text: string): EnrollmentResult | undefined {
   if (text === '') {
     return undefined;
   }
   return (
-    RESULT_BY_LABEL[text.toLowerCase()] ??
+    resultFromLabel(text) ??
     Object.values(EnrollmentResult).find(
       (result) => result === text.toUpperCase(),
     )

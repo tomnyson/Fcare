@@ -187,6 +187,45 @@ describe('GradebookParser', () => {
     ]);
   });
 
+  it('item 8: ô "Điểm tổng kết" chứa chữ không phải số → warning nêu số lượng, không đánh error', async () => {
+    const workbook = new ExcelJS.Workbook();
+    addSheet(
+      workbook,
+      'A',
+      ['Mã sinh viên', 'Họ và tên', 'Lớp', 'Điểm tổng kết'],
+      [
+        ['PK1', 'A', 'SD20301', 'MI'],
+        ['PK2', 'B', 'SD20301', '-'],
+        ['PK3', 'C', 'SD20301', 7],
+      ],
+    );
+    const result = await parser.parse(workbook, ctx);
+    expect(result.rows[0].payload.totalScore).toBeNull();
+    expect(result.rows[0].error).toBeUndefined();
+    expect(result.rows[1].payload.totalScore).toBeNull();
+    expect(result.rows[1].error).toBeUndefined();
+    expect(result.warnings.join(' ')).toContain('2 ô "Điểm tổng kết"');
+  });
+
+  it('item 8: nhãn "Trạng thái" lạ → warning liệt kê tối đa 5 nhãn kèm số lượng', async () => {
+    const workbook = new ExcelJS.Workbook();
+    addSheet(
+      workbook,
+      'A',
+      ['Mã sinh viên', 'Họ và tên', 'Lớp', 'Điểm tổng kết', 'Trạng thái'],
+      [
+        ['PK1', 'A', 'SD20301', 7, 'Chưa rõ'],
+        ['PK2', 'B', 'SD20301', 7, 'Chưa rõ'],
+        ['PK3', 'C', 'SD20301', 7, 'Bảo lưu'],
+      ],
+    );
+    const result = await parser.parse(workbook, ctx);
+    const warning = result.warnings.join(' ');
+    expect(warning).toContain('3 dòng');
+    expect(warning).toContain('"Chưa rõ" (2)');
+    expect(warning).toContain('"Bảo lưu" (1)');
+  });
+
   it('xử lý nhiều sheet trong một lượt, ghi đúng tên sheet vào từng dòng', async () => {
     const workbook = new ExcelJS.Workbook();
     for (const name of ['WEB2064', 'SOF1021']) {
