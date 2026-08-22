@@ -209,3 +209,51 @@ export interface ImportResult {
   upserted?: number;
   errors: Array<{ row: number; message: string }>;
 }
+
+// --- Import wizard (staging import: upload → preview → commit) ---
+// Khớp NGUYÊN VĂN payload thật của ImportsController/ImportsService
+// (apps/api/src/modules/imports) tại thời điểm viết — không phải bản mô tả
+// trong brief: summary là object JSON lồng trong batch (không phải field
+// rời), preview row không có `id`, và list()/preview() không trả `createdBy`.
+export type ImportKind = 'CATALOG' | 'LECTURER' | 'SCHEDULE' | 'GRADEBOOK';
+export type ImportStatus = 'PENDING' | 'COMMITTED' | 'FAILED' | 'CANCELLED';
+
+export interface ImportSummary {
+  totalRows: number;
+  validRows: number;
+  errorCount: number;
+  warnings: string[];
+  unmappedAliases: string[];
+}
+
+export interface ImportRowView {
+  sheet: string;
+  rowIndex: number;
+  payload: Record<string, unknown>;
+  error: string | null;
+}
+
+export interface ImportBatchSummary {
+  id: string;
+  kind: ImportKind;
+  status: ImportStatus;
+  term: string;
+  fileName: string;
+  summary: ImportSummary;
+  createdAt: string;
+  committedAt: string | null;
+}
+
+export interface ImportBatchDetail extends ImportBatchSummary {
+  rows: ImportRowView[];
+}
+
+export interface ImportCommitResult {
+  created: number;
+  updated: number;
+  skipped: number;
+}
+
+export interface ImportDiscardResult {
+  id: string;
+}

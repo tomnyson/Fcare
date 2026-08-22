@@ -5,6 +5,8 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { FormError, Label, Select } from '../../../components/ui/form';
 import { PageHeader } from '../../../components/ui/page-header';
+import { ImportHistory } from '../../../components/imports/import-history';
+import { ImportWizard } from '../../../components/imports/import-wizard';
 import { apiDownload, apiUpload, ApiError, apiFetch } from '../../../lib/api';
 import type { ClassSection, ImportResult } from '../../../lib/types';
 
@@ -81,128 +83,141 @@ export default function ImportExportPage() {
   return (
     <>
       <PageHeader
-        title="Import / Export Excel"
-        description="Chỉ Trưởng bộ môn, Cán bộ Đào tạo và CTSV được sử dụng. Mọi thao tác đều được ghi audit log."
+        title="Import / Export dữ liệu"
+        description="Nhập dữ liệu từ file Excel của trường theo 4 bước có xem trước. Chỉ Trưởng bộ môn, Cán bộ Đào tạo và CTSV được sử dụng. Mọi thao tác đều ghi audit log."
       />
 
-      <div className="mb-4">
-        <FormError>{error}</FormError>
-      </div>
+      <ImportWizard />
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <SurfaceCard className="border-t-4 border-t-fpt-blue">
-          <h2 className="font-[family-name:var(--font-display)] text-lg font-bold text-fpt-blue-900">
-            Danh sách sinh viên
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            Cột hợp lệ: MSSV · Họ tên · Ngày sinh · Giới tính · Mã ngành · Khóa · Lớp · Trạng
-            thái. File chứa cột CCCD/SĐT/email/địa chỉ sẽ bị <strong>từ chối toàn bộ</strong>.
-          </p>
+      <section aria-labelledby="legacy-heading" className="mt-10">
+        <h2
+          id="legacy-heading"
+          className="mb-3 font-[family-name:var(--font-display)] text-lg font-bold text-fpt-blue-900"
+        >
+          Import/Export mẫu chuẩn FCare
+        </h2>
 
-          <div className="mt-5 space-y-3">
-            <div>
-              <Label htmlFor="students-file">Chọn file .xlsx</Label>
-              <input
-                ref={studentsFileRef}
-                id="students-file"
-                type="file"
-                accept=".xlsx"
-                className="block w-full text-sm text-muted file:mr-3 file:rounded-md file:border-0 file:bg-fpt-orange-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-fpt-orange"
-              />
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Button
-                type="button"
-                disabled={importStudents.isPending}
-                onClick={() => {
-                  const file = studentsFileRef.current?.files?.[0];
-                  if (file) {
-                    importStudents.mutate(file);
-                  }
-                }}
-              >
-                {importStudents.isPending ? 'Đang import…' : '⇧ Import sinh viên'}
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => onExport('/excel/students/export', 'fcare-sinh-vien.xlsx')}
-              >
-                ⇩ Export sinh viên
-              </Button>
-            </div>
-            <ImportResultView result={studentsResult} />
-          </div>
-        </SurfaceCard>
+        <div className="mb-4">
+          <FormError>{error}</FormError>
+        </div>
 
-        <SurfaceCard className="border-t-4 border-t-fpt-orange">
-          <h2 className="font-[family-name:var(--font-display)] text-lg font-bold text-fpt-blue-900">
-            Bảng điểm lớp học phần
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            Cột hợp lệ: Mã lớp học phần · MSSV · Chuyên cần (%) · Điểm giữa kỳ · Điểm cuối kỳ ·
-            Điểm tổng kết · Cấm thi · Kết quả.
-          </p>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <SurfaceCard className="border-t-4 border-t-fpt-blue">
+            <h2 className="font-[family-name:var(--font-display)] text-lg font-bold text-fpt-blue-900">
+              Danh sách sinh viên
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              Cột hợp lệ: MSSV · Họ tên · Ngày sinh · Giới tính · Mã ngành · Khóa · Lớp · Trạng
+              thái. File chứa cột CCCD/SĐT/email/địa chỉ sẽ bị <strong>từ chối toàn bộ</strong>.
+            </p>
 
-          <div className="mt-5 space-y-3">
-            <div>
-              <Label htmlFor="grades-file">Chọn file .xlsx</Label>
-              <input
-                ref={gradesFileRef}
-                id="grades-file"
-                type="file"
-                accept=".xlsx"
-                className="block w-full text-sm text-muted file:mr-3 file:rounded-md file:border-0 file:bg-fpt-orange-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-fpt-orange"
-              />
-            </div>
-            <Button
-              type="button"
-              disabled={importGrades.isPending}
-              onClick={() => {
-                const file = gradesFileRef.current?.files?.[0];
-                if (file) {
-                  importGrades.mutate(file);
-                }
-              }}
-            >
-              {importGrades.isPending ? 'Đang import…' : '⇧ Import bảng điểm'}
-            </Button>
-
-            <div className="border-t border-border pt-3">
-              <Label htmlFor="export-section">Export điểm theo lớp học phần</Label>
+            <div className="mt-5 space-y-3">
+              <div>
+                <Label htmlFor="students-file">Chọn file .xlsx</Label>
+                <input
+                  ref={studentsFileRef}
+                  id="students-file"
+                  type="file"
+                  accept=".xlsx"
+                  className="block w-full text-sm text-muted file:mr-3 file:rounded-md file:border-0 file:bg-fpt-orange-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-fpt-orange"
+                />
+              </div>
               <div className="flex flex-wrap gap-3">
-                <Select
-                  id="export-section"
-                  value={exportSectionId}
-                  onChange={(event) => setExportSectionId(event.target.value)}
-                  className="max-w-64"
+                <Button
+                  type="button"
+                  disabled={importStudents.isPending}
+                  onClick={() => {
+                    const file = studentsFileRef.current?.files?.[0];
+                    if (file) {
+                      importStudents.mutate(file);
+                    }
+                  }}
                 >
-                  <option value="">Chọn lớp học phần…</option>
-                  {(classSections ?? []).map((section) => (
-                    <option key={section.id} value={section.id}>
-                      {section.code}
-                    </option>
-                  ))}
-                </Select>
+                  {importStudents.isPending ? 'Đang import…' : '⇧ Import sinh viên'}
+                </Button>
                 <Button
                   type="button"
                   variant="secondary"
-                  disabled={!exportSectionId}
-                  onClick={() =>
-                    onExport(
-                      `/excel/grades/export?classSectionId=${exportSectionId}`,
-                      'fcare-diem.xlsx',
-                    )
-                  }
+                  onClick={() => onExport('/excel/students/export', 'fcare-sinh-vien.xlsx')}
                 >
-                  ⇩ Export điểm
+                  ⇩ Export sinh viên
                 </Button>
               </div>
+              <ImportResultView result={studentsResult} />
             </div>
-            <ImportResultView result={gradesResult} />
-          </div>
-        </SurfaceCard>
-      </div>
+          </SurfaceCard>
+
+          <SurfaceCard className="border-t-4 border-t-fpt-orange">
+            <h2 className="font-[family-name:var(--font-display)] text-lg font-bold text-fpt-blue-900">
+              Bảng điểm lớp học phần
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              Cột hợp lệ: Mã lớp học phần · MSSV · Chuyên cần (%) · Điểm giữa kỳ · Điểm cuối kỳ ·
+              Điểm tổng kết · Cấm thi · Kết quả.
+            </p>
+
+            <div className="mt-5 space-y-3">
+              <div>
+                <Label htmlFor="grades-file">Chọn file .xlsx</Label>
+                <input
+                  ref={gradesFileRef}
+                  id="grades-file"
+                  type="file"
+                  accept=".xlsx"
+                  className="block w-full text-sm text-muted file:mr-3 file:rounded-md file:border-0 file:bg-fpt-orange-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-fpt-orange"
+                />
+              </div>
+              <Button
+                type="button"
+                disabled={importGrades.isPending}
+                onClick={() => {
+                  const file = gradesFileRef.current?.files?.[0];
+                  if (file) {
+                    importGrades.mutate(file);
+                  }
+                }}
+              >
+                {importGrades.isPending ? 'Đang import…' : '⇧ Import bảng điểm'}
+              </Button>
+
+              <div className="border-t border-border pt-3">
+                <Label htmlFor="export-section">Export điểm theo lớp học phần</Label>
+                <div className="flex flex-wrap gap-3">
+                  <Select
+                    id="export-section"
+                    value={exportSectionId}
+                    onChange={(event) => setExportSectionId(event.target.value)}
+                    className="max-w-64"
+                  >
+                    <option value="">Chọn lớp học phần…</option>
+                    {(classSections ?? []).map((section) => (
+                      <option key={section.id} value={section.id}>
+                        {section.code}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={!exportSectionId}
+                    onClick={() =>
+                      onExport(
+                        `/excel/grades/export?classSectionId=${exportSectionId}`,
+                        'fcare-diem.xlsx',
+                      )
+                    }
+                  >
+                    ⇩ Export điểm
+                  </Button>
+                </div>
+              </div>
+              <ImportResultView result={gradesResult} />
+            </div>
+          </SurfaceCard>
+        </div>
+      </section>
+
+      <ImportHistory />
     </>
   );
 }

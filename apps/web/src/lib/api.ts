@@ -102,8 +102,15 @@ export async function apiDownload(path: string, fallbackName: string): Promise<v
   URL.revokeObjectURL(url);
 }
 
-export async function apiUpload<T>(path: string, file: File): Promise<T> {
+export async function apiUpload<T>(
+  path: string,
+  file: File,
+  fields?: Record<string, string>,
+): Promise<T> {
   const formData = new FormData();
   formData.append('file', file);
+  for (const [key, value] of Object.entries(fields ?? {})) {
+    formData.append(key, value);
+  }
   return apiFetch<T>(path, { method: 'POST', body: formData });
 }
