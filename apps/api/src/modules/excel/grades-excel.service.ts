@@ -24,6 +24,7 @@ import {
 const RESULT_BY_LABEL: Record<string, EnrollmentResult> = {
   đạt: EnrollmentResult.PASS,
   trượt: EnrollmentResult.FAIL,
+  'không đạt': EnrollmentResult.FAIL,
   'đang học': EnrollmentResult.IN_PROGRESS,
 };
 
@@ -33,7 +34,7 @@ const RESULT_LABELS: Record<EnrollmentResult, string> = {
   IN_PROGRESS: 'Đang học',
 };
 
-function parseResult(text: string): EnrollmentResult | undefined {
+export function parseResult(text: string): EnrollmentResult | undefined {
   if (text === '') {
     return undefined;
   }
