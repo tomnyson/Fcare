@@ -232,7 +232,6 @@ export interface StaffMember {
   isActive: boolean;
   createdAt: string;
   lecturerType: string | null;
-  username: string | null;
   department: { id: string; code: string; name: string } | null;
   roles: Array<{ role: { key: RoleKey; name: string } }>;
 }

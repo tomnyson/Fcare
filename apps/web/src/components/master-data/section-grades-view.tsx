@@ -2,7 +2,7 @@
 
 import { Button } from '@fcare/ui-kit';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DataTable, Td } from '../ui/data-table';
 import { FormError, FormSuccess, Input, Select } from '../ui/form';
 import { PageHeader } from '../ui/page-header';
@@ -24,6 +24,51 @@ const RESULT_LABELS: Record<EnrollmentResult, string> = {
 // apps/api/src/casl/ability.factory.ts). Vai trò khác chỉ xem được.
 const MANAGER_ROLES = ['ADMIN', 'TRAINING_OFFICER'];
 
+// Phải khớp @ArrayMaxSize(200) ở apps/api/src/modules/master-data/dto/section-grades.dto.ts —
+// đổi một bên thì đổi cả hai.
+const GRADE_BATCH_SIZE = 200;
+
+interface GradeRowPayload {
+  enrollmentId: string;
+  totalScore: number | null;
+  result: EnrollmentResult;
+}
+
+/** Làm tròn 2 chữ số — khớp @IsNumber({ maxDecimalPlaces: 2 }) ở DTO. Parser
+ * gradebook ghi float thô (vd 8.116666666666667) nên phải làm tròn trước khi
+ * gửi lại, kể cả khi người dùng không đụng vào ô điểm đó. */
+function roundScore(value: number | null): number | null {
+  return value === null ? null : Math.round(value * 100) / 100;
+}
+
+function toGradePayload(row: SectionGradeRow): GradeRowPayload {
+  return {
+    enrollmentId: row.enrollmentId,
+    totalScore: roundScore(row.totalScore),
+    result: row.result,
+  };
+}
+
+function hasRowChanged(draftRow: SectionGradeRow, original: SectionGradeRow | undefined): boolean {
+  if (!original) return false;
+  return (
+    roundScore(draftRow.totalScore) !== roundScore(original.totalScore) ||
+    draftRow.result !== original.result
+  );
+}
+
+/** Một lô lỗi giữa chừng: dừng lại, giữ số dòng đã lưu được trước đó để báo
+ * cho người dùng — không âm thầm mất phần còn lại. */
+class GradeBatchSaveError extends Error {
+  constructor(
+    public readonly savedSoFar: number,
+    public readonly totalRows: number,
+    public readonly sourceError: unknown,
+  ) {
+    super('grade-batch-save-failed');
+  }
+}
+
 export function SectionGradesView({ sectionId }: { sectionId: string }) {
   const queryClient = useQueryClient();
   const { data: me } = useMe();
@@ -43,26 +88,68 @@ export function SectionGradesView({ sectionId }: { sectionId: string }) {
     }
   }, [data]);
 
+  // Chỉ gửi dòng đã sửa so với dữ liệu gốc từ query — gửi nguyên cả lớp làm
+  // 400 toàn bộ khi lớp > 200 SV (F1) hoặc khi một dòng không đụng tới có
+  // điểm thô nhiều chữ số thập phân từ gradebook (F2).
+  const originalById = useMemo(() => {
+    const rows = data?.rows ?? [];
+    return new Map(rows.map((row) => [row.enrollmentId, row]));
+  }, [data]);
+
+  const changedRows = useMemo(
+    () => draft.filter((row) => hasRowChanged(row, originalById.get(row.enrollmentId))),
+    [draft, originalById],
+  );
+
   const save = useMutation({
-    mutationFn: () =>
-      apiFetch<{ updated: number }>(`/class-sections/${sectionId}/grades`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          rows: draft.map((row) => ({
-            enrollmentId: row.enrollmentId,
-            totalScore: row.totalScore,
-            result: row.result,
-          })),
-        }),
-      }),
-    onSuccess: (result) => {
-      setSaved(`Đã lưu ${result.updated} dòng điểm.`);
+    mutationFn: async () => {
+      const rows = changedRows.map(toGradePayload);
+      let updated = 0;
+      for (let start = 0; start < rows.length; start += GRADE_BATCH_SIZE) {
+        const batch = rows.slice(start, start + GRADE_BATCH_SIZE);
+        try {
+          const result = await apiFetch<{ updated: number }>(
+            `/class-sections/${sectionId}/grades`,
+            { method: 'PATCH', body: JSON.stringify({ rows: batch }) },
+          );
+          updated += result.updated;
+        } catch (sourceError) {
+          throw new GradeBatchSaveError(updated, rows.length, sourceError);
+        }
+      }
+      return updated;
+    },
+    onSuccess: (updated) => {
+      setSaved(`Đã lưu ${updated} dòng điểm.`);
       setError('');
       queryClient.invalidateQueries({ queryKey: ['section-grades', sectionId] });
     },
-    onError: (err) =>
-      setError(err instanceof ApiError ? err.message : 'Lưu thất bại.'),
+    onError: (err) => {
+      setSaved('');
+      if (err instanceof GradeBatchSaveError) {
+        const message =
+          err.sourceError instanceof ApiError ? err.sourceError.message : 'Lưu thất bại.';
+        setError(
+          `${message} Đã lưu được ${err.savedSoFar}/${err.totalRows} dòng trước khi lỗi.`,
+        );
+        if (err.savedSoFar > 0) {
+          queryClient.invalidateQueries({ queryKey: ['section-grades', sectionId] });
+        }
+        return;
+      }
+      setError(err instanceof ApiError ? err.message : 'Lưu thất bại.');
+    },
   });
+
+  function handleSave() {
+    if (changedRows.length === 0) {
+      setError('');
+      setSaved('Chưa có thay đổi nào.');
+      return;
+    }
+    setSaved('');
+    save.mutate();
+  }
 
   function patchRow(enrollmentId: string, patch: Partial<SectionGradeRow>) {
     // Bất biến: tạo mảng và object mới, không sửa tại chỗ.
@@ -88,7 +175,7 @@ export function SectionGradesView({ sectionId }: { sectionId: string }) {
             <Button
               type="button"
               disabled={save.isPending || draft.length === 0}
-              onClick={() => save.mutate()}
+              onClick={handleSave}
             >
               {save.isPending ? 'Đang lưu…' : 'Lưu bảng điểm'}
             </Button>

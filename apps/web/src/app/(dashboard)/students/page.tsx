@@ -4,7 +4,7 @@ import { Badge, Button } from '@fcare/ui-kit';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { DataTable, Td } from '../../../components/ui/data-table';
 import { FormError, FormSuccess, Input, Select } from '../../../components/ui/form';
 import { PageHeader } from '../../../components/ui/page-header';
@@ -41,6 +41,12 @@ function StudentsPageContent() {
   const [selected, setSelected] = useState<readonly string[]>([]);
   const [majorId, setMajorId] = useState('');
 
+  // Back/forward đổi query param `search` trên URL mà không đi qua ô input —
+  // đồng bộ lại state để ô tìm kiếm không giữ giá trị cũ.
+  useEffect(() => {
+    setSearch(submittedSearch);
+  }, [submittedSearch]);
+
   /** Ghi bộ lọc vào URL. Mọi thay đổi bộ lọc đều đưa về trang 1. */
   function setFilters(patch: Record<string, string | null>) {
     const next = new URLSearchParams(params.toString());
@@ -71,15 +77,21 @@ function StudentsPageContent() {
   });
 
   const assignMajor = useMutation({
-    mutationFn: () =>
-      apiFetch<{ updated: number }>('/students/bulk-assign-major', {
+    mutationFn: async () => {
+      const studentIds = [...selected];
+      const result = await apiFetch<{ updated: number }>('/students/bulk-assign-major', {
         method: 'PATCH',
-        body: JSON.stringify({ studentIds: [...selected], majorId }),
-      }),
-    onSuccess: () => {
+        body: JSON.stringify({ studentIds, majorId }),
+      });
+      return { updated: result.updated, requested: studentIds.length };
+    },
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['students'] });
+      // API không liệt kê id trượt — nếu thiếu, giữ nguyên `selected` để
+      // người dùng còn thấy mình vừa chọn ai (thường lệch bộ môn).
+      if (result.updated < result.requested) return;
       setSelected([]);
       setMajorId('');
-      void queryClient.invalidateQueries({ queryKey: ['students'] });
     },
   });
 
@@ -178,6 +190,13 @@ function StudentsPageContent() {
               </option>
             ))}
           </Select>
+          {majors.isError ? (
+            <FormError>
+              {majors.error instanceof ApiError
+                ? majors.error.message
+                : 'Không tải được danh sách ngành.'}
+            </FormError>
+          ) : null}
           <Button
             type="button"
             disabled={selected.length === 0 || !majorId || assignMajor.isPending}
@@ -192,7 +211,13 @@ function StudentsPageContent() {
                 : 'Gán ngành thất bại.'}
             </FormError>
           ) : null}
-          {assignMajor.isSuccess ? (
+          {assignMajor.isSuccess && assignMajor.data.updated < assignMajor.data.requested ? (
+            <FormError>
+              {`Đã gán ${assignMajor.data.updated}/${assignMajor.data.requested} sinh viên. ` +
+                `${assignMajor.data.requested - assignMajor.data.updated} sinh viên không đổi được ngành — thường do khác bộ môn.`}
+            </FormError>
+          ) : null}
+          {assignMajor.isSuccess && assignMajor.data.updated >= assignMajor.data.requested ? (
             <FormSuccess>
               Đã gán ngành cho {assignMajor.data.updated} sinh viên.
             </FormSuccess>
