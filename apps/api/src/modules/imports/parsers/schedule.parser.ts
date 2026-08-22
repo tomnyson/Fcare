@@ -49,17 +49,44 @@ function realLecturer(raw: string): string | null {
   return value === null || ANONYMIZED_LECTURER.test(value) ? null : value;
 }
 
+/** Làm tròn số thực về nguyên — `capacity`/`totalHours`/`block` là `Int?` ở Prisma. */
+function roundOrNull(value: number | undefined | null): number | null {
+  return value === undefined || value === null ? null : Math.round(value);
+}
+
+const DD_MM_YYYY = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/;
+
+/** Số ngày của `month` (1-based) trong `year`, ở UTC. */
+function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/**
+ * Ô ngày kiểu Text dùng định dạng Việt `dd/mm/yyyy` (chấp nhận `d/m/yyyy` và
+ * dấu `-`) — KHÔNG được rơi về `new Date(text)`: engine JS đọc chuỗi kiểu
+ * "11/05/2026" theo M/D/Y của Mỹ, biến ngày 11 tháng 5 thành 5 tháng 11.
+ */
+function parseTextDate(text: string): string | null {
+  const match = DD_MM_YYYY.exec(text);
+  if (!match) {
+    return null;
+  }
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) {
+    return null;
+  }
+  return new Date(Date.UTC(year, month - 1, day)).toISOString();
+}
+
 function isoDate(cell: ExcelJS.Cell): string | null {
   const value = cell.value;
   if (value instanceof Date) {
     return value.toISOString();
   }
   const text = String(cell.text ?? '').trim();
-  if (text === '') {
-    return null;
-  }
-  const parsed = new Date(text);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  return text === '' ? null : parseTextDate(text);
 }
 
 /**
@@ -127,6 +154,7 @@ export class ScheduleParser implements ImportParser {
       ]);
       requireHeaders(headers, ['Class', 'Subject'], TOOL_SHEET);
       const at = (name: string) => headers.get(name.toLowerCase());
+      let toolCollisions = 0;
 
       for (
         let rowIndex = TOOL_HEADER_ROW + 1;
@@ -140,8 +168,12 @@ export class ScheduleParser implements ImportParser {
         if (subjectCode === '' && classCode === '') {
           continue;
         }
-        const block = optionalNumber(row, at('block')) ?? null;
-        merged.set(mergeKey(subjectCode, classCode, block), {
+        const block = roundOrNull(optionalNumber(row, at('block')));
+        const key = mergeKey(subjectCode, classCode, block);
+        if (merged.has(key)) {
+          toolCollisions += 1;
+        }
+        merged.set(key, {
           sheet: TOOL_SHEET,
           rowIndex,
           payload: {
@@ -151,13 +183,18 @@ export class ScheduleParser implements ImportParser {
             slot: textOrNull(optionalText(row, at('slot'))),
             weekdays: textOrNull(optionalText(row, at('date'))),
             room: textOrNull(optionalText(row, at('room'))),
-            capacity: optionalNumber(row, at('numstudent')) ?? null,
+            capacity: roundOrNull(optionalNumber(row, at('numstudent'))),
             trainingTime: textOrNull(optionalText(row, at('trainingtime'))),
             startDate: null,
             totalHours: null,
             lecturerName: null, // cột Lecturer đã ẩn danh — cố ý bỏ
           },
         });
+      }
+      if (toolCollisions > 0) {
+        warnings.push(
+          `${toolCollisions} dòng trùng khoá (mã môn, lớp, block) trong "${TOOL_SHEET}" — dòng sau đã ghi đè dòng trước.`,
+        );
       }
     }
 
@@ -195,7 +232,7 @@ export class ScheduleParser implements ImportParser {
         if (subjectCode === '' && classCode === '') {
           continue;
         }
-        const block = optionalNumber(row, blockColumn) ?? null;
+        const block = roundOrNull(optionalNumber(row, blockColumn));
         const key = mergeKey(subjectCode, classCode, block);
         const lecturerName = realLecturer(
           optionalText(row, at('phân công giảng viên')),
@@ -204,16 +241,20 @@ export class ScheduleParser implements ImportParser {
 
         if (existing) {
           // Lịch tool thắng ở trường lịch; BL1+BL2 chỉ lấp chỗ trống + giảng viên.
-          existing.payload.lecturerName = lecturerName;
+          // Hợp nhất giống các trường khác: chỉ ghi khi đang trống, KHÔNG xoá
+          // tên thật đã có bằng một giá trị null tới sau.
+          existing.payload.lecturerName ??= lecturerName;
           existing.payload.slot ??= textOrNull(optionalText(row, at('ca')));
           existing.payload.weekdays ??= textOrNull(
             optionalText(row, at('thứ học thực tế')),
           );
           existing.payload.room ??= textOrNull(optionalText(row, at('phòng')));
-          existing.payload.capacity ??=
-            optionalNumber(row, at('số lượng sinh viên')) ?? null;
-          existing.payload.totalHours ??=
-            optionalNumber(row, at('số giờ')) ?? null;
+          existing.payload.capacity ??= roundOrNull(
+            optionalNumber(row, at('số lượng sinh viên')),
+          );
+          existing.payload.totalHours ??= roundOrNull(
+            optionalNumber(row, at('số giờ')),
+          );
           existing.payload.startDate ??= optionalDate(
             row,
             at('thời gian bắt đầu'),
@@ -231,10 +272,12 @@ export class ScheduleParser implements ImportParser {
             slot: textOrNull(optionalText(row, at('ca'))),
             weekdays: textOrNull(optionalText(row, at('thứ học thực tế'))),
             room: textOrNull(optionalText(row, at('phòng'))),
-            capacity: optionalNumber(row, at('số lượng sinh viên')) ?? null,
+            capacity: roundOrNull(
+              optionalNumber(row, at('số lượng sinh viên')),
+            ),
             trainingTime: null,
             startDate: optionalDate(row, at('thời gian bắt đầu')),
-            totalHours: optionalNumber(row, at('số giờ')) ?? null,
+            totalHours: roundOrNull(optionalNumber(row, at('số giờ'))),
             lecturerName,
           },
         });

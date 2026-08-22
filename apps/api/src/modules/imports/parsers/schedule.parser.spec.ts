@@ -229,6 +229,92 @@ describe('ScheduleParser', () => {
     });
   });
 
+  it('ô "Thời gian bắt đầu" kiểu Text "dd/mm/yyyy" đọc đúng tháng, không lệch sang M/D/Y', async () => {
+    const workbook = buildWorkbook(
+      [{ 5: 'ITA107', 10: 'AI21301', 13: 1, 19: '11/05/2026' }],
+      [],
+    );
+    const result = await parser.parse(workbook, ctx);
+    expect(result.rows[0].payload.startDate).toBe('2026-05-11T00:00:00.000Z');
+  });
+
+  it('ô "Thời gian bắt đầu" chấp nhận "d/m/yyyy" một chữ số', async () => {
+    const workbook = buildWorkbook(
+      [{ 5: 'ITA107', 10: 'AI21301', 13: 1, 19: '1/5/2026' }],
+      [],
+    );
+    const result = await parser.parse(workbook, ctx);
+    expect(result.rows[0].payload.startDate).toBe('2026-05-01T00:00:00.000Z');
+  });
+
+  it('ô "Thời gian bắt đầu" ngày không hợp lệ (31/02) → null', async () => {
+    const workbook = buildWorkbook(
+      [{ 5: 'ITA107', 10: 'AI21301', 13: 1, 19: '31/02/2026' }],
+      [],
+    );
+    const result = await parser.parse(workbook, ctx);
+    expect(result.rows[0].payload.startDate).toBeNull();
+  });
+
+  it('ô "Thời gian bắt đầu" không phải định dạng ngày → null', async () => {
+    const workbook = buildWorkbook(
+      [{ 5: 'ITA107', 10: 'AI21301', 13: 1, 19: 'hôm nay' }],
+      [],
+    );
+    const result = await parser.parse(workbook, ctx);
+    expect(result.rows[0].payload.startDate).toBeNull();
+  });
+
+  it('ô "Thời gian bắt đầu" kiểu Date thật của Excel giữ nguyên đường đi hiện tại', async () => {
+    const realDate = new Date(Date.UTC(2026, 4, 11));
+    const workbook = buildWorkbook(
+      [{ 5: 'ITA107', 10: 'AI21301', 13: 1, 19: realDate }],
+      [],
+    );
+    const result = await parser.parse(workbook, ctx);
+    expect(result.rows[0].payload.startDate).toBe(realDate.toISOString());
+  });
+
+  it('số thực ở "Số giờ" bị làm tròn thành số nguyên (cột Int? ở Prisma)', async () => {
+    const workbook = buildWorkbook(
+      [{ 5: 'ITA107', 10: 'AI21301', 13: 1, 20: 30, 26: 22.5 }],
+      [],
+    );
+    const result = await parser.parse(workbook, ctx);
+    expect(result.rows[0].payload.totalHours).toBe(23);
+    expect(Number.isInteger(result.rows[0].payload.totalHours)).toBe(true);
+  });
+
+  it('hai dòng trùng khoá ở "Lịch tool" → cảnh báo số va chạm', async () => {
+    const workbook = buildWorkbook(
+      [],
+      [
+        { 2: 'AI21301', 3: 'ITA107', 5: 'S1', 8: 1 },
+        { 2: 'AI21301', 3: 'ITA107', 5: 'S2', 8: 1 },
+      ],
+    );
+    const result = await parser.parse(workbook, ctx);
+    expect(result.rows).toHaveLength(1);
+    expect(result.warnings.join(' ')).toContain('1 dòng trùng khoá');
+    expect(result.warnings.join(' ')).toContain('Lịch tool');
+  });
+
+  it('BL1+BL2 không xoá tên giảng viên thật đã có bằng giá trị null tới sau', async () => {
+    // Hai dòng BL1+BL2 cùng khoá (môn, lớp, block): dòng đầu có tên thật,
+    // dòng sau không có tên (rỗng). Tên thật phải được giữ lại, không bị
+    // ghi đè bởi null.
+    const workbook = buildWorkbook(
+      [
+        { 5: 'ITA107', 10: 'AI21301', 12: 'Nguyễn Văn Thật', 13: 1 },
+        { 5: 'ITA107', 10: 'AI21301', 12: '', 13: 1 },
+      ],
+      [],
+    );
+    const result = await parser.parse(workbook, ctx);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].payload.lecturerName).toBe('Nguyễn Văn Thật');
+  });
+
   it('dòng thiếu mã môn hoặc lớp bị đánh lỗi', async () => {
     const workbook = buildWorkbook([{ 5: '', 10: 'AI21301', 13: 1 }], []);
     const result = await parser.parse(workbook, ctx);

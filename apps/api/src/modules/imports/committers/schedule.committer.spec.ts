@@ -37,7 +37,9 @@ function makeTx() {
     staff: {
       findMany: jest
         .fn()
-        .mockResolvedValue([{ id: 'gv-1', fullName: 'Nguyễn Văn Thật' }]),
+        .mockResolvedValue([
+          { id: 'gv-1', fullName: 'Nguyễn Văn Thật', username: null },
+        ]),
     },
     classSection: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -202,5 +204,106 @@ describe('ScheduleCommitter', () => {
       CreateSectionArgs,
     ];
     expect(createArgs.data.startDate).toBeInstanceOf(Date);
+  });
+
+  it('nạp toàn bộ Staff một lần, KHÔNG lọc bằng where.fullName.in', async () => {
+    const tx = makeTx();
+    await committer.commit(
+      [
+        row({
+          subjectCode: 'ITA107',
+          classCode: 'AI21301',
+          lecturerName: 'Nguyễn Văn Thật',
+          ...BASE,
+        }),
+      ],
+      tx,
+      ctx,
+    );
+    expect(tx.staff.findMany).toHaveBeenCalledTimes(1);
+    const [findManyArgs] = tx.staff.findMany.mock.calls[0] as [
+      Record<string, unknown>,
+    ];
+    expect(findManyArgs).not.toHaveProperty('where');
+  });
+
+  it('khớp giảng viên theo username khi không khớp họ tên nào', async () => {
+    const tx = makeTx();
+    tx.staff.findMany.mockResolvedValue([
+      { id: 'gv-user', fullName: 'Ai Đó Không Khớp', username: 'SonLH32' },
+    ]);
+    await committer.commit(
+      [
+        row({
+          subjectCode: 'ITA107',
+          classCode: 'AI21301',
+          lecturerName: 'sonlh32',
+          ...BASE,
+        }),
+      ],
+      tx,
+      ctx,
+    );
+    const [createArgs] = tx.classSection.create.mock.calls[0] as [
+      CreateSectionArgs,
+    ];
+    expect(createArgs.data.lecturerId).toBe('gv-user');
+  });
+
+  it('họ tên được ưu tiên hơn username khi cả hai cùng khớp cùng một chuỗi', async () => {
+    const tx = makeTx();
+    tx.staff.findMany.mockResolvedValue([
+      { id: 'by-name', fullName: 'Son Le', username: null },
+      { id: 'by-username', fullName: 'Người Khác', username: 'Son Le' },
+    ]);
+    await committer.commit(
+      [
+        row({
+          subjectCode: 'ITA107',
+          classCode: 'AI21301',
+          lecturerName: 'Son Le',
+          ...BASE,
+        }),
+      ],
+      tx,
+      ctx,
+    );
+    const [createArgs] = tx.classSection.create.mock.calls[0] as [
+      CreateSectionArgs,
+    ];
+    expect(createArgs.data.lecturerId).toBe('by-name');
+  });
+
+  it('mã lớp học phần trùng trong cùng lô (khác block) → không ghi đè, tính skipped', async () => {
+    const tx = makeTx();
+    const result = await committer.commit(
+      [
+        row(
+          {
+            subjectCode: 'ITA107',
+            classCode: 'AI21301',
+            lecturerName: null,
+            ...BASE,
+            block: 1,
+          },
+          9,
+        ),
+        row(
+          {
+            subjectCode: 'ITA107',
+            classCode: 'AI21301',
+            lecturerName: null,
+            ...BASE,
+            block: 2,
+          },
+          10,
+        ),
+      ],
+      tx,
+      ctx,
+    );
+    expect(result).toEqual({ created: 1, updated: 0, skipped: 1 });
+    expect(tx.classSection.create).toHaveBeenCalledTimes(1);
+    expect(tx.classSection.update).not.toHaveBeenCalled();
   });
 });
