@@ -9,6 +9,18 @@ export const MASTER_DATA_TABS = [
     singular: 'lớp học phần',
     path: '/class-sections',
   },
+  {
+    key: 'department-aliases',
+    label: 'Ánh xạ bộ môn',
+    singular: 'ánh xạ bộ môn',
+    path: '/department-aliases',
+  },
+  {
+    key: 'class-major-rules',
+    label: 'Quy tắc lớp → ngành',
+    singular: 'quy tắc lớp → ngành',
+    path: '/class-major-rules',
+  },
 ] as const;
 
 export type MasterDataTab = (typeof MASTER_DATA_TABS)[number];

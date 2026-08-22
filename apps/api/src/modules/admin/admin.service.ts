@@ -23,6 +23,10 @@ const staffSelect = {
   mustChangePassword: true,
   isActive: true,
   createdAt: true,
+  // lecturerType/username: cột do Task 2 đưa vào schema (import T.Kê ghi vào),
+  // Task 13 hiển thị lecturerType ở cột "Loại GV" trên /admin/users.
+  lecturerType: true,
+  username: true,
   department: { select: { id: true, code: true, name: true } },
   roles: { select: { role: { select: { key: true, name: true } } } },
 } as const;

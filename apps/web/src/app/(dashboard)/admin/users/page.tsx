@@ -26,7 +26,12 @@ export default function AdminUsersPage() {
     tempPassword: string;
   } | null>(null);
 
-  const { data: staff, isLoading } = useQuery({
+  const {
+    data: staff,
+    isLoading,
+    isError: staffIsError,
+    error: staffError,
+  } = useQuery({
     queryKey: ['admin-staff'],
     queryFn: () => apiFetch<StaffMember[]>('/admin/staff'),
   });
@@ -100,6 +105,13 @@ export default function AdminUsersPage() {
 
       <div className="mb-4 space-y-3">
         <FormError>{error}</FormError>
+        {staffIsError ? (
+          <FormError>
+            {staffError instanceof ApiError
+              ? staffError.message
+              : 'Không tải được danh sách nhân viên.'}
+          </FormError>
+        ) : null}
         {tempPasswordInfo ? (
           <FormSuccess>
             Mật khẩu tạm của <strong>{tempPasswordInfo.staffCode}</strong>:{' '}
@@ -112,14 +124,21 @@ export default function AdminUsersPage() {
       </div>
 
       <DataTable
-        headers={['Mã NV', 'Họ tên', 'Bộ môn', 'Vai trò', 'Trạng thái', 'Thao tác']}
-        isEmpty={!isLoading && (staff?.length ?? 0) === 0}
+        headers={['Mã NV', 'Họ tên', 'Bộ môn', 'Loại GV', 'Vai trò', 'Trạng thái', 'Thao tác']}
+        isEmpty={!isLoading && !staffIsError && (staff?.length ?? 0) === 0}
       >
         {(staff ?? []).map((member) => (
           <tr key={member.id} className="transition-colors hover:bg-fpt-orange-50/40">
             <Td className="font-semibold text-ink">{member.staffCode}</Td>
             <Td>{member.fullName}</Td>
             <Td>{member.department?.name ?? '—'}</Td>
+            <Td>
+              {member.lecturerType === 'FULL'
+                ? 'Cơ hữu'
+                : member.lecturerType === 'PART'
+                  ? 'Thỉnh giảng'
+                  : '—'}
+            </Td>
             <Td>
               <div className="flex flex-wrap gap-1">
                 {member.roles.map(({ role }) => (

@@ -83,6 +83,20 @@ export interface ClassSection {
   _count?: { enrollments: number };
 }
 
+export interface DepartmentAlias {
+  id: string;
+  alias: string;
+  departmentId: string;
+  department?: { id: string; code: string; name: string };
+}
+
+export interface ClassMajorRule {
+  id: string;
+  classPrefix: string;
+  majorId: string;
+  major?: { id: string; code: string; name: string };
+}
+
 export interface Student {
   id: string;
   studentCode: string;
@@ -107,6 +121,25 @@ export interface Enrollment {
   result: EnrollmentResult;
   classSection?: ClassSection;
   student?: Student;
+}
+
+export interface SectionGradeRow {
+  enrollmentId: string;
+  studentId: string;
+  studentCode: string;
+  fullName: string;
+  totalScore: number | null;
+  result: EnrollmentResult;
+}
+
+export interface SectionGradesResponse {
+  section: {
+    id: string;
+    code: string;
+    term: string;
+    subject?: { code: string; name: string };
+  };
+  rows: SectionGradeRow[];
 }
 
 export interface Evaluation {
@@ -198,7 +231,8 @@ export interface StaffMember {
   mustChangePassword: boolean;
   isActive: boolean;
   createdAt: string;
-  lecturerType?: string | null;
+  lecturerType: string | null;
+  username: string | null;
   department: { id: string; code: string; name: string } | null;
   roles: Array<{ role: { key: RoleKey; name: string } }>;
 }

@@ -26,8 +26,12 @@ type Entity = Department | Major | Subject | ClassSection;
 
 const MANAGER_ROLES = ['ADMIN', 'TRAINING_OFFICER'];
 
-/** Gợi ý điều kiện xóa theo từng danh mục — hiển thị trong modal xác nhận. */
-const DELETE_HINTS: Record<MasterDataTabKey, string> = {
+/**
+ * Gợi ý điều kiện xóa theo từng danh mục — hiển thị trong modal xác nhận.
+ * Partial vì hai tab ánh xạ (`department-aliases`, `class-major-rules`) được
+ * MASTER_DATA_TABS khai báo nhưng render qua MappingView, không qua đây.
+ */
+const DELETE_HINTS: Partial<Record<MasterDataTabKey, string>> = {
   departments:
     'Chỉ xóa được khi bộ môn không còn sinh viên, nhân sự, ngành hay môn học trực thuộc.',
   majors: 'Chỉ xóa được khi ngành không còn sinh viên theo học.',
@@ -119,7 +123,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
   function onFormSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const payloads: Record<MasterDataTabKey, Record<string, unknown>> = {
+    const payloads: Partial<Record<MasterDataTabKey, Record<string, unknown>>> = {
       departments: { code: form.get('code'), name: form.get('name') },
       majors: {
         code: form.get('code'),
@@ -139,7 +143,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
         term: form.get('term'),
       },
     };
-    saveMutation.mutate(payloads[tab]);
+    saveMutation.mutate(payloads[tab] ?? {});
   }
 
   function rowActions(entity: Entity) {
@@ -171,6 +175,20 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
           </button>
         </div>
       </Td>
+    );
+  }
+
+  /** Banner lỗi query — tuyệt đối không lẫn với trạng thái "rỗng thật". */
+  function errorBanner(query: { isError: boolean; error: unknown }) {
+    if (!query.isError) {
+      return null;
+    }
+    return (
+      <div className="mb-4">
+        <FormError>
+          {query.error instanceof ApiError ? query.error.message : 'Không tải được dữ liệu.'}
+        </FormError>
+      </div>
     );
   }
 
@@ -216,9 +234,11 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
       </nav>
 
       {tab === 'departments' ? (
-        <DataTable
+        <>
+          {errorBanner(departments)}
+          <DataTable
           headers={['Mã', 'Tên bộ môn', 'Sinh viên', 'GV/NV', 'Ngành', ...actionHeader]}
-          isEmpty={(departments.data?.length ?? 0) === 0}
+          isEmpty={!departments.isLoading && !departments.isError && (departments.data?.length ?? 0) === 0}
           emptyMessage="Chưa có bộ môn nào — bấm “+ Thêm bộ môn” để tạo danh mục đầu tiên."
         >
           {(departments.data ?? []).map((department) => (
@@ -231,13 +251,16 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
               {rowActions(department)}
             </tr>
           ))}
-        </DataTable>
+          </DataTable>
+        </>
       ) : null}
 
       {tab === 'majors' ? (
-        <DataTable
+        <>
+          {errorBanner(majors)}
+          <DataTable
           headers={['Mã', 'Tên ngành', 'Bộ môn', 'Sinh viên', ...actionHeader]}
-          isEmpty={(majors.data?.length ?? 0) === 0}
+          isEmpty={!majors.isLoading && !majors.isError && (majors.data?.length ?? 0) === 0}
           emptyMessage="Chưa có ngành học nào — bấm “+ Thêm ngành học” để tạo danh mục đầu tiên."
         >
           {(majors.data ?? []).map((major) => (
@@ -249,13 +272,16 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
               {rowActions(major)}
             </tr>
           ))}
-        </DataTable>
+          </DataTable>
+        </>
       ) : null}
 
       {tab === 'subjects' ? (
-        <DataTable
+        <>
+          {errorBanner(subjects)}
+          <DataTable
           headers={['Mã môn', 'Tên môn học', 'Tín chỉ', 'Bộ môn', 'Lớp học phần', ...actionHeader]}
-          isEmpty={(subjects.data?.length ?? 0) === 0}
+          isEmpty={!subjects.isLoading && !subjects.isError && (subjects.data?.length ?? 0) === 0}
           emptyMessage="Chưa có môn học nào — bấm “+ Thêm môn học” để tạo danh mục đầu tiên."
         >
           {(subjects.data ?? []).map((subject) => (
@@ -268,13 +294,20 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
               {rowActions(subject)}
             </tr>
           ))}
-        </DataTable>
+          </DataTable>
+        </>
       ) : null}
 
       {tab === 'class-sections' ? (
-        <DataTable
-          headers={['Mã lớp', 'Môn', 'Giảng viên', 'Học kỳ', 'Sĩ số', ...actionHeader]}
-          isEmpty={(classSections.data?.length ?? 0) === 0}
+        <>
+          {errorBanner(classSections)}
+          <DataTable
+          headers={['Mã lớp', 'Môn', 'Giảng viên', 'Học kỳ', 'Sĩ số', 'Bảng điểm', ...actionHeader]}
+          isEmpty={
+            !classSections.isLoading &&
+            !classSections.isError &&
+            (classSections.data?.length ?? 0) === 0
+          }
           emptyMessage="Chưa có lớp học phần nào — bấm “+ Thêm lớp học phần” để tạo."
         >
           {(classSections.data ?? []).map((section) => (
@@ -284,10 +317,19 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
               <Td>{section.lecturer?.fullName ?? '—'}</Td>
               <Td>{section.term}</Td>
               <Td className="tabular-nums">{section._count?.enrollments ?? 0}</Td>
+              <Td>
+                <Link
+                  href={`/class-sections/${section.id}/grades`}
+                  className="rounded-md px-3 py-2 text-sm font-semibold text-fpt-blue hover:underline"
+                >
+                  Bảng điểm
+                </Link>
+              </Td>
               {rowActions(section)}
             </tr>
           ))}
-        </DataTable>
+          </DataTable>
+        </>
       ) : null}
 
       <Modal
@@ -430,7 +472,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
               Bạn chắc chắn muốn xóa <strong>{entityLabel(tab, deleting)}</strong>?
             </p>
             <p className="rounded-md bg-fpt-orange-50 px-3 py-2 text-xs text-muted">
-              {DELETE_HINTS[tab]} Hành động này không thể hoàn tác.
+              {DELETE_HINTS[tab] ?? ''} Hành động này không thể hoàn tác.
             </p>
             <div className="flex justify-end gap-3">
               <Button variant="ghost" type="button" onClick={() => setDeleting(null)}>
