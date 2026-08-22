@@ -24,30 +24,13 @@ export function locateHeaders(
   const found = new Map<string, number>();
   const row = worksheet.getRow(headerRow);
 
-  // Collect all cells to check for offset
-  const cells: Array<{ cell: ExcelJS.Cell; columnNumber: number }> = [];
   row.eachCell({ includeEmpty: false }, (cell, columnNumber) => {
-    cells.push({ cell, columnNumber });
-  });
-
-  // Detect if there's an empty first cell that needs to be skipped
-  let columnOffset = 0;
-  if (cells.length > 0) {
-    const firstKey = normalizeHeader(String(cells[0].cell.text ?? ''));
-    if (firstKey === '' && cells[0].columnNumber === 1) {
-      columnOffset = 1;
-    }
-  }
-
-  // Process cells with adjusted column numbers
-  for (const { cell, columnNumber } of cells) {
     const key = normalizeHeader(String(cell.text ?? ''));
+    // Header trùng tên: giữ cột đầu tiên.
     if (wantedSet.has(key) && !found.has(key)) {
-      const adjustedColumnNumber =
-        columnOffset > 0 ? columnNumber - columnOffset : columnNumber;
-      found.set(key, adjustedColumnNumber);
+      found.set(key, columnNumber);
     }
-  }
+  });
 
   return found;
 }

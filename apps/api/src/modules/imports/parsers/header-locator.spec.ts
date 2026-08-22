@@ -8,7 +8,7 @@ import {
 function sheetWithHeaders(headers: string[], headerRow = 1): ExcelJS.Worksheet {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('test');
-  worksheet.getRow(headerRow).values = ['', ...headers];
+  worksheet.getRow(headerRow).values = headers;
   return worksheet;
 }
 
@@ -81,6 +81,18 @@ describe('locateHeaders', () => {
     const worksheet = sheetWithHeaders(['Lớp', 'Lớp']);
     const map = locateHeaders(worksheet, 1, ['Lớp']);
     expect(map.get('lớp')).toBe(1);
+  });
+
+  it('xử lý đúng khi cột đầu tiên genuinely trống (STT/index column)', () => {
+    // Real case: first column is blank (STT/index), headers start from column 2
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('test');
+    worksheet.getCell(1, 1).value = '';
+    worksheet.getCell(1, 2).value = 'Mã sinh viên';
+    worksheet.getCell(1, 3).value = 'Họ và tên';
+    const map = locateHeaders(worksheet, 1, ['Mã sinh viên', 'Họ và tên']);
+    expect(map.get('mã sinh viên')).toBe(2);
+    expect(map.get('họ và tên')).toBe(3);
   });
 });
 
