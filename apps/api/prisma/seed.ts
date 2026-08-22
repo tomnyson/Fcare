@@ -7,6 +7,12 @@
  */
 import { AlertStatus, CareChannel, EnrollmentResult, PrismaClient, StudentStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import {
+  CLASS_MAJOR_RULES,
+  DEPARTMENT_ALIASES,
+  DEPARTMENTS,
+  MAJORS,
+} from './seed-data';
 
 const prisma = new PrismaClient();
 
@@ -21,12 +27,6 @@ const ROLES = [
   { key: 'SA_HEAD', name: 'Trưởng phòng CTSV' },
 ];
 
-const DEPARTMENTS = [
-  { code: 'SE', name: 'Kỹ thuật phần mềm' },
-  { code: 'AI', name: 'Trí tuệ nhân tạo' },
-  { code: 'GD', name: 'Thiết kế mỹ thuật số' },
-];
-
 const STAFF: Array<{
   staffCode: string;
   fullName: string;
@@ -34,11 +34,11 @@ const STAFF: Array<{
   roles: string[];
 }> = [
   { staffCode: 'admin', fullName: 'Quản trị viên hệ thống', deptCode: null, roles: ['ADMIN'] },
-  { staffCode: 'tbm.se', fullName: 'Trần Minh Quân', deptCode: 'SE', roles: ['HEAD_OF_DEPT'] },
-  { staffCode: 'tbm.ai', fullName: 'Lê Thu Trang', deptCode: 'AI', roles: ['HEAD_OF_DEPT'] },
-  { staffCode: 'gv.binh', fullName: 'Nguyễn Thanh Bình', deptCode: 'SE', roles: ['LECTURER'] },
-  { staffCode: 'gv.chi', fullName: 'Phạm Kim Chi', deptCode: 'SE', roles: ['LECTURER'] },
-  { staffCode: 'gv.dung', fullName: 'Đỗ Việt Dũng', deptCode: 'AI', roles: ['LECTURER'] },
+  { staffCode: 'tbm.se', fullName: 'Trần Minh Quân', deptCode: 'CNTT', roles: ['HEAD_OF_DEPT'] },
+  { staffCode: 'tbm.ai', fullName: 'Lê Thu Trang', deptCode: 'CNTT', roles: ['HEAD_OF_DEPT'] },
+  { staffCode: 'gv.binh', fullName: 'Nguyễn Thanh Bình', deptCode: 'CNTT', roles: ['LECTURER'] },
+  { staffCode: 'gv.chi', fullName: 'Phạm Kim Chi', deptCode: 'CNTT', roles: ['LECTURER'] },
+  { staffCode: 'gv.dung', fullName: 'Đỗ Việt Dũng', deptCode: 'CNTT', roles: ['LECTURER'] },
   { staffCode: 'dt.hoa', fullName: 'Vũ Thị Hoa', deptCode: null, roles: ['TRAINING_OFFICER'] },
   { staffCode: 'ctsv.lan', fullName: 'Bùi Ngọc Lan', deptCode: null, roles: ['SA_OFFICER'] },
   { staffCode: 'ctsv.truong', fullName: 'Hoàng Văn Trường', deptCode: null, roles: ['SA_HEAD'] },
@@ -78,26 +78,54 @@ async function main(): Promise<void> {
     (await prisma.department.findMany()).map((dept) => [dept.code, dept.id]),
   );
 
-  const majors = [
-    { code: 'SE', name: 'Kỹ thuật phần mềm', deptCode: 'SE' },
-    { code: 'AI', name: 'Trí tuệ nhân tạo', deptCode: 'AI' },
-    { code: 'GD', name: 'Thiết kế mỹ thuật số', deptCode: 'GD' },
-  ];
-  for (const major of majors) {
+  // ===== Ngành học =====
+  for (const major of MAJORS) {
+    const department = await prisma.department.findUniqueOrThrow({
+      where: { code: major.deptCode },
+    });
     await prisma.major.upsert({
       where: { code: major.code },
-      update: { name: major.name },
-      create: { code: major.code, name: major.name, departmentId: deptByCode.get(major.deptCode)! },
+      update: { name: major.name, departmentId: department.id },
+      create: {
+        code: major.code,
+        name: major.name,
+        departmentId: department.id,
+      },
     });
   }
+
+  // ===== Alias bộ môn =====
+  for (const entry of DEPARTMENT_ALIASES) {
+    const department = await prisma.department.findUniqueOrThrow({
+      where: { code: entry.deptCode },
+    });
+    await prisma.departmentAlias.upsert({
+      where: { alias: entry.alias },
+      update: { departmentId: department.id },
+      create: { alias: entry.alias, departmentId: department.id },
+    });
+  }
+
+  // ===== Quy tắc lớp → ngành =====
+  for (const rule of CLASS_MAJOR_RULES) {
+    const major = await prisma.major.findUniqueOrThrow({
+      where: { code: rule.majorCode },
+    });
+    await prisma.classMajorRule.upsert({
+      where: { classPrefix: rule.classPrefix },
+      update: { majorId: major.id },
+      create: { classPrefix: rule.classPrefix, majorId: major.id },
+    });
+  }
+
   const majorByCode = new Map((await prisma.major.findMany()).map((major) => [major.code, major]));
 
   const subjects = [
-    { code: 'PRF192', name: 'Programming Fundamentals', credits: 3, deptCode: 'SE' },
-    { code: 'PRO192', name: 'Object-Oriented Programming', credits: 3, deptCode: 'SE' },
-    { code: 'DBI202', name: 'Database Systems', credits: 3, deptCode: 'SE' },
-    { code: 'AIL303', name: 'Machine Learning', credits: 3, deptCode: 'AI' },
-    { code: 'DGD201', name: 'Visual Design Tools', credits: 3, deptCode: 'GD' },
+    { code: 'PRF192', name: 'Programming Fundamentals', credits: 3, deptCode: 'CNTT' },
+    { code: 'PRO192', name: 'Object-Oriented Programming', credits: 3, deptCode: 'CNTT' },
+    { code: 'DBI202', name: 'Database Systems', credits: 3, deptCode: 'CNTT' },
+    { code: 'AIL303', name: 'Machine Learning', credits: 3, deptCode: 'CNTT' },
+    { code: 'DGD201', name: 'Visual Design Tools', credits: 3, deptCode: 'TKDH' },
   ];
   for (const subject of subjects) {
     await prisma.subject.upsert({
@@ -141,10 +169,10 @@ async function main(): Promise<void> {
 
   // ===== Sinh viên =====
   const studentPlans = [
-    { prefix: 'SE19', majorCode: 'SE', classCode: 'SE1901', count: 8 },
-    { prefix: 'SE19', majorCode: 'SE', classCode: 'SE1902', count: 8, offset: 8 },
-    { prefix: 'AI19', majorCode: 'AI', classCode: 'AI1901', count: 6 },
-    { prefix: 'GD19', majorCode: 'GD', classCode: 'GD1901', count: 2 },
+    { prefix: 'SE19', majorCode: 'PTPM', classCode: 'SE1901', count: 8 },
+    { prefix: 'SE19', majorCode: 'PTPM', classCode: 'SE1902', count: 8, offset: 8 },
+    { prefix: 'AI19', majorCode: 'LTAI', classCode: 'AI1901', count: 6 },
+    { prefix: 'GD19', majorCode: 'TKDH', classCode: 'GD1901', count: 2 },
   ];
 
   let nameIndex = 0;

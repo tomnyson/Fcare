@@ -45,12 +45,15 @@ pnpm dev            # chạy đồng thời web (3000) + api (3001)
 
 ### Tài khoản demo (mật khẩu chung: `Fcare@123`)
 
+Danh mục bộ môn/ngành được seed từ 12 bộ môn thật (không còn 3 bộ môn giả
+`SE`/`AI`/`GD`) — xem `apps/api/prisma/seed-data.ts` để biết đầy đủ mã bộ môn,
+ngành, alias tra cứu và quy tắc lớp→ngành dùng khi import Excel.
+
 | Mã NV | Vai trò | Phạm vi |
 |---|---|---|
 | `admin` | Quản trị hệ thống | Toàn hệ thống |
-| `tbm.se` | Trưởng bộ môn | Bộ môn Kỹ thuật phần mềm |
-| `gv.binh`, `gv.chi` | Giảng viên | Bộ môn Kỹ thuật phần mềm |
-| `gv.dung` | Giảng viên | Bộ môn Trí tuệ nhân tạo |
+| `tbm.se`, `tbm.ai` | Trưởng bộ môn | Bộ môn Công nghệ thông tin (`CNTT`) |
+| `gv.binh`, `gv.chi`, `gv.dung` | Giảng viên | Bộ môn Công nghệ thông tin (`CNTT`) |
 | `dt.hoa` | Cán bộ Đào tạo | Toàn trường |
 | `ctsv.lan` / `ctsv.truong` | CTSV / Trưởng phòng CTSV | Toàn trường |
 
