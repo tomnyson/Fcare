@@ -11,7 +11,9 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CheckPolicies } from '../../common/decorators/check-policies.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AppAbility } from '../../casl/ability.factory';
+import type { AuthUser } from '../../common/types/auth-user';
 import { ClassSectionsService } from './class-sections.service';
 import { DepartmentsService } from './departments.service';
 import {
@@ -27,6 +29,7 @@ import {
   UpdateDepartmentAliasDto,
 } from './dto/mapping.dto';
 import { CreateMajorDto, UpdateMajorDto } from './dto/major.dto';
+import { UpdateSectionGradesDto } from './dto/section-grades.dto';
 import { CreateSubjectDto, UpdateSubjectDto } from './dto/subject.dto';
 import { MajorsService } from './majors.service';
 import {
@@ -164,6 +167,25 @@ export class ClassSectionsController {
   @CheckPolicies(canManage)
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(id);
+  }
+
+  @Get(':id/grades')
+  @CheckPolicies(canRead)
+  findGrades(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.service.findGrades(user, id);
+  }
+
+  @Patch(':id/grades')
+  @CheckPolicies(canManage)
+  updateGrades(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateSectionGradesDto,
+  ) {
+    return this.service.updateGrades(user, id, dto);
   }
 }
 

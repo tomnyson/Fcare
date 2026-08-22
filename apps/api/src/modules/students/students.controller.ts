@@ -15,6 +15,7 @@ import { CheckPolicies } from '../../common/decorators/check-policies.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/auth-user';
 import {
+  BulkAssignMajorDto,
   CreateStudentDto,
   ListStudentsQuery,
   UpdateStudentDto,
@@ -45,6 +46,15 @@ export class StudentsController {
   @CheckPolicies((ability: AppAbility) => ability.can('create', 'Student'))
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateStudentDto) {
     return this.studentsService.create(user, dto);
+  }
+
+  @Patch('bulk-assign-major')
+  @CheckPolicies((ability: AppAbility) => ability.can('update', 'Student'))
+  bulkAssignMajor(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: BulkAssignMajorDto,
+  ) {
+    return this.studentsService.bulkAssignMajor(user, dto);
   }
 
   @Patch(':id')

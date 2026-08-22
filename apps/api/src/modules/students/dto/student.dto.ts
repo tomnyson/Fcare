@@ -1,7 +1,10 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { StudentStatus } from '@prisma/client';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayNotEmpty,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
@@ -103,4 +106,28 @@ export class ListStudentsQuery {
   @Min(1)
   @Max(100)
   limit?: number;
+
+  @ApiPropertyOptional({
+    description: 'Chỉ lấy sinh viên chưa gán ngành (hàng chờ dọn sau import)',
+  })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  missingMajor?: boolean;
+}
+
+export class BulkAssignMajorDto {
+  @ApiProperty({
+    type: [String],
+    description: 'Danh sách id sinh viên cần gán ngành',
+  })
+  @ArrayNotEmpty()
+  // Trang sinh viên phân trang 20 dòng; 500 là trần an toàn chặn payload rác.
+  @ArrayMaxSize(500)
+  @IsUUID('4', { each: true })
+  studentIds!: string[];
+
+  @ApiProperty()
+  @IsUUID()
+  majorId!: string;
 }

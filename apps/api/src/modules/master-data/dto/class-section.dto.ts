@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
+  IsBoolean,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -47,4 +49,10 @@ export class ListClassSectionsQuery {
   @IsOptional()
   @IsUUID()
   lecturerId?: string;
+
+  @ApiPropertyOptional({ description: 'Chỉ lấy lớp chưa phân công giảng viên' })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  unassigned?: boolean;
 }

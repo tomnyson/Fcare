@@ -5,11 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { AuditService } from '../../audit/audit.service';
 import type { AuthUser } from '../../common/types/auth-user';
 import { deptFilter, isDeptScoped } from '../../common/utils/dept-scope';
 import { isPrismaError } from '../../common/utils/prisma-error';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
+  BulkAssignMajorDto,
   CreateStudentDto,
   ListStudentsQuery,
   UpdateStudentDto,
@@ -17,7 +19,10 @@ import {
 
 @Injectable()
 export class StudentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async list(user: AuthUser, query: ListStudentsQuery) {
     const page = query.page ?? 1;
@@ -25,6 +30,7 @@ export class StudentsService {
 
     const where: Prisma.StudentWhereInput = {
       ...(query.departmentId ? { departmentId: query.departmentId } : {}),
+      ...(query.missingMajor ? { majorId: null } : {}),
       // Scope theo bộ môn đặt SAU filter query để luôn thắng với người dùng bị giới hạn.
       ...deptFilter(user),
       ...(query.classCode ? { classCode: query.classCode } : {}),
@@ -157,5 +163,40 @@ export class StudentsService {
         'Bạn chỉ được thao tác trên sinh viên thuộc bộ môn của mình.',
       );
     }
+  }
+
+  async bulkAssignMajor(
+    user: AuthUser,
+    dto: BulkAssignMajorDto,
+  ): Promise<{ updated: number }> {
+    let result: { count: number };
+    try {
+      result = await this.prisma.student.updateMany({
+        // deptFilter nằm trong where: sinh viên ngoài bộ môn không bị đụng tới,
+        // và người gọi cũng không biết được id đó có tồn tại hay không (RULE 2).
+        where: { id: { in: dto.studentIds }, ...deptFilter(user) },
+        data: { majorId: dto.majorId },
+      });
+    } catch (error) {
+      if (isPrismaError(error, 'P2003')) {
+        throw new NotFoundException('Ngành học không tồn tại.');
+      }
+      throw error;
+    }
+
+    if (result.count === 0) {
+      throw new NotFoundException(
+        'Không có sinh viên nào trong phạm vi truy cập của bạn khớp danh sách đã chọn.',
+      );
+    }
+
+    await this.audit.log({
+      staffId: user.id,
+      action: 'STUDENT_BULK_ASSIGN_MAJOR',
+      entity: 'Student',
+      metadata: { majorId: dto.majorId, updated: result.count },
+    });
+
+    return { updated: result.count };
   }
 }
