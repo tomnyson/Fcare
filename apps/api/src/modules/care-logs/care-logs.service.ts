@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { AuthUser } from '../../common/types/auth-user';
-import { deptFilter } from '../../common/utils/dept-scope';
+import { studentScope } from '../../common/utils/dept-scope';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCareLogDto, ListCareLogsQuery } from './dto/care-log.dto';
 
@@ -12,7 +12,7 @@ export class CareLogsService {
     return this.prisma.careLog.findMany({
       where: {
         studentId: query.studentId,
-        student: deptFilter(user),
+        student: studentScope(user),
       },
       orderBy: { createdAt: 'desc' },
       include: {
@@ -31,7 +31,7 @@ export class CareLogsService {
 
   async create(user: AuthUser, dto: CreateCareLogDto) {
     const student = await this.prisma.student.findFirst({
-      where: { id: dto.studentId, ...deptFilter(user) },
+      where: { id: dto.studentId, ...studentScope(user) },
     });
     if (!student) {
       throw new NotFoundException(

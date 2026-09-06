@@ -1,5 +1,6 @@
 'use client';
 
+import { suggestUrgencyLevel } from '@fcare/shared-types';
 import { Badge, Button } from '@fcare/ui-kit';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
@@ -10,7 +11,7 @@ import {
   ALERT_STATUS_LABELS,
   formatDateTime,
 } from '../../lib/labels';
-import type { Alert, AuthUser, Paginated } from '../../lib/types';
+import type { Alert, AuthUser, Evaluation, Paginated } from '../../lib/types';
 import { FormError, Label, Select, Textarea } from '../ui/form';
 import { Modal } from '../ui/modal';
 
@@ -18,11 +19,35 @@ export function AlertsTab({ studentId, user }: { studentId: string; user: AuthUs
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
+  const [level, setLevel] = useState('1');
 
   const { data, isLoading } = useQuery({
     queryKey: ['alerts', { studentId }],
     queryFn: () => apiFetch<Paginated<Alert>>(`/alerts?studentId=${studentId}&limit=50`),
   });
+
+  // Dùng chung cache với tab Đánh giá — chỉ để gợi ý độ khẩn theo lần đánh giá
+  // mới nhất (danh sách đã sắp createdAt giảm dần ở API).
+  const { data: evaluations } = useQuery({
+    queryKey: ['evaluations', studentId],
+    queryFn: () => apiFetch<Evaluation[]>(`/evaluations?studentId=${studentId}`),
+  });
+
+  const latestEvaluation = evaluations?.[0] ?? null;
+  const suggestion = latestEvaluation
+    ? suggestUrgencyLevel({
+        academicScore: latestEvaluation.academicScore,
+        attitudeScore: latestEvaluation.attitudeScore,
+        issueGroup: latestEvaluation.issueGroup,
+      })
+    : null;
+
+  function openRaiseModal() {
+    // Mặc định theo mức đề xuất từ đánh giá gần nhất; người phát vẫn đổi được.
+    setLevel(String(suggestion?.level ?? 1));
+    setError('');
+    setOpen(true);
+  }
 
   const raiseMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
@@ -42,7 +67,7 @@ export function AlertsTab({ studentId, user }: { studentId: string; user: AuthUs
     const form = new FormData(event.currentTarget);
     raiseMutation.mutate({
       studentId,
-      level: Number(form.get('level')),
+      level: Number(level),
       reason: form.get('reason'),
     });
   }
@@ -51,7 +76,7 @@ export function AlertsTab({ studentId, user }: { studentId: string; user: AuthUs
     <>
       {canRaise ? (
         <div className="mb-4 flex justify-end">
-          <Button type="button" variant="danger" onClick={() => setOpen(true)}>
+          <Button type="button" variant="danger" onClick={openRaiseModal}>
             ⚠ Phát cảnh báo
           </Button>
         </div>
@@ -101,7 +126,13 @@ export function AlertsTab({ studentId, user }: { studentId: string; user: AuthUs
           <FormError>{error}</FormError>
           <div>
             <Label htmlFor="level">Độ khẩn</Label>
-            <Select id="level" name="level" defaultValue="1" required>
+            <Select
+              id="level"
+              name="level"
+              value={level}
+              onChange={(event) => setLevel(event.target.value)}
+              required
+            >
               {Object.entries(ALERT_LEVEL_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>
                   Mức {value} — {label}
@@ -112,6 +143,12 @@ export function AlertsTab({ studentId, user }: { studentId: string; user: AuthUs
               Mức 2 báo Trưởng bộ môn · Mức 3 thêm Cán bộ Đào tạo · Mức 4 thêm CTSV và mọi giảng
               viên đang dạy (cần lý do ≥ 40 ký tự).
             </p>
+            {suggestion ? (
+              <p className="mt-1.5 rounded-md bg-fpt-orange-50 px-3 py-2 text-xs text-ink">
+                Đánh giá gần nhất ({latestEvaluation?.term}) đề xuất{' '}
+                <strong>mức {suggestion.level}</strong>: {suggestion.reasons[0]}
+              </p>
+            ) : null}
           </div>
           <div>
             <Label htmlFor="reason">Lý do cảnh báo</Label>

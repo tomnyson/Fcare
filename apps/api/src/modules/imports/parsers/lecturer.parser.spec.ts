@@ -29,6 +29,25 @@ function buildWorkbook(rows: Array<Record<number, unknown>>): ExcelJS.Workbook {
   return workbook;
 }
 
+/**
+ * Thêm sheet phân công lớp vào workbook: header ở dòng 8, dữ liệu từ dòng 9 —
+ * đúng bố cục file thật. Mỗi phần tử là một lớp `[bộ môn, ô phân công GV]`.
+ */
+function addAssignments(
+  workbook: ExcelJS.Workbook,
+  classes: Array<[string, string]>,
+): ExcelJS.Workbook {
+  const worksheet = workbook.addWorksheet('BL1+BL2');
+  worksheet.getRow(8).getCell(8).value = 'Bộ môn';
+  worksheet.getRow(8).getCell(12).value = 'Phân công giảng viên';
+  classes.forEach(([deptAlias, lecturers], index) => {
+    const row = worksheet.getRow(9 + index);
+    row.getCell(8).value = deptAlias;
+    row.getCell(12).value = lecturers;
+  });
+  return workbook;
+}
+
 const ctx = { term: 'SU26' } as ImportContext;
 
 describe('LecturerParser', () => {
@@ -43,6 +62,7 @@ describe('LecturerParser', () => {
       username: 'vandtb2',
       fullName: 'Đỗ Thị Bình Vân',
       lecturerType: 'FULL',
+      deptAlias: null,
     });
   });
 
@@ -65,6 +85,7 @@ describe('LecturerParser', () => {
     const result = await parser.parse(workbook, ctx);
     expect(JSON.stringify(result.rows[0].payload)).not.toContain('@');
     expect(Object.keys(result.rows[0].payload).sort()).toEqual([
+      'deptAlias',
       'fullName',
       'lecturerType',
       'username',
@@ -96,5 +117,94 @@ describe('LecturerParser', () => {
     const workbook = new ExcelJS.Workbook();
     workbook.addWorksheet('Khác');
     await expect(parser.parse(workbook, ctx)).rejects.toThrow('T.Kê');
+  });
+});
+
+/**
+ * Sheet "T.Kê" KHÔNG có cột bộ môn. Dây nối duy nhất trong file là sheet phân
+ * công lớp "BL1+BL2": mỗi lớp có sẵn cả `Bộ môn` lẫn `Phân công giảng viên`.
+ */
+describe('LecturerParser — suy bộ môn từ sheet phân công', () => {
+  const parser = new LecturerParser();
+
+  it('lấy bộ môn của lớp mà giảng viên được phân công', async () => {
+    const workbook = addAssignments(
+      buildWorkbook([{ 1: 'sonlh32', 6: 'Full', 7: 'Lê Hồng Sơn' }]),
+      [['CNTT', 'SonLH32']],
+    );
+    const result = await parser.parse(workbook, ctx);
+    expect(result.rows[0].payload.deptAlias).toBe('CNTT');
+  });
+
+  it('khớp được cả khi ô phân công gõ có dấu ("SơnLH32" ↔ username "sonlh32")', async () => {
+    const workbook = addAssignments(
+      buildWorkbook([{ 1: 'sonlh32', 6: 'Full', 7: 'Lê Hồng Sơn' }]),
+      [['UDPM', 'SơnLH32']],
+    );
+    const result = await parser.parse(workbook, ctx);
+    expect(result.rows[0].payload.deptAlias).toBe('UDPM');
+  });
+
+  it('một lớp hai giảng viên ("gv1; gv2") → cả hai đều nhận bộ môn của lớp', async () => {
+    const workbook = addAssignments(
+      buildWorkbook([
+        { 1: 'thachnn12', 6: 'Full', 7: 'Nguyễn Ngọc Thạch' },
+        { 1: 'sonlh32', 6: 'Full', 7: 'Lê Hồng Sơn' },
+      ]),
+      [['UDPM', 'thachnn12; sơnlh32']],
+    );
+    const result = await parser.parse(workbook, ctx);
+    expect(result.rows[0].payload.deptAlias).toBe('UDPM');
+    expect(result.rows[1].payload.deptAlias).toBe('UDPM');
+  });
+
+  it('dạy nhiều bộ môn → lấy bộ môn nhiều lớp nhất và cảnh báo để admin soát lại', async () => {
+    const workbook = addAssignments(
+      buildWorkbook([{ 1: 'thachnn12', 6: 'Full', 7: 'Nguyễn Ngọc Thạch' }]),
+      [
+        ['CNTT', 'thachnn12'],
+        ['UDPM', 'thachnn12'],
+        ['UDPM', 'thachnn12'],
+        ['UDPM', 'thachnn12'],
+      ],
+    );
+    const result = await parser.parse(workbook, ctx);
+    expect(result.rows[0].payload.deptAlias).toBe('UDPM');
+    expect(result.warnings.join(' ')).toContain('thachnn12');
+    expect(result.warnings.join(' ')).toContain('nhiều bộ môn');
+  });
+
+  it('giảng viên chưa có lớp nào → deptAlias null và cảnh báo gộp, KHÔNG đoán bộ môn', async () => {
+    const workbook = addAssignments(
+      buildWorkbook([
+        { 1: 'sonlh32', 6: 'Full', 7: 'Lê Hồng Sơn' },
+        { 1: 'chuahaylop', 6: 'Part', 7: 'Chưa Có Lớp' },
+      ]),
+      [['CNTT', 'SonLH32']],
+    );
+    const result = await parser.parse(workbook, ctx);
+    expect(result.rows[1].payload.deptAlias).toBeNull();
+    expect(result.warnings.join(' ')).toContain('1 giảng viên');
+  });
+
+  it('thiếu sheet phân công → không suy đoán, cảnh báo cần gán tay', async () => {
+    const workbook = buildWorkbook([
+      { 1: 'sonlh32', 6: 'Full', 7: 'Lê Hồng Sơn' },
+    ]);
+    const result = await parser.parse(workbook, ctx);
+    expect(result.rows[0].payload.deptAlias).toBeNull();
+    expect(result.warnings.join(' ')).toContain('BL1+BL2');
+  });
+
+  it('dòng lớp chưa phân công giảng viên không sinh khoá rỗng', async () => {
+    const workbook = addAssignments(
+      buildWorkbook([{ 1: 'sonlh32', 6: 'Full', 7: 'Lê Hồng Sơn' }]),
+      [
+        ['CNTT', ''],
+        ['CNTT', 'SonLH32'],
+      ],
+    );
+    const result = await parser.parse(workbook, ctx);
+    expect(result.rows[0].payload.deptAlias).toBe('CNTT');
   });
 });

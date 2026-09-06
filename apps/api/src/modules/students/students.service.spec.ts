@@ -1,4 +1,8 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { AuditService } from '../../audit/audit.service';
 import type { AuthUser } from '../../common/types/auth-user';
@@ -42,8 +46,16 @@ const audit = { log: auditLog } as unknown as AuditService;
 const service = new StudentsService(prisma, audit);
 
 interface FindManyArgs {
-  where: { majorId?: string | null; departmentId?: string };
+  where: { majorId?: string | null; departmentId?: string; AND?: unknown[] };
 }
+
+/**
+ * Phạm vi sinh viên của GIẢNG VIÊN: chỉ sinh viên các lớp học phần mình đứng
+ * lớp — sinh viên cùng bộ môn nhưng mình không dạy cũng nằm ngoài tầm nhìn.
+ */
+const LECTURER_SCOPE = [
+  { enrollments: { some: { classSection: { lecturerId: 'l' } } } },
+];
 
 interface UpdateManyArgs {
   where: { id: { in: string[] }; departmentId?: string };
@@ -67,13 +79,13 @@ describe('StudentsService.list — missingMajor', () => {
     expect(args.where.majorId).toBeUndefined();
   });
 
-  it('missingMajor không phá scope bộ môn của giảng viên', async () => {
+  it('missingMajor không phá scope của giảng viên', async () => {
     await service.list(lecturerUser, {
       missingMajor: true,
     });
     const [args] = findMany.mock.calls[0] as [FindManyArgs];
     expect(args.where.majorId).toBeNull();
-    expect(args.where.departmentId).toBe('dept-1');
+    expect(args.where.AND).toEqual(LECTURER_SCOPE);
   });
 });
 
@@ -181,5 +193,261 @@ describe('StudentsService.bulkAssignMajor', () => {
     });
     const [args] = updateMany.mock.calls[0] as [UpdateManyArgs];
     expect(args.data).toEqual({ majorId: 'mj-1', departmentId: 'dept-9' });
+  });
+});
+
+describe('StudentsService.remove — giữ lịch sử phân tích AI', () => {
+  it('không xóa sinh viên đã có hồ sơ phân tích', async () => {
+    const deleteStudent = jest.fn();
+    const localPrisma = {
+      student: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'student-1',
+          major: null,
+          department: null,
+          _count: { enrollments: 0, evaluations: 0, careLogs: 0, alerts: 0 },
+        }),
+        delete: deleteStudent,
+      },
+      studentTermAnalysis: { count: jest.fn().mockResolvedValue(1) },
+    } as unknown as PrismaService;
+    const localService = new StudentsService(localPrisma, audit);
+
+    await expect(
+      localService.remove(adminUser, 'student-1'),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(deleteStudent).not.toHaveBeenCalled();
+  });
+});
+
+/** Bộ lọc kỳ + giảng viên đi qua quan hệ enrollments → classSection. */
+interface ListFindManyArgs {
+  where: {
+    majorId?: string | null;
+    departmentId?: string;
+    AND?: unknown[];
+    OR?: unknown[];
+    classCode?: string;
+    enrollments?: {
+      some: {
+        classSectionId?: string;
+        classSection: { term?: string; lecturerId?: string };
+      };
+    };
+  };
+}
+
+describe('StudentsService.list — lọc theo ngành, kỳ, giảng viên', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('majorId lọc đúng ngành', async () => {
+    await service.list(adminUser, { majorId: 'mj-1' });
+    const [args] = findMany.mock.calls[0] as [ListFindManyArgs];
+    expect(args.where.majorId).toBe('mj-1');
+  });
+
+  it('missingMajor thắng majorId khi bật cả hai', async () => {
+    await service.list(adminUser, { majorId: 'mj-1', missingMajor: true });
+    const [args] = findMany.mock.calls[0] as [ListFindManyArgs];
+    expect(args.where.majorId).toBeNull();
+  });
+
+  it('term lọc theo học kỳ của lớp học phần đã đăng ký', async () => {
+    await service.list(adminUser, { term: 'SU25' });
+    const [args] = findMany.mock.calls[0] as [ListFindManyArgs];
+    expect(args.where.enrollments?.some.classSection).toEqual({ term: 'SU25' });
+  });
+
+  it('lecturerId lọc theo giảng viên phụ trách lớp học phần', async () => {
+    await service.list(adminUser, { lecturerId: 'gv-1' });
+    const [args] = findMany.mock.calls[0] as [ListFindManyArgs];
+    expect(args.where.enrollments?.some.classSection).toEqual({
+      lecturerId: 'gv-1',
+    });
+  });
+
+  it('kỳ + giảng viên gộp vào CÙNG một lớp học phần, không phải hai điều kiện rời', async () => {
+    await service.list(adminUser, { term: 'SU25', lecturerId: 'gv-1' });
+    const [args] = findMany.mock.calls[0] as [ListFindManyArgs];
+    expect(args.where.enrollments).toEqual({
+      some: { classSection: { term: 'SU25', lecturerId: 'gv-1' } },
+    });
+  });
+
+  it('sectionId lọc đúng sinh viên của một lớp học phần', async () => {
+    await service.list(adminUser, { sectionId: 'cs-1' });
+    const [args] = findMany.mock.calls[0] as [ListFindManyArgs];
+    expect(args.where.enrollments).toEqual({
+      some: { classSectionId: 'cs-1', classSection: {} },
+    });
+  });
+
+  it('không lọc kỳ/giảng viên/lớp học phần thì không đụng tới quan hệ enrollments', async () => {
+    await service.list(adminUser, { classCode: 'SE1901' });
+    const [args] = findMany.mock.calls[0] as [ListFindManyArgs];
+    expect(args.where.enrollments).toBeUndefined();
+    expect(args.where.classCode).toBe('SE1901');
+  });
+
+  it('RULE 2: giảng viên truyền ngành/GV bộ môn khác vẫn bị giới hạn phạm vi mình', async () => {
+    await service.list(lecturerUser, {
+      majorId: 'mj-cua-bo-mon-khac',
+      lecturerId: 'gv-bo-mon-khac',
+      term: 'SU25',
+    });
+    const [args] = findMany.mock.calls[0] as [ListFindManyArgs];
+    expect(args.where.AND).toEqual(LECTURER_SCOPE);
+  });
+
+  it('RULE 2: ô tìm kiếm dùng OR nhưng KHÔNG được nuốt mất scope', async () => {
+    await service.list(lecturerUser, { search: 'nguyen' });
+    const [args] = findMany.mock.calls[0] as [ListFindManyArgs];
+    // Scope nằm trong AND nên tồn tại song song với OR của tìm kiếm.
+    expect(args.where.AND).toEqual(LECTURER_SCOPE);
+    expect(args.where.OR).toHaveLength(2);
+  });
+
+  it('count dùng đúng where với findMany để phân trang không lệch', async () => {
+    await service.list(adminUser, { term: 'SU25', majorId: 'mj-1' });
+    const [findArgs] = findMany.mock.calls[0] as [ListFindManyArgs];
+    const [countArgs] = count.mock.calls[0] as [ListFindManyArgs];
+    expect(countArgs.where).toEqual(findArgs.where);
+  });
+});
+
+describe('StudentsService.filterOptions', () => {
+  interface ScopedArgs {
+    where?: {
+      departmentId?: string;
+      AND?: unknown[];
+      OR?: unknown[];
+      subject?: { departmentId?: string };
+      classSections?: { some: unknown };
+    };
+    select?: Record<string, boolean>;
+  }
+
+  /** Lớp học phần trong tầm nhìn của giảng viên: chỉ lớp mình đứng tên. */
+  const LECTURER_SECTION_SCOPE = [{ lecturerId: 'l' }];
+
+  function setup() {
+    const studentGroupBy = jest
+      .fn()
+      .mockResolvedValue([{ classCode: 'SE1901' }, { classCode: 'SE1902' }]);
+    const majorFindMany = jest
+      .fn()
+      .mockResolvedValue([
+        { id: 'mj-1', code: 'SE', name: 'Kỹ thuật phần mềm' },
+      ]);
+    const sectionGroupBy = jest
+      .fn()
+      .mockResolvedValue([{ term: 'SU25' }, { term: 'SP25' }]);
+    const staffFindMany = jest
+      .fn()
+      .mockResolvedValue([
+        { id: 'gv-1', staffCode: 'GV001', fullName: 'Trần Bình' },
+      ]);
+    const sectionFindMany = jest.fn().mockResolvedValue([
+      {
+        id: 'cs-1',
+        code: 'COM2013-WD21301-SU26',
+        term: 'SU25',
+        subject: { code: 'COM2013', name: 'Web design' },
+      },
+    ]);
+    const localPrisma = {
+      student: { groupBy: studentGroupBy },
+      major: { findMany: majorFindMany },
+      classSection: { groupBy: sectionGroupBy, findMany: sectionFindMany },
+      staff: { findMany: staffFindMany },
+    } as unknown as PrismaService;
+    return {
+      service: new StudentsService(localPrisma, audit),
+      studentGroupBy,
+      majorFindMany,
+      sectionGroupBy,
+      staffFindMany,
+      sectionFindMany,
+    };
+  }
+
+  it('trả về 5 danh sách option ở dạng phẳng', async () => {
+    const { service: local } = setup();
+
+    await expect(local.filterOptions(adminUser)).resolves.toEqual({
+      terms: ['SU25', 'SP25'],
+      classCodes: ['SE1901', 'SE1902'],
+      majors: [{ id: 'mj-1', code: 'SE', name: 'Kỹ thuật phần mềm' }],
+      lecturers: [{ id: 'gv-1', staffCode: 'GV001', fullName: 'Trần Bình' }],
+      sections: [
+        {
+          id: 'cs-1',
+          code: 'COM2013-WD21301-SU26',
+          term: 'SU25',
+          subject: { code: 'COM2013', name: 'Web design' },
+        },
+      ],
+    });
+  });
+
+  it('RULE 2: danh sách lớp học phần trong bộ lọc bị giới hạn theo sectionScope', async () => {
+    const { service: local, sectionFindMany } = setup();
+
+    await local.filterOptions(lecturerUser);
+
+    const [args] = sectionFindMany.mock.calls[0] as [ScopedArgs];
+    expect(args.where?.AND).toEqual(LECTURER_SECTION_SCOPE);
+  });
+
+  it('vai trò toàn trường không bị giới hạn bộ môn', async () => {
+    const { service: local, studentGroupBy, majorFindMany } = setup();
+
+    await local.filterOptions(adminUser);
+
+    const [studentArgs] = studentGroupBy.mock.calls[0] as [ScopedArgs];
+    const [majorArgs] = majorFindMany.mock.calls[0] as [ScopedArgs];
+    expect(studentArgs.where?.departmentId).toBeUndefined();
+    expect(majorArgs.where?.departmentId).toBeUndefined();
+  });
+
+  it('RULE 2: giảng viên chỉ thấy lớp, ngành, kỳ và GV trong phạm vi mình', async () => {
+    const {
+      service: local,
+      studentGroupBy,
+      majorFindMany,
+      sectionGroupBy,
+      staffFindMany,
+    } = setup();
+
+    await local.filterOptions(lecturerUser);
+
+    const [studentArgs] = studentGroupBy.mock.calls[0] as [ScopedArgs];
+    const [majorArgs] = majorFindMany.mock.calls[0] as [ScopedArgs];
+    const [sectionArgs] = sectionGroupBy.mock.calls[0] as [ScopedArgs];
+    const [staffArgs] = staffFindMany.mock.calls[0] as [ScopedArgs];
+
+    expect(studentArgs.where?.AND).toEqual(LECTURER_SCOPE);
+    // Chỉ ngành của sinh viên mình đang dạy — KHÔNG liệt kê ngành của bộ môn.
+    expect(majorArgs.where?.OR).toEqual([
+      { students: { some: { AND: LECTURER_SCOPE } } },
+    ]);
+    // Lớp học phần không có departmentId — scope qua GV phụ trách.
+    expect(sectionArgs.where?.AND).toEqual(LECTURER_SECTION_SCOPE);
+    expect(staffArgs.where?.classSections?.some).toEqual({
+      AND: LECTURER_SECTION_SCOPE,
+    });
+  });
+
+  it('RULE 1: option giảng viên chỉ gồm id, mã và họ tên — không trường PII nào khác', async () => {
+    const { service: local, staffFindMany } = setup();
+
+    await local.filterOptions(adminUser);
+
+    const [staffArgs] = staffFindMany.mock.calls[0] as [ScopedArgs];
+    expect(Object.keys(staffArgs.select ?? {}).sort()).toEqual([
+      'fullName',
+      'id',
+      'staffCode',
+    ]);
   });
 });

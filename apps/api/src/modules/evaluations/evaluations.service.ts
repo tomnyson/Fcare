@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { AuthUser } from '../../common/types/auth-user';
-import { deptFilter, isDeptScoped } from '../../common/utils/dept-scope';
+import { isStudentInScope, studentScope } from '../../common/utils/dept-scope';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateEvaluationDto,
@@ -21,7 +21,7 @@ export class EvaluationsService {
       where: {
         studentId: query.studentId,
         term: query.term,
-        student: deptFilter(user),
+        student: studentScope(user),
       },
       orderBy: { createdAt: 'desc' },
       include: {
@@ -41,7 +41,7 @@ export class EvaluationsService {
   async create(user: AuthUser, dto: CreateEvaluationDto) {
     // Giảng viên chỉ được đánh giá sinh viên thuộc bộ môn của mình.
     const student = await this.prisma.student.findFirst({
-      where: { id: dto.studentId, ...deptFilter(user) },
+      where: { id: dto.studentId, ...studentScope(user) },
     });
     if (!student) {
       throw new NotFoundException(
@@ -86,10 +86,7 @@ export class EvaluationsService {
     if (!evaluation) {
       throw new NotFoundException('Không tìm thấy đánh giá.');
     }
-    if (
-      isDeptScoped(user) &&
-      evaluation.student.departmentId !== user.departmentId
-    ) {
+    if (!(await isStudentInScope(this.prisma, user, evaluation.studentId))) {
       throw new NotFoundException('Không tìm thấy đánh giá.');
     }
     return evaluation;

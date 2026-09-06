@@ -4,42 +4,78 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { apiFetch } from '../../lib/api';
-import { useNotifications, useUnreadCount } from '../../lib/hooks';
-import { ALERT_LEVEL_LABELS, formatDateTime, ROLE_LABELS } from '../../lib/labels';
+import { formatUnreadBadge } from '../../lib/discussion';
+import {
+  useDiscussionUnreadCount,
+  useNotifications,
+  useUnreadCount,
+} from '../../lib/hooks';
+import { ALERT_LEVEL_LABELS, formatDateTime } from '../../lib/labels';
 import type { AuthUser } from '../../lib/types';
-import { useNotificationStream } from '../../lib/use-notification-stream';
+import {
+  useDiscussionPollingFallback,
+  useNotificationStream,
+} from '../../lib/use-notification-stream';
+import { ANALYSIS_RISK_LABELS } from '../students/student-analysis-helpers';
 
 export function Topbar({ user }: { user: AuthUser }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   useNotificationStream();
+  useDiscussionPollingFallback();
   const { data: unread } = useUnreadCount();
+  const { data: discussionUnread } = useDiscussionUnreadCount();
   const { data: notifications } = useNotifications(open);
-
-  async function onLogout() {
-    await apiFetch('/auth/logout', { method: 'POST' }).catch(() => undefined);
-    queryClient.clear();
-    router.push('/login');
-  }
 
   async function onMarkAllRead() {
     await apiFetch('/notifications/read-all', { method: 'POST' });
     await queryClient.invalidateQueries({ queryKey: ['notifications'] });
   }
 
+  async function onOpenNotification(notification: NonNullable<typeof notifications>[number]) {
+    await apiFetch(`/notifications/${notification.id}/read`, { method: 'PATCH' }).catch(() => undefined);
+    await queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    setOpen(false);
+    router.push(notification.targetUrl ?? (notification.alert ? '/alerts' : '/dashboard'));
+  }
+
   const unreadCount = unread?.count ?? 0;
+  // Badge tổng cho trao đổi nội bộ: cho biết "có luồng nào cần bạn xem" mà
+  // không phải mở từng hồ sơ sinh viên. Không có trang hộp thư trao đổi nên
+  // đây là chỉ báo, không phải nút bấm — bấm vào đâu cũng là đoán sai ý.
+  const discussionBadge = formatUnreadBadge(discussionUnread?.count ?? 0);
 
   return (
     <header className="flex items-center justify-between gap-4 border-b border-border bg-white px-6 py-3">
-      <p className="text-sm text-muted max-sm:hidden">
-        Xin chào, <strong className="text-ink">{user.fullName}</strong>
-        <span className="ml-2 rounded-full bg-fpt-orange-50 px-2.5 py-0.5 text-xs font-semibold text-fpt-orange">
-          {user.roles.map((role) => ROLE_LABELS[role]).join(', ')}
-        </span>
+      <p className="truncate text-sm font-semibold text-fpt-blue-900 max-sm:hidden">
+        Xin chào, {user.fullName}
       </p>
 
       <div className="flex items-center gap-3">
+        {discussionBadge ? (
+          <p
+            role="status"
+            // LOW-G: tooltip `title` chỉ tồn tại cho chuột. Nhãn của vùng
+            // live region phải nằm ở `aria-label` thì bàn phím và cảm ứng mới
+            // nghe được; phần đếm vẫn nằm trong nội dung để đọc khi thay đổi.
+            aria-label="Trao đổi nội bộ — mở hồ sơ sinh viên để đọc trao đổi"
+            className="flex items-center gap-2 rounded-full border border-border bg-fpt-blue/5 py-1 pl-3 pr-1.5 text-xs font-semibold text-fpt-blue-700"
+          >
+            <span aria-hidden="true">💬</span>
+            <span className="max-sm:sr-only">Trao đổi</span>
+            <span
+              aria-hidden="true"
+              className="flex h-5 min-w-5 items-center justify-center rounded-full bg-fpt-blue px-1.5 text-[11px] font-bold text-white"
+            >
+              {discussionBadge}
+            </span>
+            <span className="sr-only">
+              {`${discussionUnread?.count ?? 0} luồng trao đổi có tin chưa đọc`}
+            </span>
+          </p>
+        ) : null}
+
         <div className="relative">
           <button
             type="button"
@@ -76,14 +112,22 @@ export function Topbar({ user }: { user: AuthUser }) {
                       key={notification.id}
                       className={`px-4 py-3 text-sm ${notification.readAt ? 'opacity-60' : 'bg-fpt-orange-50/40'}`}
                     >
-                      <p className="font-semibold text-ink">{notification.title}</p>
-                      <p className="mt-0.5 line-clamp-2 text-muted">{notification.body}</p>
-                      <p className="mt-1 text-xs text-muted">
-                        {notification.alert
-                          ? `Mức ${ALERT_LEVEL_LABELS[notification.alert.level] ?? notification.alert.level} · `
-                          : ''}
-                        {formatDateTime(notification.createdAt)}
-                      </p>
+                      <button
+                        type="button"
+                        className="w-full text-left"
+                        onClick={() => void onOpenNotification(notification)}
+                      >
+                        <p className="font-semibold text-ink">{notification.title}</p>
+                        <p className="mt-0.5 line-clamp-2 text-muted">{notification.body}</p>
+                        <p className="mt-1 text-xs text-muted">
+                          {notification.analysis?.riskLevel
+                            ? `Rủi ro ${ANALYSIS_RISK_LABELS[notification.analysis.riskLevel]} · `
+                            : notification.alert
+                              ? `Mức ${ALERT_LEVEL_LABELS[notification.alert.level] ?? notification.alert.level} · `
+                              : ''}
+                          {formatDateTime(notification.createdAt)}
+                        </p>
+                      </button>
                     </li>
                   ))
                 )}
@@ -91,14 +135,6 @@ export function Topbar({ user }: { user: AuthUser }) {
             </div>
           ) : null}
         </div>
-
-        <button
-          type="button"
-          onClick={onLogout}
-          className="rounded-md border border-border px-4 py-2 text-sm font-semibold text-ink transition-colors hover:border-danger hover:bg-danger/5 hover:text-danger"
-        >
-          Đăng xuất
-        </button>
       </div>
     </header>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 
 interface ModalProps {
   title: string;
@@ -10,6 +10,10 @@ interface ModalProps {
 }
 
 export function Modal({ title, open, onClose, children }: ModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  /** Phần tử đang focus lúc dialog mở — phải trả focus về đúng chỗ này khi đóng. */
+  const triggerRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     if (!open) {
       return;
@@ -23,6 +27,21 @@ export function Modal({ title, open, onClose, children }: ModalProps) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
 
+  // Focus vào dialog khi mở và trả focus về nút kích hoạt khi đóng — nếu không,
+  // người dùng bàn phím bị rơi về đầu trang sau mỗi lần đóng hộp thoại.
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    triggerRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialogRef.current?.focus();
+    return () => {
+      triggerRef.current?.focus();
+      triggerRef.current = null;
+    };
+  }, [open]);
+
   if (!open) {
     return null;
   }
@@ -34,10 +53,12 @@ export function Modal({ title, open, onClose, children }: ModalProps) {
       role="presentation"
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-[var(--radius-card)] border-t-4 border-fpt-orange bg-white p-6 shadow-xl"
+        tabIndex={-1}
+        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-[var(--radius-card)] border-t-4 border-fpt-orange bg-white p-6 shadow-xl outline-none"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-4">

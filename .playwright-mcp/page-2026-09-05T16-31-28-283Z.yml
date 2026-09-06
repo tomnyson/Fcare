@@ -1,0 +1,29 @@
+- generic [ref=f15e1]:
+  - button "Open Next.js Dev Tools" [ref=f15e22] [cursor=pointer]
+  - alert [ref=f15e16]
+  - main [ref=f15e26]:
+    - generic [ref=f15e27]:
+      - heading "Cam kết bảo mật dữ liệu" [level=1] [ref=f15e28]
+      - paragraph [ref=f15e29]:
+        - text: Theo quy định của hệ thống FCare, bạn phải xác nhận cam kết dưới đây
+        - strong [ref=f15e30]: mỗi lần đăng nhập
+        - text: trước khi truy cập dữ liệu sinh viên.
+      - list [ref=f15e31]:
+        - listitem [ref=f15e32]:
+          - generic [ref=f15e33]: "1"
+          - text: Không chia sẻ, sao chép hay phát tán dữ liệu sinh viên ra ngoài hệ thống.
+        - listitem [ref=f15e34]:
+          - generic [ref=f15e35]: "2"
+          - text: Chỉ sử dụng dữ liệu cho mục đích chăm sóc và hỗ trợ học vụ.
+        - listitem [ref=f15e36]:
+          - generic [ref=f15e37]: "3"
+          - text: Không tự ý thu thập thêm thông tin cá nhân nhạy cảm (CCCD, SĐT, email, địa chỉ).
+        - listitem [ref=f15e38]:
+          - generic [ref=f15e39]: "4"
+          - text: Báo ngay cho quản trị viên khi phát hiện truy cập bất thường hoặc rò rỉ dữ liệu.
+      - generic [ref=f15e40] [cursor=pointer]:
+        - checkbox "Tôi đã đọc, hiểu và cam kết tuân thủ toàn bộ quy định bảo mật dữ liệu nêu trên." [checked] [active] [ref=f15e41]
+        - text: Tôi đã đọc, hiểu và cam kết tuân thủ toàn bộ quy định bảo mật dữ liệu nêu trên.
+      - generic [ref=f15e42]:
+        - button "Từ chối & đăng xuất" [ref=f15e43]
+        - button "Xác nhận cam kết" [ref=f15e44]

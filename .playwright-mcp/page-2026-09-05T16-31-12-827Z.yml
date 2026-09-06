@@ -1,0 +1,16 @@
+- generic [active] [ref=f15e1]:
+  - main [ref=f15e2]:
+    - generic [ref=f15e4]:
+      - generic [ref=f15e5]:
+        - heading "Đăng nhập" [level=2] [ref=f15e6]
+        - paragraph [ref=f15e7]: Dùng mã nhân viên do nhà trường cấp. Quên mật khẩu? Liên hệ quản trị viên để nhận mật khẩu tạm.
+      - generic [ref=f15e8]:
+        - generic [ref=f15e9]: Mã nhân viên
+        - textbox "Mã nhân viên" [ref=f15e10]:
+          - /placeholder: "vd: gv.binh"
+      - generic [ref=f15e11]:
+        - generic [ref=f15e12]: Mật khẩu
+        - textbox "Mật khẩu" [ref=f15e13]
+      - button "Đăng nhập" [ref=f15e14]
+      - paragraph [ref=f15e15]: Sau khi đăng nhập bạn sẽ được yêu cầu xác nhận cam kết bảo mật dữ liệu.
+  - alert [ref=f15e16]

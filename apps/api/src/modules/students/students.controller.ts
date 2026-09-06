@@ -33,6 +33,14 @@ export class StudentsController {
     return this.studentsService.list(user, query);
   }
 
+  // PHẢI đứng trước @Get(':id') — nếu không, 'filter-options' rơi vào route id
+  // và bị ParseUUIDPipe chặn.
+  @Get('filter-options')
+  @CheckPolicies((ability: AppAbility) => ability.can('read', 'Student'))
+  filterOptions(@CurrentUser() user: AuthUser) {
+    return this.studentsService.filterOptions(user);
+  }
+
   @Get(':id')
   @CheckPolicies((ability: AppAbility) => ability.can('read', 'Student'))
   findOne(

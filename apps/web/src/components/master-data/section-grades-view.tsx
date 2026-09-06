@@ -1,12 +1,13 @@
 'use client';
 
-import { Button } from '@fcare/ui-kit';
+import { Badge, Button } from '@fcare/ui-kit';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { DataTable, Td } from '../ui/data-table';
 import { FormError, FormSuccess, Input, Select } from '../ui/form';
 import { PageHeader } from '../ui/page-header';
 import { ApiError, apiFetch } from '../../lib/api';
+import { ALERT_LEVEL_LABELS, ALERT_LEVEL_TONES } from '../../lib/labels';
 import { useMe } from '../../lib/hooks';
 import type {
   EnrollmentResult,
@@ -196,7 +197,9 @@ export function SectionGradesView({ sectionId }: { sectionId: string }) {
       </div>
 
       <DataTable
-        headers={['MSSV', 'Họ tên', 'Điểm tổng kết', 'Kết quả']}
+        headers={['MSSV', 'Họ tên', 'Cảnh báo', 'Điểm tổng kết', 'Kết quả']}
+        isLoading={isLoading}
+        skeletonRows={8}
         isEmpty={!isLoading && !isError && draft.length === 0}
         emptyMessage="Lớp chưa có sinh viên ghi danh."
       >
@@ -204,6 +207,15 @@ export function SectionGradesView({ sectionId }: { sectionId: string }) {
           <tr key={row.enrollmentId}>
             <Td className="font-semibold text-ink">{row.studentCode}</Td>
             <Td>{row.fullName}</Td>
+            <Td>
+              {row.alertLevel === null ? (
+                <span className="text-muted">—</span>
+              ) : (
+                <Badge tone={ALERT_LEVEL_TONES[row.alertLevel] ?? 'info'}>
+                  Mức {row.alertLevel} — {ALERT_LEVEL_LABELS[row.alertLevel] ?? row.alertLevel}
+                </Badge>
+              )}
+            </Td>
             <Td>
               <Input
                 type="number"

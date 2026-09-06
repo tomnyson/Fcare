@@ -6,6 +6,9 @@ export interface NotificationEvent {
   payload: {
     id: string;
     alertId: string | null;
+    analysisVersionId?: string | null;
+    discussionMessageId?: string | null;
+    targetUrl?: string | null;
     title: string;
     body: string;
     createdAt: Date;

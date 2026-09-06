@@ -6,6 +6,8 @@ function payloadFor(title: string) {
   return {
     id: `id-${title}`,
     alertId: 'alert-1',
+    analysisVersionId: null,
+    targetUrl: null,
     title,
     body: 'nội dung',
     createdAt: new Date('2026-07-02T00:00:00Z'),

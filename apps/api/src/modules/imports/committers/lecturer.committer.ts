@@ -12,6 +12,13 @@ interface LecturerPayload {
   username: string;
   fullName: string;
   lecturerType: 'FULL' | 'PART' | null;
+  /** Mã bộ môn suy từ sheet phân công lớp; null khi chưa suy được. */
+  deptAlias: string | null;
+}
+
+/** Khoá tra alias: cắt khoảng trắng + hạ chữ thường (giống catalog.committer). */
+function aliasKey(raw: string): string {
+  return raw.trim().toLowerCase();
 }
 
 export class LecturerCommitter implements ImportCommitter {
@@ -31,6 +38,14 @@ export class LecturerCommitter implements ImportCommitter {
       payload.username.toUpperCase(),
     );
 
+    // Nạp một lần cho cả lô — tránh N+1.
+    const aliases = await tx.departmentAlias.findMany({
+      select: { alias: true, departmentId: true },
+    });
+    const departmentByAlias = new Map(
+      aliases.map((entry) => [aliasKey(entry.alias), entry.departmentId]),
+    );
+
     const existing = await tx.staff.findMany({
       where: {
         OR: [
@@ -38,12 +53,17 @@ export class LecturerCommitter implements ImportCommitter {
           { staffCode: { in: staffCodes } },
         ],
       },
-      select: { id: true, username: true, staffCode: true },
+      select: {
+        id: true,
+        username: true,
+        staffCode: true,
+        departmentId: true,
+      },
     });
     const byUsername = new Map(
       existing
         .filter((staff) => staff.username !== null)
-        .map((staff) => [staff.username as string, staff.id]),
+        .map((staff) => [staff.username as string, staff]),
     );
     const byStaffCode = new Map(
       existing.map((staff) => [staff.staffCode, staff.id]),
@@ -58,14 +78,25 @@ export class LecturerCommitter implements ImportCommitter {
     let skipped = 0;
 
     for (const payload of payloads) {
-      const existingId = byUsername.get(payload.username);
-      if (existingId) {
+      // Alias chưa ánh xạ → để trống. KHÔNG đoán bộ môn: gán sai sẽ phá
+      // deptFilter và cho giảng viên thấy sinh viên bộ môn khác (RULE 2).
+      const departmentId = payload.deptAlias
+        ? (departmentByAlias.get(aliasKey(payload.deptAlias)) ?? null)
+        : null;
+
+      const existingStaff = byUsername.get(payload.username);
+      if (existingStaff) {
         // Tài khoản đã có: KHÔNG đụng vào mật khẩu hay vai trò.
         await tx.staff.update({
-          where: { id: existingId },
+          where: { id: existingStaff.id },
           data: {
             fullName: payload.fullName,
             lecturerType: payload.lecturerType,
+            // Chỉ điền khi đang trống: bộ môn admin gán tay là nguồn sự thật,
+            // không để suy đoán từ file ghi đè.
+            ...(departmentId && existingStaff.departmentId === null
+              ? { departmentId }
+              : {}),
           },
         });
         updated += 1;
@@ -86,6 +117,7 @@ export class LecturerCommitter implements ImportCommitter {
           username: payload.username,
           fullName: payload.fullName,
           lecturerType: payload.lecturerType,
+          departmentId,
           passwordHash,
           mustChangePassword: true,
         },

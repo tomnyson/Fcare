@@ -238,6 +238,8 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
           {errorBanner(departments)}
           <DataTable
           headers={['Mã', 'Tên bộ môn', 'Sinh viên', 'GV/NV', 'Ngành', ...actionHeader]}
+          isLoading={departments.isLoading}
+          skeletonRows={5}
           isEmpty={!departments.isLoading && !departments.isError && (departments.data?.length ?? 0) === 0}
           emptyMessage="Chưa có bộ môn nào — bấm “+ Thêm bộ môn” để tạo danh mục đầu tiên."
         >
@@ -260,6 +262,8 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
           {errorBanner(majors)}
           <DataTable
           headers={['Mã', 'Tên ngành', 'Bộ môn', 'Sinh viên', ...actionHeader]}
+          isLoading={majors.isLoading}
+          skeletonRows={5}
           isEmpty={!majors.isLoading && !majors.isError && (majors.data?.length ?? 0) === 0}
           emptyMessage="Chưa có ngành học nào — bấm “+ Thêm ngành học” để tạo danh mục đầu tiên."
         >
@@ -281,6 +285,8 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
           {errorBanner(subjects)}
           <DataTable
           headers={['Mã môn', 'Tên môn học', 'Tín chỉ', 'Bộ môn', 'Lớp học phần', ...actionHeader]}
+          isLoading={subjects.isLoading}
+          skeletonRows={5}
           isEmpty={!subjects.isLoading && !subjects.isError && (subjects.data?.length ?? 0) === 0}
           emptyMessage="Chưa có môn học nào — bấm “+ Thêm môn học” để tạo danh mục đầu tiên."
         >
@@ -303,6 +309,8 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
           {errorBanner(classSections)}
           <DataTable
           headers={['Mã lớp', 'Môn', 'Giảng viên', 'Học kỳ', 'Sĩ số', 'Bảng điểm', ...actionHeader]}
+          isLoading={classSections.isLoading}
+          skeletonRows={6}
           isEmpty={
             !classSections.isLoading &&
             !classSections.isError &&

@@ -7,7 +7,13 @@ import {
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
 import type { AuthUser } from '../../common/types/auth-user';
-import { deptFilter, isDeptScoped } from '../../common/utils/dept-scope';
+import {
+  deptFilter,
+  isDeptScoped,
+  sectionScope,
+  seesWholeDepartment,
+  studentScope,
+} from '../../common/utils/dept-scope';
 import { isPrismaError } from '../../common/utils/prisma-error';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -16,6 +22,9 @@ import {
   ListStudentsQuery,
   UpdateStudentDto,
 } from './dto/student.dto';
+
+/** Trần option lớp học phần cho dropdown bộ lọc (xem `filterOptions`). */
+const SECTION_OPTIONS_LIMIT = 500;
 
 @Injectable()
 export class StudentsService {
@@ -30,10 +39,32 @@ export class StudentsService {
 
     const where: Prisma.StudentWhereInput = {
       ...(query.departmentId ? { departmentId: query.departmentId } : {}),
-      ...(query.missingMajor ? { majorId: null } : {}),
-      // Scope theo bộ môn đặt SAU filter query để luôn thắng với người dùng bị giới hạn.
-      ...deptFilter(user),
+      // missingMajor thắng majorId: hai bộ lọc loại trừ nhau về nghĩa
+      // (cùng quy ước với `unassigned` trong class-sections.service.ts).
+      ...(query.missingMajor
+        ? { majorId: null }
+        : query.majorId
+          ? { majorId: query.majorId }
+          : {}),
+      // Scope đặt SAU filter query để luôn thắng với người dùng bị giới hạn.
+      ...studentScope(user),
       ...(query.classCode ? { classCode: query.classCode } : {}),
+      // Kỳ, giảng viên và lớp học phần đều nằm phía ClassSection, nối qua
+      // Enrollment. Gộp vào CÙNG một `some` để "kỳ SU25 + thầy A" nghĩa là học
+      // phần kỳ SU25 do thầy A dạy, chứ không phải hai lần đăng ký rời nhau.
+      ...(query.term || query.lecturerId || query.sectionId
+        ? {
+            enrollments: {
+              some: {
+                ...(query.sectionId ? { classSectionId: query.sectionId } : {}),
+                classSection: {
+                  ...(query.term ? { term: query.term } : {}),
+                  ...(query.lecturerId ? { lecturerId: query.lecturerId } : {}),
+                },
+              },
+            },
+          }
+        : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.search
         ? {
@@ -65,9 +96,77 @@ export class StudentsService {
     return { items, meta: { total, page, limit } };
   }
 
+  /**
+   * Nguồn cấp option cho bộ lọc trang danh sách sinh viên. Tất cả đều giới hạn
+   * theo bộ môn (RULE 2): người dùng bị scope không được biết bộ môn khác có
+   * lớp, ngành hay giảng viên nào.
+   */
+  async filterOptions(user: AuthUser) {
+    const scope = studentScope(user);
+    const sections = sectionScope(user);
+    // Ngành hiện trong bộ lọc = ngành của sinh viên trong phạm vi. Trưởng bộ môn
+    // thấy thêm mọi ngành của bộ môn mình (kể cả ngành chưa có sinh viên nào);
+    // giảng viên thuần thì KHÔNG được biết bộ môn có những ngành nào khác.
+    const majorWhere: Prisma.MajorWhereInput = isDeptScoped(user)
+      ? {
+          OR: [
+            { students: { some: scope } },
+            ...(seesWholeDepartment(user) ? [deptFilter(user)] : []),
+          ],
+        }
+      : {};
+
+    const [classCodeRows, majors, termRows, lecturers, sectionRows] =
+      await Promise.all([
+        this.prisma.student.groupBy({
+          by: ['classCode'],
+          where: scope,
+          orderBy: { classCode: 'asc' },
+        }),
+        this.prisma.major.findMany({
+          where: majorWhere,
+          select: { id: true, code: true, name: true },
+          orderBy: { name: 'asc' },
+        }),
+        this.prisma.classSection.groupBy({
+          by: ['term'],
+          where: sections,
+          orderBy: { term: 'desc' },
+        }),
+        this.prisma.staff.findMany({
+          where: { classSections: { some: sections } },
+          // RULE 1: chỉ mã nhân viên và họ tên, tuyệt đối không thêm trường liên hệ.
+          select: { id: true, staffCode: true, fullName: true },
+          orderBy: { fullName: 'asc' },
+        }),
+        // Lớp học phần trong tầm nhìn, để lọc thẳng "sinh viên lớp này". Trần
+        // SECTION_OPTIONS_LIMIT chặn dropdown phình với vai trò toàn trường —
+        // người dùng chọn học kỳ trước rồi mới chọn lớp.
+        this.prisma.classSection.findMany({
+          where: sections,
+          select: {
+            id: true,
+            code: true,
+            term: true,
+            subject: { select: { code: true, name: true } },
+          },
+          orderBy: [{ term: 'desc' }, { code: 'asc' }],
+          take: SECTION_OPTIONS_LIMIT,
+        }),
+      ]);
+
+    return {
+      terms: termRows.map((row) => row.term),
+      classCodes: classCodeRows.map((row) => row.classCode),
+      majors,
+      lecturers,
+      sections: sectionRows,
+    };
+  }
+
   async findOne(user: AuthUser, id: string) {
     const student = await this.prisma.student.findFirst({
-      where: { id, ...deptFilter(user) },
+      where: { id, ...studentScope(user) },
       include: {
         major: { select: { id: true, code: true, name: true } },
         department: { select: { id: true, code: true, name: true } },
@@ -152,6 +251,14 @@ export class StudentsService {
 
   async remove(user: AuthUser, id: string) {
     await this.findOne(user, id);
+    const analysisCount = await this.prisma.studentTermAnalysis.count({
+      where: { studentId: id },
+    });
+    if (analysisCount > 0) {
+      throw new ConflictException(
+        'Không thể xóa sinh viên đã có lịch sử phân tích AI. Hãy chuyển trạng thái sinh viên thay vì xóa.',
+      );
+    }
     await this.prisma.student.delete({ where: { id } });
     return { deleted: true };
   }

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { AuthUser } from '../../common/types/auth-user';
-import { deptFilter, isDeptScoped } from '../../common/utils/dept-scope';
+import { isStudentInScope, studentScope } from '../../common/utils/dept-scope';
 import { isPrismaError } from '../../common/utils/prisma-error';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -23,7 +23,7 @@ export class EnrollmentsService {
       where: {
         studentId: query.studentId,
         classSectionId: query.classSectionId,
-        student: deptFilter(user),
+        student: studentScope(user),
       },
       orderBy: { createdAt: 'desc' },
       include: {
@@ -49,7 +49,7 @@ export class EnrollmentsService {
 
   async create(user: AuthUser, dto: CreateEnrollmentDto) {
     const student = await this.prisma.student.findFirst({
-      where: { id: dto.studentId, ...deptFilter(user) },
+      where: { id: dto.studentId, ...studentScope(user) },
     });
     if (!student) {
       throw new NotFoundException('Không tìm thấy sinh viên.');
@@ -95,11 +95,8 @@ export class EnrollmentsService {
     if (!enrollment) {
       throw new NotFoundException('Không tìm thấy bản ghi học phần.');
     }
-    if (
-      isDeptScoped(user) &&
-      enrollment.student.departmentId !== user.departmentId
-    ) {
-      throw new ForbiddenException('Sinh viên không thuộc bộ môn của bạn.');
+    if (!(await isStudentInScope(this.prisma, user, enrollment.studentId))) {
+      throw new ForbiddenException('Sinh viên không thuộc phạm vi của bạn.');
     }
     await this.prisma.enrollment.delete({ where: { id } });
     return { deleted: true };

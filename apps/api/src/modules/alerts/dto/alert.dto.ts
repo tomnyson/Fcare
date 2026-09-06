@@ -64,6 +64,39 @@ export class ListAlertsQuery {
   @IsUUID()
   studentId?: string;
 
+  @ApiPropertyOptional({ description: 'Tìm theo MSSV hoặc họ tên sinh viên' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  search?: string;
+
+  @ApiPropertyOptional({ description: 'Lớp hành chính của sinh viên' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  classCode?: string;
+
+  @ApiPropertyOptional({ description: 'Ngành của sinh viên' })
+  @IsOptional()
+  @IsUUID()
+  majorId?: string;
+
+  @ApiPropertyOptional({ description: 'Học kỳ của lớp học phần sinh viên học' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  term?: string;
+
+  @ApiPropertyOptional({ description: 'Giảng viên phụ trách lớp học phần' })
+  @IsOptional()
+  @IsUUID()
+  lecturerId?: string;
+
+  @ApiPropertyOptional({ description: 'Lớp học phần cụ thể' })
+  @IsOptional()
+  @IsUUID()
+  sectionId?: string;
+
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   @Type(() => Number)

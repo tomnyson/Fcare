@@ -1,8 +1,10 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { API_URL } from './api';
+import { latestDiscussionMessageId } from './discussion';
+import { useNotificationsPolling } from './hooks';
 
 const RECONNECT_DELAY_MS = 5_000;
 
@@ -19,8 +21,17 @@ export function useNotificationStream(): void {
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let stopped = false;
 
-    function invalidate() {
+    function invalidate(event: MessageEvent<string>) {
       void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      // Thông báo của tin trao đổi → làm mới luồng đang mở, không cần biết luồng nào.
+      try {
+        const payload = JSON.parse(event.data) as { discussionMessageId?: string | null };
+        if (payload.discussionMessageId) {
+          void queryClient.invalidateQueries({ queryKey: ['discussions'] });
+        }
+      } catch {
+        // Payload lạ thì bỏ qua — invalidate thông báo ở trên đã chạy rồi.
+      }
     }
 
     function connect() {
@@ -58,4 +69,30 @@ export function useNotificationStream(): void {
       source?.close();
     };
   }, [queryClient]);
+}
+
+/**
+ * Lưới an toàn khi SSE rớt (proxy cắt kết nối, mạng chập chờn): danh sách thông
+ * báo tự làm mới mỗi 120s, và nếu có tin trao đổi mới thì làm mới luôn khung
+ * hội thoại — đúng việc mà nhánh SSE làm khi nhận `discussionMessageId`. Không
+ * có nhánh này, chuông báo cập nhật nhưng luồng đứng im tới khi người dùng F5.
+ */
+export function useDiscussionPollingFallback(): void {
+  const queryClient = useQueryClient();
+  const { data } = useNotificationsPolling();
+  const latestId = latestDiscussionMessageId(data);
+  // `undefined` = chưa có lần tải nào; lần tải ĐẦU chỉ đặt mốc, không invalidate
+  // (vừa mở trang thì luồng đã là dữ liệu mới).
+  const seenRef = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (data === undefined) {
+      return;
+    }
+    const previous = seenRef.current;
+    seenRef.current = latestId;
+    if (previous !== undefined && latestId !== null && latestId !== previous) {
+      void queryClient.invalidateQueries({ queryKey: ['discussions'] });
+    }
+  }, [data, latestId, queryClient]);
 }

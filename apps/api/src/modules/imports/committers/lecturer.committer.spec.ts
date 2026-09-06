@@ -14,6 +14,7 @@ interface CreateStaffArgs {
     lecturerType: 'FULL' | 'PART' | null;
     passwordHash: string;
     mustChangePassword: boolean;
+    departmentId?: string | null;
   };
 }
 
@@ -23,17 +24,21 @@ interface UpdateStaffArgs {
     fullName: string;
     lecturerType: 'FULL' | 'PART' | null;
     passwordHash?: string;
+    departmentId?: string | null;
   };
 }
 
 function makeTx() {
   return {
     staff: {
-      findMany: jest
-        .fn()
-        .mockResolvedValue([
-          { id: 'staff-1', username: 'cu1', staffCode: 'CU1' },
-        ]),
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: 'staff-1',
+          username: 'cu1',
+          staffCode: 'CU1',
+          departmentId: null,
+        },
+      ]),
       create: jest.fn().mockResolvedValue({ id: 'new-staff' }),
       update: jest.fn().mockResolvedValue({ id: 'staff-1' }),
     },
@@ -43,10 +48,17 @@ function makeTx() {
     staffRole: {
       createMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
+    departmentAlias: {
+      findMany: jest.fn().mockResolvedValue([
+        { alias: 'CNTT', departmentId: 'dept-cntt' },
+        { alias: 'UDPM', departmentId: 'dept-udpm' },
+      ]),
+    },
   } as unknown as PrismaTx & {
     staff: { findMany: jest.Mock; create: jest.Mock; update: jest.Mock };
     role: { findUniqueOrThrow: jest.Mock };
     staffRole: { createMany: jest.Mock };
+    departmentAlias: { findMany: jest.Mock };
   };
 }
 
@@ -136,5 +148,132 @@ describe('LecturerCommitter', () => {
     );
     expect(tx.staff.create).not.toHaveBeenCalled();
     expect(result).toEqual({ created: 0, updated: 0, skipped: 1 });
+  });
+});
+
+/**
+ * `Staff.departmentId` rỗng làm `deptFilter` trả `__no_department__` → giảng
+ * viên không thấy sinh viên nào. Import phải điền bộ môn suy từ sheet phân công.
+ */
+describe('LecturerCommitter — gán bộ môn', () => {
+  const committer = new LecturerCommitter();
+
+  it('tài khoản mới nhận departmentId khớp alias bộ môn', async () => {
+    const tx = makeTx();
+    await committer.commit(
+      [
+        row({
+          username: 'moi1',
+          fullName: 'GV Mới',
+          lecturerType: 'FULL',
+          deptAlias: 'CNTT',
+        }),
+      ],
+      tx,
+      ctx,
+    );
+    const [createArgs] = tx.staff.create.mock.calls[0] as [CreateStaffArgs];
+    expect(createArgs.data.departmentId).toBe('dept-cntt');
+  });
+
+  it('khớp alias không phân biệt hoa thường và khoảng trắng thừa', async () => {
+    const tx = makeTx();
+    await committer.commit(
+      [
+        row({
+          username: 'moi2',
+          fullName: 'GV Hai',
+          lecturerType: 'FULL',
+          deptAlias: '  udpm ',
+        }),
+      ],
+      tx,
+      ctx,
+    );
+    const [createArgs] = tx.staff.create.mock.calls[0] as [CreateStaffArgs];
+    expect(createArgs.data.departmentId).toBe('dept-udpm');
+  });
+
+  it('alias lạ → để trống bộ môn, KHÔNG đoán', async () => {
+    const tx = makeTx();
+    await committer.commit(
+      [
+        row({
+          username: 'moi3',
+          fullName: 'GV Ba',
+          lecturerType: 'FULL',
+          deptAlias: 'BM-LA',
+        }),
+      ],
+      tx,
+      ctx,
+    );
+    const [createArgs] = tx.staff.create.mock.calls[0] as [CreateStaffArgs];
+    expect(createArgs.data.departmentId ?? null).toBeNull();
+  });
+
+  it('tài khoản cũ đang trống bộ môn → import điền vào (backfill)', async () => {
+    const tx = makeTx();
+    await committer.commit(
+      [
+        row({
+          username: 'cu1',
+          fullName: 'Tên Mới',
+          lecturerType: 'PART',
+          deptAlias: 'CNTT',
+        }),
+      ],
+      tx,
+      ctx,
+    );
+    const [updateArgs] = tx.staff.update.mock.calls[0] as [UpdateStaffArgs];
+    expect(updateArgs.data.departmentId).toBe('dept-cntt');
+  });
+
+  it('tài khoản cũ đã có bộ môn (admin gán tay) → KHÔNG ghi đè', async () => {
+    const tx = makeTx();
+    tx.staff.findMany.mockResolvedValue([
+      {
+        id: 'staff-1',
+        username: 'cu1',
+        staffCode: 'CU1',
+        departmentId: 'dept-udpm',
+      },
+    ]);
+    await committer.commit(
+      [
+        row({
+          username: 'cu1',
+          fullName: 'Tên Mới',
+          lecturerType: 'PART',
+          deptAlias: 'CNTT',
+        }),
+      ],
+      tx,
+      ctx,
+    );
+    const [updateArgs] = tx.staff.update.mock.calls[0] as [UpdateStaffArgs];
+    expect(updateArgs.data.departmentId).toBeUndefined();
+  });
+
+  it('không suy được bộ môn (deptAlias null) → update không đụng tới departmentId', async () => {
+    const tx = makeTx();
+    await committer.commit(
+      [
+        row({
+          username: 'cu1',
+          fullName: 'Tên Mới',
+          lecturerType: 'PART',
+          deptAlias: null,
+        }),
+      ],
+      tx,
+      ctx,
+    );
+    const [updateArgs] = tx.staff.update.mock.calls[0] as [UpdateStaffArgs];
+    expect(updateArgs.data).toEqual({
+      fullName: 'Tên Mới',
+      lecturerType: 'PART',
+    });
   });
 });

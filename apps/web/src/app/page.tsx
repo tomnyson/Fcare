@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { BrandMark } from '../components/ui/brand-mark';
 
 const MODULES = [
   {
@@ -43,12 +44,7 @@ export default function Home() {
           className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4"
         >
           <div className="flex items-center gap-3">
-            <span
-              aria-hidden
-              className="grid size-9 place-items-center rounded-lg bg-fpt-orange font-[family-name:var(--font-display)] text-lg font-extrabold"
-            >
-              F
-            </span>
+            <BrandMark size={36} priority />
             <span className="font-[family-name:var(--font-display)] text-xl font-bold tracking-tight">
               FCare
             </span>

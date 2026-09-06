@@ -1,0 +1,215 @@
+- generic [ref=f12e1]:
+  - button "Open Next.js Dev Tools" [ref=f12e31] [cursor=pointer]
+  - alert [ref=f12e25]
+  - generic [ref=f12e35]:
+    - complementary [ref=f12e36]:
+      - link "F" [ref=f12e37] [cursor=pointer]:
+        - /url: /dashboard
+      - navigation "Điều hướng chính" [ref=f12e39]:
+        - link [ref=f12e40] [cursor=pointer]:
+          - /url: /dashboard
+          - generic [aria-hidden] [ref=f12e41]: ▦
+        - link [ref=f12e42] [cursor=pointer]:
+          - /url: /students
+          - generic [aria-hidden] [ref=f12e43]: ⛉
+        - link [ref=f12e44] [cursor=pointer]:
+          - /url: /alerts
+          - generic [aria-hidden] [ref=f12e45]: ⚠
+        - link [ref=f12e46] [cursor=pointer]:
+          - /url: /statistics
+          - generic [aria-hidden] [ref=f12e47]: ◈
+        - link [ref=f12e49] [cursor=pointer]:
+          - /url: /master-data/departments
+          - generic [aria-hidden] [ref=f12e50]: ◫
+        - link [ref=f12e51] [cursor=pointer]:
+          - /url: /master-data/majors
+          - generic [aria-hidden] [ref=f12e52]: ✦
+        - link [ref=f12e53] [cursor=pointer]:
+          - /url: /master-data/subjects
+          - generic [aria-hidden] [ref=f12e54]: ▤
+        - link [ref=f12e55] [cursor=pointer]:
+          - /url: /master-data/class-sections
+          - generic [aria-hidden] [ref=f12e56]: ☰
+        - link [ref=f12e57] [cursor=pointer]:
+          - /url: /master-data/department-aliases
+          - generic [aria-hidden] [ref=f12e58]: ▪
+        - link [ref=f12e59] [cursor=pointer]:
+          - /url: /master-data/class-major-rules
+          - generic [aria-hidden] [ref=f12e60]: ▪
+        - link [ref=f12e62] [cursor=pointer]:
+          - /url: /import-export
+          - generic [aria-hidden] [ref=f12e63]: ⇅
+        - link [ref=f12e64] [cursor=pointer]:
+          - /url: /admin/users
+          - generic [aria-hidden] [ref=f12e65]: ⚙
+    - generic [ref=f12e66]:
+      - banner [ref=f12e67]:
+        - paragraph [ref=f12e68]:
+          - text: Xin chào,
+          - strong [ref=f12e69]: Quản trị viên hệ thống
+          - text: Quản trị hệ thống
+        - generic [ref=f12e70]:
+          - button "Thông báo (0 chưa đọc)" [ref=f12e72]: 🔔
+          - button "Đăng xuất" [ref=f12e73]
+      - main [ref=f12e74]:
+        - generic [ref=f12e76]:
+          - heading "Thống kê" [level=1] [ref=f12e77]
+          - paragraph [ref=f12e78]: Số liệu học vụ theo lớp học phần, bộ môn, môn học và giáo viên — trong phạm vi bạn được phép truy cập.
+        - search "Bộ lọc thống kê" [ref=f12e79]:
+          - generic [ref=f12e82]:
+            - generic [ref=f12e83]: Học kỳ
+            - combobox "Học kỳ" [ref=f12e84]:
+              - option "Tất cả học kỳ" [selected]
+              - option "SU26"
+              - option "SU25"
+        - tablist "Chiều thống kê" [ref=f12e85]:
+          - tab "Lớp học phần" [ref=f12e86]
+          - tab "Bộ môn" [active] [selected] [ref=f12e87]
+          - tab "Môn học" [ref=f12e88]
+          - tab "Giảng viên" [ref=f12e89]
+        - table [ref=f12e1314]:
+          - rowgroup [ref=f12e1315]:
+            - row [ref=f12e1316]:
+              - columnheader "Mã bộ môn" [ref=f12e1317]
+              - columnheader "Tên bộ môn" [ref=f12e1318]
+              - columnheader "Tổng SV" [ref=f12e1319]
+              - columnheader "Tổng GV/NV" [ref=f12e1320]
+              - columnheader "Cảnh báo mở" [ref=f12e1321]
+              - columnheader "Đang học" [ref=f12e1322]
+              - columnheader "Bảo lưu" [ref=f12e1323]
+              - columnheader "Cảnh báo" [ref=f12e1324]
+              - columnheader "Thôi học" [ref=f12e1325]
+              - columnheader "Tốt nghiệp" [ref=f12e1326]
+          - rowgroup [ref=f12e1327]:
+            - row [ref=f12e1328]:
+              - cell "CNTT" [ref=f12e1329]
+              - cell "Công nghệ thông tin" [ref=f12e1330]
+              - cell "112" [ref=f12e1331]
+              - cell "5" [ref=f12e1332]
+              - cell "3" [ref=f12e1333]
+              - cell "111" [ref=f12e1334]
+              - cell "0" [ref=f12e1335]
+              - cell "1" [ref=f12e1336]
+              - cell "0" [ref=f12e1337]
+              - cell "0" [ref=f12e1338]
+            - row [ref=f12e1339]:
+              - cell "COBAN" [ref=f12e1340]
+              - cell "Cơ bản" [ref=f12e1341]
+              - cell "0" [ref=f12e1342]
+              - cell "0" [ref=f12e1343]
+              - cell "0" [ref=f12e1344]
+              - cell "0" [ref=f12e1345]
+              - cell "0" [ref=f12e1346]
+              - cell "0" [ref=f12e1347]
+              - cell "0" [ref=f12e1348]
+              - cell "0" [ref=f12e1349]
+            - row [ref=f12e1350]:
+              - cell "CODIEN" [ref=f12e1351]
+              - cell "Cơ điện" [ref=f12e1352]
+              - cell "0" [ref=f12e1353]
+              - cell "0" [ref=f12e1354]
+              - cell "0" [ref=f12e1355]
+              - cell "0" [ref=f12e1356]
+              - cell "0" [ref=f12e1357]
+              - cell "0" [ref=f12e1358]
+              - cell "0" [ref=f12e1359]
+              - cell "0" [ref=f12e1360]
+            - row [ref=f12e1361]:
+              - cell "DLNHKS" [ref=f12e1362]
+              - cell "Du lịch — Nhà hàng — Khách sạn" [ref=f12e1363]
+              - cell "0" [ref=f12e1364]
+              - cell "0" [ref=f12e1365]
+              - cell "0" [ref=f12e1366]
+              - cell "0" [ref=f12e1367]
+              - cell "0" [ref=f12e1368]
+              - cell "0" [ref=f12e1369]
+              - cell "0" [ref=f12e1370]
+              - cell "0" [ref=f12e1371]
+            - row [ref=f12e1372]:
+              - cell "GDQP" [ref=f12e1373]
+              - cell "Giáo dục quốc phòng" [ref=f12e1374]
+              - cell "0" [ref=f12e1375]
+              - cell "0" [ref=f12e1376]
+              - cell "0" [ref=f12e1377]
+              - cell "0" [ref=f12e1378]
+              - cell "0" [ref=f12e1379]
+              - cell "0" [ref=f12e1380]
+              - cell "0" [ref=f12e1381]
+              - cell "0" [ref=f12e1382]
+            - row [ref=f12e1383]:
+              - cell "KBEAUTY" [ref=f12e1384]
+              - cell "K-Beauty" [ref=f12e1385]
+              - cell "0" [ref=f12e1386]
+              - cell "0" [ref=f12e1387]
+              - cell "0" [ref=f12e1388]
+              - cell "0" [ref=f12e1389]
+              - cell "0" [ref=f12e1390]
+              - cell "0" [ref=f12e1391]
+              - cell "0" [ref=f12e1392]
+              - cell "0" [ref=f12e1393]
+            - row [ref=f12e1394]:
+              - cell "KINHTE" [ref=f12e1395]
+              - cell "Kinh tế" [ref=f12e1396]
+              - cell "0" [ref=f12e1397]
+              - cell "0" [ref=f12e1398]
+              - cell "0" [ref=f12e1399]
+              - cell "0" [ref=f12e1400]
+              - cell "0" [ref=f12e1401]
+              - cell "0" [ref=f12e1402]
+              - cell "0" [ref=f12e1403]
+              - cell "0" [ref=f12e1404]
+            - row [ref=f12e1405]:
+              - cell "NGONNGU" [ref=f12e1406]
+              - cell "Ngôn ngữ" [ref=f12e1407]
+              - cell "0" [ref=f12e1408]
+              - cell "0" [ref=f12e1409]
+              - cell "0" [ref=f12e1410]
+              - cell "0" [ref=f12e1411]
+              - cell "0" [ref=f12e1412]
+              - cell "0" [ref=f12e1413]
+              - cell "0" [ref=f12e1414]
+              - cell "0" [ref=f12e1415]
+            - row [ref=f12e1416]:
+              - cell "QHDN" [ref=f12e1417]
+              - cell "Quan hệ doanh nghiệp" [ref=f12e1418]
+              - cell "0" [ref=f12e1419]
+              - cell "0" [ref=f12e1420]
+              - cell "0" [ref=f12e1421]
+              - cell "0" [ref=f12e1422]
+              - cell "0" [ref=f12e1423]
+              - cell "0" [ref=f12e1424]
+              - cell "0" [ref=f12e1425]
+              - cell "0" [ref=f12e1426]
+            - row [ref=f12e1427]:
+              - cell "TKDH" [ref=f12e1428]
+              - cell "Thiết kế đồ hoạ" [ref=f12e1429]
+              - cell "2" [ref=f12e1430]
+              - cell "0" [ref=f12e1431]
+              - cell "0" [ref=f12e1432]
+              - cell "2" [ref=f12e1433]
+              - cell "0" [ref=f12e1434]
+              - cell "0" [ref=f12e1435]
+              - cell "0" [ref=f12e1436]
+              - cell "0" [ref=f12e1437]
+            - row [ref=f12e1438]:
+              - cell "TMDT" [ref=f12e1439]
+              - cell "Thương mại điện tử" [ref=f12e1440]
+              - cell "7" [ref=f12e1441]
+              - cell "0" [ref=f12e1442]
+              - cell "0" [ref=f12e1443]
+              - cell "7" [ref=f12e1444]
+              - cell "0" [ref=f12e1445]
+              - cell "0" [ref=f12e1446]
+              - cell "0" [ref=f12e1447]
+              - cell "0" [ref=f12e1448]
+            - row [ref=f12e1449]:
+              - cell "UDPM" [ref=f12e1450]
+              - cell "Ứng dụng phần mềm" [ref=f12e1451]
+              - cell "79" [ref=f12e1452]
+              - cell "1" [ref=f12e1453]
+              - cell "0" [ref=f12e1454]
+              - cell "79" [ref=f12e1455]
+              - cell "0" [ref=f12e1456]
+              - cell "0" [ref=f12e1457]
+              - cell "0" [ref=f12e1458]
+              - cell "0" [ref=f12e1459]

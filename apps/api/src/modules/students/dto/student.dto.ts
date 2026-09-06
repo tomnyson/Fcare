@@ -92,6 +92,34 @@ export class ListStudentsQuery {
   @IsUUID()
   departmentId?: string;
 
+  @ApiPropertyOptional({ description: 'Lọc theo ngành học' })
+  @IsOptional()
+  @IsUUID()
+  majorId?: string;
+
+  @ApiPropertyOptional({
+    example: 'SU25',
+    description: 'Chỉ lấy sinh viên có học phần trong học kỳ này',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  term?: string;
+
+  @ApiPropertyOptional({
+    description: 'Chỉ lấy sinh viên có học phần do giảng viên này phụ trách',
+  })
+  @IsOptional()
+  @IsUUID()
+  lecturerId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Chỉ lấy sinh viên đang học một lớp học phần cụ thể',
+  })
+  @IsOptional()
+  @IsUUID()
+  sectionId?: string;
+
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   @Type(() => Number)

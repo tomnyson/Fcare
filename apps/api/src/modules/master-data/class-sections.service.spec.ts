@@ -18,6 +18,7 @@ interface MockHandles {
   findUnique: jest.Mock;
   enrollmentUpdate: jest.Mock;
   transaction: jest.Mock;
+  alertGroupBy: jest.Mock;
 }
 
 function makePrisma(): MockHandles {
@@ -25,12 +26,21 @@ function makePrisma(): MockHandles {
   const findUnique = jest.fn();
   const enrollmentUpdate = jest.fn().mockResolvedValue({});
   const transaction = jest.fn().mockResolvedValue([]);
+  const alertGroupBy = jest.fn().mockResolvedValue([]);
   const prisma = {
     classSection: { findMany, findUnique },
     enrollment: { update: enrollmentUpdate },
+    alert: { groupBy: alertGroupBy },
     $transaction: transaction,
   } as unknown as PrismaService;
-  return { prisma, findMany, findUnique, enrollmentUpdate, transaction };
+  return {
+    prisma,
+    findMany,
+    findUnique,
+    enrollmentUpdate,
+    transaction,
+    alertGroupBy,
+  };
 }
 
 const auditLog = jest.fn();
@@ -43,7 +53,14 @@ interface FindAllArgs {
 /** findGrades và updateGrades đều dùng `select.enrollments.where` (fix vòng 1,
  * mục 5: findGrades đổi từ `include` sang `select` tường minh). */
 interface SelectEnrollmentsArgs {
-  select: { enrollments: { where: { student: { departmentId?: string } } } };
+  select: { enrollments: { where: { student: unknown } } };
+}
+
+/** Phạm vi sinh viên của giảng viên: chỉ sinh viên lớp mình đang dạy. */
+function scopeOf(staffId: string) {
+  return {
+    AND: [{ enrollments: { some: { classSection: { lecturerId: staffId } } } }],
+  };
 }
 
 describe('ClassSectionsService — lọc lớp chưa phân công', () => {
@@ -108,6 +125,7 @@ describe('ClassSectionsService — bảng điểm lớp', () => {
         fullName: 'Nguyễn Văn A',
         totalScore: 7.5,
         result: EnrollmentResult.PASS,
+        alertLevel: null,
       },
     ]);
   });
@@ -120,7 +138,7 @@ describe('ClassSectionsService — bảng điểm lớp', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('giảng viên chỉ thấy sinh viên bộ môn mình trong lưới điểm (RULE 2)', async () => {
+  it('giảng viên chỉ thấy sinh viên lớp mình dạy trong lưới điểm (RULE 2)', async () => {
     const { prisma, findUnique } = makePrisma();
     findUnique.mockResolvedValue({
       id: 'cs-1',
@@ -134,8 +152,84 @@ describe('ClassSectionsService — bảng điểm lớp', () => {
     await new ClassSectionsService(prisma, audit).findGrades(lecturer, 'cs-1');
     const [args] = findUnique.mock.calls[0] as [SelectEnrollmentsArgs];
     expect(args.select.enrollments.where).toEqual({
-      student: { departmentId: 'bm-1' },
+      student: scopeOf('staff-2'),
     });
+  });
+
+  it('gắn cấp độ cảnh báo chưa xử lý cao nhất vào từng dòng danh sách lớp', async () => {
+    const { prisma, findUnique, alertGroupBy } = makePrisma();
+    findUnique.mockResolvedValue({
+      id: 'cs-1',
+      code: 'SOF1021.1',
+      term: 'FA25',
+      subject: { code: 'SOF1021', name: 'Lập trình' },
+      enrollments: [
+        {
+          id: 'enr-1',
+          totalScore: null,
+          result: EnrollmentResult.IN_PROGRESS,
+          student: { id: 'stu-1', studentCode: 'PK1', fullName: 'A' },
+        },
+        {
+          id: 'enr-2',
+          totalScore: null,
+          result: EnrollmentResult.IN_PROGRESS,
+          student: { id: 'stu-2', studentCode: 'PK2', fullName: 'B' },
+        },
+      ],
+    });
+    alertGroupBy.mockResolvedValue([
+      { studentId: 'stu-2', _max: { level: 3 } },
+    ]);
+
+    const result = await new ClassSectionsService(prisma, audit).findGrades(
+      user,
+      'cs-1',
+    );
+
+    expect(result.rows.map((row) => row.alertLevel)).toEqual([null, 3]);
+  });
+
+  it('chỉ hỏi cảnh báo chưa xử lý của đúng sinh viên trong lớp', async () => {
+    const { prisma, findUnique, alertGroupBy } = makePrisma();
+    findUnique.mockResolvedValue({
+      id: 'cs-1',
+      enrollments: [
+        {
+          id: 'enr-1',
+          totalScore: null,
+          result: EnrollmentResult.IN_PROGRESS,
+          student: { id: 'stu-1', studentCode: 'PK1', fullName: 'A' },
+        },
+      ],
+    });
+
+    await new ClassSectionsService(prisma, audit).findGrades(user, 'cs-1');
+
+    const [args] = alertGroupBy.mock.calls[0] as [
+      {
+        by: string[];
+        where: { studentId: { in: string[] }; status: { in: string[] } };
+        _max: { level: boolean };
+      },
+    ];
+    expect(args.by).toEqual(['studentId']);
+    expect(args.where.studentId.in).toEqual(['stu-1']);
+    expect(args.where.status.in).toEqual(['OPEN', 'ACKNOWLEDGED']);
+    expect(args._max.level).toBe(true);
+  });
+
+  it('lớp rỗng thì không truy vấn bảng cảnh báo', async () => {
+    const { prisma, findUnique, alertGroupBy } = makePrisma();
+    findUnique.mockResolvedValue({ id: 'cs-1', enrollments: [] });
+
+    const result = await new ClassSectionsService(prisma, audit).findGrades(
+      user,
+      'cs-1',
+    );
+
+    expect(result.rows).toEqual([]);
+    expect(alertGroupBy).not.toHaveBeenCalled();
   });
 
   it('cập nhật điểm chạy trong đúng một transaction', async () => {
@@ -185,7 +279,7 @@ describe('ClassSectionsService — bảng điểm lớp', () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
-  it('cập nhật điểm cũng lọc enrollment theo bộ môn người gọi (RULE 2)', async () => {
+  it('cập nhật điểm cũng lọc enrollment theo phạm vi người gọi (RULE 2)', async () => {
     const { prisma, findUnique } = makePrisma();
     findUnique.mockResolvedValue({
       id: 'cs-1',
@@ -213,7 +307,7 @@ describe('ClassSectionsService — bảng điểm lớp', () => {
     );
     const [args] = findUnique.mock.calls[0] as [SelectEnrollmentsArgs];
     expect(args.select.enrollments.where).toEqual({
-      student: { departmentId: 'dept-1' },
+      student: scopeOf('staff-2'),
     });
   });
 

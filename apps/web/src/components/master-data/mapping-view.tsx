@@ -155,6 +155,8 @@ export function MappingView({ tab }: { tab: MappingTabKey }) {
             ? ['Nhãn trong file Excel', 'Bộ môn đích', ...(canManage ? ['Thao tác'] : [])]
             : ['Tiền tố lớp', 'Ngành đích', ...(canManage ? ['Thao tác'] : [])]
         }
+        isLoading={items.isLoading}
+        skeletonRows={6}
         isEmpty={!items.isLoading && !items.isError && (items.data?.length ?? 0) === 0}
         emptyMessage="Chưa có ánh xạ nào."
       >

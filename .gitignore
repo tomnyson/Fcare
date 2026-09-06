@@ -24,6 +24,14 @@ coverage/
 playwright-report/
 test-results/
 
+# Playwright
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/
+apps/web/.playwright/
+# File .xlsx phái sinh do global setup sinh ra (bản đã xoá ô PII của file nguồn)
+apps/web/e2e/.artifacts/
+
 # OS / editor
 .DS_Store
 *.pem

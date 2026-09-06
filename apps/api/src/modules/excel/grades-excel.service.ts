@@ -63,7 +63,9 @@ export class GradesExcelService {
     assertNoForbiddenColumns(readHeaderRow(worksheet));
 
     const [sections, students] = await Promise.all([
-      this.prisma.classSection.findMany({ select: { id: true, code: true } }),
+      this.prisma.classSection.findMany({
+        select: { id: true, code: true, lecturerId: true },
+      }),
       this.prisma.student.findMany({
         select: { id: true, studentCode: true, departmentId: true },
       }),
@@ -102,10 +104,16 @@ export class GradesExcelService {
         });
         continue;
       }
-      if (isDeptScoped(user) && student.departmentId !== user.departmentId) {
+      // Ngoài bộ môn vẫn được nhập nếu chính mình đứng lớp học phần đó —
+      // một giảng viên có thể dạy lớp của bộ môn khác.
+      if (
+        isDeptScoped(user) &&
+        student.departmentId !== user.departmentId &&
+        section.lecturerId !== user.id
+      ) {
         errors.push({
           row: rowNumber,
-          message: 'Sinh viên không thuộc bộ môn của bạn.',
+          message: 'Sinh viên không thuộc phạm vi của bạn.',
         });
         continue;
       }
@@ -169,9 +177,12 @@ export class GradesExcelService {
     }
     if (
       isDeptScoped(user) &&
-      section.subject.departmentId !== user.departmentId
+      section.subject.departmentId !== user.departmentId &&
+      section.lecturerId !== user.id
     ) {
-      throw new BadRequestException('Lớp học phần không thuộc bộ môn của bạn.');
+      throw new BadRequestException(
+        'Lớp học phần không thuộc bộ môn của bạn và cũng không do bạn phụ trách.',
+      );
     }
 
     const enrollments = await this.prisma.enrollment.findMany({

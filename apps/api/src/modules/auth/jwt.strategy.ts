@@ -6,6 +6,7 @@ import type {
   AccessTokenPayload,
   AuthUser,
 } from '../../common/types/auth-user';
+import { getAccessTokenSecret } from './auth.config';
 
 interface RequestWithCookies {
   cookies?: Record<string, string | undefined>;
@@ -24,10 +25,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         ExtractJwt.fromAuthHeaderAsBearerToken(),
       ]),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>(
-        'JWT_ACCESS_SECRET',
-        'dev-access-secret-change-me',
-      ),
+      secretOrKey: getAccessTokenSecret(configService),
     });
   }
 

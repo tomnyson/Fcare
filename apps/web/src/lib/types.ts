@@ -111,6 +111,22 @@ export interface Student {
   _count?: Record<string, number>;
 }
 
+/** Nguồn cấp option cho bộ lọc trang danh sách sinh viên (`/students/filter-options`). */
+export interface ClassSectionOption {
+  id: string;
+  code: string;
+  term: string;
+  subject?: { code: string; name: string } | null;
+}
+
+export interface StudentFilterOptions {
+  terms: string[];
+  classCodes: string[];
+  majors: Array<{ id: string; code: string; name: string }>;
+  lecturers: StaffRef[];
+  sections: ClassSectionOption[];
+}
+
 export interface Enrollment {
   id: string;
   attendanceRate: number | null;
@@ -130,6 +146,8 @@ export interface SectionGradeRow {
   fullName: string;
   totalScore: number | null;
   result: EnrollmentResult;
+  /** Độ khẩn cao nhất trong các cảnh báo chưa xử lý của sinh viên (1-4). */
+  alertLevel: number | null;
 }
 
 export interface SectionGradesResponse {
@@ -184,12 +202,110 @@ export interface Notification {
   body: string;
   readAt: string | null;
   createdAt: string;
+  analysisVersionId?: string | null;
+  /** Có giá trị khi thông báo thuộc một luồng trao đổi nội bộ. */
+  discussionMessageId?: string | null;
+  targetUrl?: string | null;
   alert?: {
     id: string;
     level: number;
     status: AlertStatus;
     student?: { id: string; studentCode: string; fullName: string };
   } | null;
+  analysis?: {
+    id: string;
+    riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | null;
+  } | null;
+}
+
+export interface StudentAnalysisEvidenceItem {
+  finding: string;
+  evidence: string;
+}
+
+export interface StudentAnalysisOutput {
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+  summary: string;
+  strengths: string[];
+  trends: StudentAnalysisEvidenceItem[];
+  riskFactors: StudentAnalysisEvidenceItem[];
+  recommendations: string[];
+  notificationSummary: string;
+  dataLimitations: string[];
+}
+
+export interface StudentTermAnalysisVersionSummary {
+  id: string;
+  version: number;
+  status: 'QUEUED' | 'GENERATING' | 'DRAFT' | 'FAILED' | 'SUPERSEDED' | 'SEND_QUEUED' | 'SENT';
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | null;
+  notificationSummary: string | null;
+  createdAt: string;
+  updatedAt: string;
+  generatedAt: string | null;
+  sentAt: string | null;
+  errorMessage: string | null;
+  createdBy?: StaffRef | null;
+  reviewedBy?: StaffRef | null;
+}
+
+export interface StudentTermAnalysisSummary {
+  id: string;
+  studentId: string;
+  term: string;
+  owner: StaffRef;
+  canManage: boolean;
+  versions: StudentTermAnalysisVersionSummary[];
+}
+
+export interface StudentTermAnalysisRecipientPreview {
+  id: string;
+  staffCode: string;
+  fullName: string;
+  departmentId: string | null;
+  openedAt: string | null;
+}
+
+export interface StudentTermAnalysisDetail {
+  id: string;
+  version: number;
+  status: StudentTermAnalysisVersionSummary['status'];
+  term: string;
+  student: { id: string; studentCode: string; fullName: string };
+  owner?: StaffRef;
+  createdBy?: StaffRef | null;
+  reviewedBy?: StaffRef | null;
+  sender?: StaffRef | null;
+  sourceSnapshot?: unknown;
+  sourceHash?: string;
+  aiOriginal?: StudentAnalysisOutput | null;
+  editedOutput: StudentAnalysisOutput | null;
+  model?: string;
+  promptVersion?: string;
+  usage?: {
+    inputTokens: number | null;
+    outputTokens: number | null;
+    reasoningTokens: number | null;
+    totalTokens: number | null;
+  };
+  errorMessage?: string | null;
+  requestedAt?: string;
+  generatedAt?: string | null;
+  editedAt?: string | null;
+  reviewedAt?: string | null;
+  sentAt?: string | null;
+  recipients?: Array<
+    StudentTermAnalysisRecipientPreview & {
+      notificationId?: string | null;
+    }
+  >;
+  recipient?: {
+    id: string;
+    staffCode: string;
+    fullName: string;
+    openedAt: string | null;
+  } | null;
+  disclaimer?: string;
 }
 
 export interface StatisticsOverview {
@@ -203,8 +319,9 @@ export interface ClassStatistics {
   id: string;
   code: string;
   term: string;
-  subject?: { code: string; name: string };
-  lecturer?: { staffCode: string; fullName: string };
+  subject: { code: string; name: string };
+  /** `ClassSection.lecturerId` nullable → API trả `null` khi lớp chưa phân công. */
+  lecturer: { staffCode: string; fullName: string } | null;
   total: number;
   pass: number;
   fail: number;
@@ -218,9 +335,43 @@ export interface DepartmentStatistics {
   code: string;
   name: string;
   totalStudents: number;
-  totalStaff: number;
+  /** `null` khi người xem không được biết tổng nhân sự của bộ môn đó (giảng viên). */
+  totalStaff: number | null;
   openAlerts: number;
   studentsByStatus: Array<{ status: StudentStatus; count: number }>;
+}
+
+export interface SubjectStatistics {
+  id: string;
+  code: string;
+  name: string;
+  credits: number;
+  department: { code: string; name: string };
+  sectionCount: number;
+  total: number;
+  pass: number;
+  fail: number;
+  inProgress: number;
+  examBanned: number;
+  /** `null` khi chưa lớp nào có kết quả — hiển thị "—" chứ không phải 0%. */
+  passRate: number | null;
+  /** `null` khi chưa có bài nào có điểm. */
+  avgScore: number | null;
+}
+
+export interface LecturerStatistics {
+  id: string;
+  staffCode: string;
+  fullName: string;
+  department: { code: string; name: string } | null;
+  sectionCount: number;
+  total: number;
+  pass: number;
+  fail: number;
+  inProgress: number;
+  examBanned: number;
+  passRate: number | null;
+  evaluationCount: number;
 }
 
 export interface StaffMember {
@@ -291,4 +442,20 @@ export interface ImportCommitResult {
 
 export interface ImportDiscardResult {
   id: string;
+}
+
+/** Tin trong luồng trao đổi nội bộ về một sinh viên. `author` null khi tài khoản đã bị xóa. */
+export interface DiscussionMessage {
+  id: string;
+  /** `null` khi tin đã bị thu hồi — API che nội dung, không chỉ ẩn ở tầng render. */
+  body: string | null;
+  deletedAt: string | null;
+  createdAt: string;
+  author: { id: string; staffCode: string; fullName: string } | null;
+}
+
+/** Một trang của luồng, kèm mốc đã đọc của chính người đang xem. */
+export interface DiscussionThread {
+  messages: DiscussionMessage[];
+  lastReadAt: string | null;
 }

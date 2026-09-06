@@ -20,6 +20,7 @@ export type Subjects =
   | 'Student'
   | 'Evaluation'
   | 'CareLog'
+  | 'Discussion'
   | 'Alert'
   | 'Notification'
   | 'MasterData'
@@ -61,6 +62,7 @@ export class AbilityFactory {
           );
           can('resolve', 'Alert');
           can(['import', 'export'], 'Excel');
+          can(['read', 'create'], 'Discussion');
           break;
         case 'LECTURER':
           can('read', [
@@ -72,6 +74,7 @@ export class AbilityFactory {
             'Statistics',
           ]);
           can(['create', 'update'], ['Evaluation', 'CareLog', 'Alert']);
+          can(['read', 'create'], 'Discussion');
           break;
         case 'TRAINING_OFFICER':
           can('read', [
@@ -85,6 +88,7 @@ export class AbilityFactory {
           can('manage', 'MasterData');
           can('resolve', 'Alert');
           can(['import', 'export'], 'Excel');
+          can(['read', 'create'], 'Discussion');
           break;
         case 'SA_OFFICER':
           can('read', [
@@ -96,6 +100,7 @@ export class AbilityFactory {
           ]);
           can('create', 'CareLog');
           can(['import', 'export'], 'Excel');
+          can(['read', 'create'], 'Discussion');
           break;
         case 'SA_HEAD':
           can('read', [
@@ -109,6 +114,7 @@ export class AbilityFactory {
           can('create', 'CareLog');
           can('resolve', 'Alert');
           can(['import', 'export'], 'Excel');
+          can(['read', 'create'], 'Discussion');
           break;
       }
     }

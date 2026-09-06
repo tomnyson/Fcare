@@ -16,6 +16,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/auth-user';
 import { AdminService } from './admin.service';
 import {
+  BulkAssignDepartmentDto,
   CreateStaffDto,
   ListStaffQuery,
   UpdateStaffDto,
@@ -35,6 +36,14 @@ export class AdminController {
   @Post()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateStaffDto) {
     return this.adminService.create(user.id, dto);
+  }
+
+  @Patch('bulk-department')
+  bulkAssignDepartment(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: BulkAssignDepartmentDto,
+  ) {
+    return this.adminService.bulkAssignDepartment(user.id, dto);
   }
 
   @Patch(':id')

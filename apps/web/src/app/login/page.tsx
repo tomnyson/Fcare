@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { FormError, Input, Label } from '../../components/ui/form';
+import { BrandMark } from '../../components/ui/brand-mark';
 import { apiFetch, ApiError } from '../../lib/api';
 import type { LoginResult } from '../../lib/types';
 
@@ -46,9 +47,7 @@ export default function LoginPage() {
           className="absolute -right-24 -top-24 h-96 w-96 rounded-full bg-fpt-orange/20 blur-3xl"
         />
         <Link href="/" className="relative flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-fpt-orange font-[family-name:var(--font-display)] text-xl font-extrabold">
-            F
-          </span>
+          <BrandMark size={40} priority />
           <span className="font-[family-name:var(--font-display)] text-xl font-bold">FCare</span>
         </Link>
 

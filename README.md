@@ -91,6 +91,34 @@ pnpm --filter @fcare/api test:e2e  # e2e (cần Postgres đang chạy)
 pnpm lint && pnpm typecheck && pnpm build
 ```
 
+### Kiểm thử E2E
+
+```bash
+pnpm --filter @fcare/web test:e2e                        # cả 3 trình duyệt
+pnpm --filter @fcare/web test:e2e -- --project=chromium  # nhanh, một trình duyệt
+pnpm --filter @fcare/web test:e2e:ui                     # chế độ gỡ lỗi có giao diện
+```
+
+E2E cần Postgres + Redis đang chạy và DB đã seed. Đặt `E2E_BASE_URL` để chạy với
+server có sẵn thay vì để Playwright tự khởi động `pnpm dev` (khi đó nhớ đặt cả
+`E2E_API_URL` nếu API không nằm ở `http://localhost:3001`). Tài khoản dùng trong
+test lấy từ `E2E_ADMIN_CODE` / `E2E_ADMIN_PASSWORD`, mặc định là tài khoản demo
+`admin` / `Fcare@123`.
+
+Bộ test dùng chung một DB dev và các luồng phụ thuộc nhau theo thứ tự import, nên
+`playwright.config.ts` chạy `workers: 1`, `fullyParallel: false` — đừng bật song song.
+
+Global setup sinh hai file `.xlsx` phái sinh vào `apps/web/e2e/.artifacts/` (đã
+gitignore) từ file nguồn trong `docs/`: một bản **đã xoá ô PII** cho các luồng
+import thành công, một bản gắn nhãn bộ môn lạ để kiểm cảnh báo "chưa có ánh xạ".
+File nguồn giữ nguyên email và được dùng cho test chứng minh RULE 1 từ chối cả file.
+
+### Thứ tự import bắt buộc
+
+1. Danh mục môn học → 2. Danh sách giảng viên → 3. Lịch và phân công lớp → 4. Bảng điểm.
+
+Chạy sai thứ tự sẽ khiến nhiều dòng bị bỏ qua vì môn học hoặc giảng viên chưa tồn tại.
+
 ## Nguyên tắc bảo mật dữ liệu (bắt buộc)
 
 Theo tài liệu "Cơ sở dữ liệu và cơ chế bảo mật thông tin trong ứng dụng FCare":

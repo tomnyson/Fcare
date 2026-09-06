@@ -65,6 +65,8 @@ export function ImportHistory({ onResume }: ImportHistoryProps) {
           'Trạng thái',
           'Người thực hiện',
         ]}
+        isLoading={isLoading}
+        skeletonRows={5}
         isEmpty={!isLoading && !isError && (data?.length ?? 0) === 0}
         emptyMessage="Chưa có lượt import nào."
       >

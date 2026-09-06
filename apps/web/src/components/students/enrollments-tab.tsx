@@ -22,6 +22,8 @@ export function EnrollmentsTab({ studentId }: { studentId: string }) {
   return (
     <DataTable
       headers={['Lớp học phần', 'Môn', 'Học kỳ', 'Chuyên cần', 'Giữa kỳ', 'Cuối kỳ', 'Tổng kết', 'Cấm thi', 'Kết quả']}
+      isLoading={isLoading}
+      skeletonRows={5}
       isEmpty={!isLoading && (data?.length ?? 0) === 0}
       emptyMessage="Sinh viên chưa đăng ký lớp học phần nào."
     >

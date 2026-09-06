@@ -99,30 +99,36 @@ model ClassSection {
 
 // Chỉ lưu: mã NV, họ tên, bộ môn. KHÔNG email/SĐT/địa chỉ/CCCD.
 model Staff {
-  id                 String    @id @default(uuid())
-  staffCode          String    @unique // mã nhân viên — dùng để đăng nhập
+  id                 String   @id @default(uuid())
+  staffCode          String   @unique // mã nhân viên — dùng để đăng nhập
   fullName           String
   departmentId       String?
   passwordHash       String
-  mustChangePassword Boolean   @default(false)
-  isActive           Boolean   @default(true)
-  username           String?   @unique // username nội bộ từ file phân công, KHÔNG phải email
+  mustChangePassword Boolean  @default(false)
+  isActive           Boolean  @default(true)
+  username           String?  @unique // username nội bộ từ file phân công, KHÔNG phải email
   lecturerType       String? // FULL | PART
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  department    Department?    @relation(fields: [departmentId], references: [id])
-  roles         StaffRole[]
-  consentLogs   ConsentLog[]
-  refreshTokens RefreshToken[]
-  classSections ClassSection[]
-  evaluations   Evaluation[]
-  careLogs      CareLog[]
-  raisedAlerts  Alert[]        @relation("AlertRaisedBy")
-  resolvedAlerts Alert[]       @relation("AlertResolvedBy")
-  notifications Notification[]
-  auditLogs     AuditLog[]
-  importBatches ImportBatch[]
+  department                   Department?                    @relation(fields: [departmentId], references: [id])
+  roles                        StaffRole[]
+  consentLogs                  ConsentLog[]
+  refreshTokens                RefreshToken[]
+  classSections                ClassSection[]
+  evaluations                  Evaluation[]
+  ownedTermAnalyses            StudentTermAnalysis[]          @relation("StudentTermAnalysisOwner")
+  createdTermAnalysisVersions  StudentTermAnalysisVersion[]   @relation("StudentTermAnalysisVersionCreatedBy")
+  reviewedTermAnalysisVersions StudentTermAnalysisVersion[]   @relation("StudentTermAnalysisVersionReviewedBy")
+  termAnalysisRecipients       StudentTermAnalysisRecipient[]
+  careLogs                     CareLog[]
+  raisedAlerts                 Alert[]                        @relation("AlertRaisedBy")
+  resolvedAlerts               Alert[]                        @relation("AlertResolvedBy")
+  notifications                Notification[]
+  auditLogs                    AuditLog[]
+  importBatches                ImportBatch[]
+  discussionMessages           DiscussionMessage[]
+  discussionReads              DiscussionRead[]
 
   @@map("staff")
 }
@@ -217,12 +223,15 @@ model Student {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
-  major       Major?       @relation(fields: [majorId], references: [id])
-  department  Department   @relation(fields: [departmentId], references: [id])
-  enrollments Enrollment[]
-  evaluations Evaluation[]
-  careLogs    CareLog[]
-  alerts      Alert[]
+  major        Major?                @relation(fields: [majorId], references: [id])
+  department   Department            @relation(fields: [departmentId], references: [id])
+  enrollments  Enrollment[]
+  evaluations  Evaluation[]
+  termAnalyses StudentTermAnalysis[]
+  careLogs     CareLog[]
+  alerts       Alert[]
+  discussionMessages DiscussionMessage[]
+  discussionReads    DiscussionRead[]
 
   @@index([departmentId])
   @@index([classCode])
@@ -330,21 +339,121 @@ model Alert {
 }
 
 model Notification {
-  id          String    @id @default(uuid())
-  recipientId String
-  alertId     String?
-  title       String
-  body        String
-  readAt      DateTime?
-  createdAt   DateTime  @default(now())
+  id                  String    @id @default(uuid())
+  recipientId         String
+  alertId             String?
+  analysisVersionId   String?
+  discussionMessageId String?
+  title               String
+  body                String
+  targetUrl           String?
+  readAt              DateTime?
+  createdAt           DateTime  @default(now())
 
-  recipient Staff  @relation(fields: [recipientId], references: [id], onDelete: Cascade)
-  alert     Alert? @relation(fields: [alertId], references: [id], onDelete: SetNull)
+  recipient         Staff                         @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  alert             Alert?                        @relation(fields: [alertId], references: [id], onDelete: SetNull)
+  analysisVersion   StudentTermAnalysisVersion?   @relation(fields: [analysisVersionId], references: [id], onDelete: SetNull)
+  // HIGH-A: Cascade chứ KHÔNG SetNull. `discussion_messages.studentId` là
+  // Cascade, nên xoá sinh viên là xoá tin; SetNull sẽ để lại dòng thông báo
+  // mang 120 ký tự nội dung cán bộ gõ, mất con trỏ về tin — và bộ tẩy khi thu
+  // hồi khoá theo đúng cột vừa bị NULL nên không bao giờ với tới được nữa.
+  discussionMessage DiscussionMessage?            @relation(fields: [discussionMessageId], references: [id], onDelete: Cascade)
+  analysisRecipient StudentTermAnalysisRecipient? @relation("AnalysisRecipientNotification")
 
   // Idempotency cho queue escalation: retry không tạo trùng thông báo cùng cảnh báo.
   @@unique([alertId, recipientId])
+  @@unique([analysisVersionId, recipientId])
+  @@unique([discussionMessageId, recipientId])
   @@index([recipientId, readAt])
+  @@index([recipientId, createdAt(sort: Desc)])
   @@map("notifications")
+}
+
+enum StudentTermAnalysisStatus {
+  QUEUED
+  GENERATING
+  DRAFT
+  FAILED
+  SUPERSEDED
+  SEND_QUEUED
+  SENT
+}
+
+model StudentTermAnalysis {
+  id        String   @id @default(uuid())
+  studentId String
+  term      String
+  ownerId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student  Student                      @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  owner    Staff                        @relation("StudentTermAnalysisOwner", fields: [ownerId], references: [id])
+  versions StudentTermAnalysisVersion[]
+
+  @@unique([studentId, term])
+  @@index([ownerId])
+  @@map("student_term_analyses")
+}
+
+model StudentTermAnalysisVersion {
+  id              String                    @id @default(uuid())
+  analysisId      String
+  version         Int
+  status          StudentTermAnalysisStatus @default(QUEUED)
+  idempotencyKey  String                    @unique
+  sourceSnapshot  Json
+  sourceHash      String
+  aiOriginal      Json?
+  editedOutput    Json?
+  model           String
+  promptVersion   String
+  inputTokens     Int?
+  outputTokens    Int?
+  reasoningTokens Int?
+  totalTokens     Int?
+  errorMessage    String?
+  createdById     String
+  reviewedById    String?
+  requestedAt     DateTime                  @default(now())
+  generatedAt     DateTime?
+  editedAt        DateTime?
+  reviewedAt      DateTime?
+  sentAt          DateTime?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  analysis      StudentTermAnalysis            @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  createdBy     Staff                          @relation("StudentTermAnalysisVersionCreatedBy", fields: [createdById], references: [id])
+  reviewedBy    Staff?                         @relation("StudentTermAnalysisVersionReviewedBy", fields: [reviewedById], references: [id])
+  recipients    StudentTermAnalysisRecipient[]
+  notifications Notification[]
+
+  @@unique([analysisId, version])
+  @@index([analysisId, status])
+  @@index([createdById])
+  @@index([reviewedById])
+  @@map("student_term_analysis_versions")
+}
+
+model StudentTermAnalysisRecipient {
+  id                    String    @id @default(uuid())
+  versionId             String
+  recipientId           String
+  recipientStaffCode    String
+  recipientFullName     String
+  recipientDepartmentId String?
+  notificationId        String?   @unique
+  openedAt              DateTime?
+  createdAt             DateTime  @default(now())
+
+  version      StudentTermAnalysisVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  recipient    Staff                      @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  notification Notification?              @relation("AnalysisRecipientNotification", fields: [notificationId], references: [id], onDelete: SetNull)
+
+  @@unique([versionId, recipientId])
+  @@index([recipientId, openedAt])
+  @@map("student_term_analysis_recipients")
 }
 
 // ===== Ánh xạ danh mục từ file nguồn =====
@@ -420,4 +529,39 @@ model ImportRow {
 
   @@index([batchId])
   @@map("import_rows")
+}
+
+/// Một tin nhắn trong luồng trao đổi của MỘT sinh viên.
+/// Không có bảng thread/participant: `studentId` chính là định danh luồng, và
+/// quyền đọc luồng đúng bằng `studentScope(user)` (RULE 2) — không có cơ chế mời.
+/// Khác `CareLog` (biên bản chăm sóc chính thức, một chiều, có outcome/nextAction):
+/// đây là trao đổi nội bộ giữa cán bộ với nhau, KHÔNG phải hồ sơ chăm sóc.
+model DiscussionMessage {
+  id        String    @id @default(uuid())
+  studentId String
+  authorId  String
+  body      String
+  deletedAt DateTime? // thu hồi mềm: giữ vết, UI hiện "tin nhắn đã thu hồi"
+  createdAt DateTime  @default(now())
+
+  student       Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  author        Staff          @relation(fields: [authorId], references: [id])
+  notifications Notification[]
+
+  @@index([studentId, createdAt])
+  @@map("discussion_messages")
+}
+
+/// Mốc đã đọc của một cán bộ trong một luồng. Có hàng ở đây = đã tham gia luồng,
+/// nên cũng là căn cứ xác định người nhận thông báo khi có tin mới.
+model DiscussionRead {
+  studentId  String
+  staffId    String
+  lastReadAt DateTime
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  staff   Staff   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@id([studentId, staffId])
+  @@map("discussion_reads")
 }

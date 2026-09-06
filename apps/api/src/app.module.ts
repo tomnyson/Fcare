@@ -17,6 +17,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { AlertsModule } from './modules/alerts/alerts.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CareLogsModule } from './modules/care-logs/care-logs.module';
+import { DiscussionsModule } from './modules/discussions/discussions.module';
 import { EnrollmentsModule } from './modules/enrollments/enrollments.module';
 import { EvaluationsModule } from './modules/evaluations/evaluations.module';
 import { ExcelModule } from './modules/excel/excel.module';
@@ -24,6 +25,7 @@ import { HealthModule } from './modules/health/health.module';
 import { ImportsModule } from './modules/imports/imports.module';
 import { MasterDataModule } from './modules/master-data/master-data.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
+import { StudentAnalysesModule } from './modules/student-analyses/student-analyses.module';
 import { StudentsModule } from './modules/students/students.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -70,7 +72,9 @@ import { PrismaModule } from './prisma/prisma.module';
     StudentsModule,
     EnrollmentsModule,
     EvaluationsModule,
+    StudentAnalysesModule,
     CareLogsModule,
+    DiscussionsModule,
     AlertsModule,
     StatisticsModule,
     ExcelModule,

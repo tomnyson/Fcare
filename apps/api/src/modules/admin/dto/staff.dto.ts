@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { ROLE_KEYS, type RoleKey } from '@fcare/shared-types';
 import {
   ArrayNotEmpty,
@@ -84,4 +85,30 @@ export class ListStaffQuery {
   @IsOptional()
   @IsIn(ROLE_KEYS)
   role?: RoleKey;
+
+  @ApiPropertyOptional({
+    description:
+      'Chỉ lấy nhân viên chưa thuộc bộ môn nào (hàng chờ dọn sau import giảng viên)',
+  })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  missingDepartment?: boolean;
+}
+
+export class BulkAssignDepartmentDto {
+  @ApiProperty({
+    type: [String],
+    description: 'Danh sách id nhân viên cần gán',
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsUUID(undefined, { each: true })
+  staffIds!: string[];
+
+  @ApiProperty({
+    description: 'ID bộ môn sẽ gán cho toàn bộ nhân viên đã chọn',
+  })
+  @IsUUID()
+  departmentId!: string;
 }

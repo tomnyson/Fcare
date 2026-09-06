@@ -19,7 +19,7 @@ Prod API chạy từ `apps/api/dist/src/main.js` (không phải `dist/main.js`).
 Theo tài liệu nghiệp vụ trong `docs/` — vi phạm là lỗi CRITICAL, không có ngoại lệ:
 
 1. **CẤM lưu/hiển thị** CCCD/CMND, số điện thoại, email, địa chỉ của sinh viên và nhân viên. KHÔNG thêm các cột/field này vào schema, DTO, UI hay file Excel. 3 lớp chặn hiện có: schema không có cột → `PiiGuardInterceptor` lọc response → Excel import từ chối cột cấm.
-2. **Scope bộ môn**: mọi query chạm sinh viên PHẢI đi qua `deptFilter(user)` (`apps/api/src/common/utils/dept-scope.ts`). LECTURER/HEAD_OF_DEPT chỉ thấy sinh viên bộ môn mình.
+2. **Scope sinh viên**: mọi query chạm sinh viên PHẢI đi qua `studentScope(user)` (`apps/api/src/common/utils/dept-scope.ts`). **LECTURER chỉ thấy sinh viên của lớp học phần mình đứng lớp** — sinh viên cùng bộ môn nhưng mình không dạy cũng KHÔNG được thấy. **HEAD_OF_DEPT** thấy cả bộ môn mình + lớp mình dạy (`seesWholeDepartment(user)` phân biệt hai vai). Lớp học phần: `sectionScope(user)`. Đã load bản ghi rồi mới kiểm tra: `isStudentInScope(prisma, user, studentId)` — KHÔNG so `departmentId` bằng tay. `deptFilter(user)` (thuần bộ môn) chỉ còn dùng cho Major/Subject/Department và thao tác ghi đổi bộ môn; số liệu tổng hợp (`statistics.departments`) phải tính trên `studentScope`, `totalStaff` trả `null` cho ai không xem được cả bộ môn.
 3. **Excel I/O** chỉ dành cho HEAD_OF_DEPT, TRAINING_OFFICER, SA_OFFICER/SA_HEAD, ADMIN — LECTURER không bao giờ có quyền `import`/`export` (CASL).
 4. **Consent gate**: mỗi lần đăng nhập phải ký cam kết (`ConsentGuard`, mã `CONSENT_REQUIRED`). Không có email trong DB → không xây luồng nào cần email.
 

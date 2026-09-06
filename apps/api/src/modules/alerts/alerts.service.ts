@@ -15,7 +15,7 @@ import {
 } from '@fcare/shared-types';
 import { AuditService } from '../../audit/audit.service';
 import type { AuthUser } from '../../common/types/auth-user';
-import { deptFilter, isDeptScoped } from '../../common/utils/dept-scope';
+import { isStudentInScope, studentScope } from '../../common/utils/dept-scope';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   ListAlertsQuery,
@@ -60,11 +60,43 @@ export class AlertsService {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
+    // Bộ lọc phía sinh viên dùng đúng ngữ nghĩa của trang /students: kỳ, giảng
+    // viên và lớp học phần gộp vào CÙNG một `enrollments.some` để "kỳ SU25 +
+    // thầy A" nghĩa là một lớp học phần, không phải hai lần đăng ký rời nhau.
+    const student: Prisma.StudentWhereInput = {
+      ...(query.classCode ? { classCode: query.classCode } : {}),
+      ...(query.majorId ? { majorId: query.majorId } : {}),
+      ...(query.term || query.lecturerId || query.sectionId
+        ? {
+            enrollments: {
+              some: {
+                ...(query.sectionId ? { classSectionId: query.sectionId } : {}),
+                classSection: {
+                  ...(query.term ? { term: query.term } : {}),
+                  ...(query.lecturerId ? { lecturerId: query.lecturerId } : {}),
+                },
+              },
+            },
+          }
+        : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { studentCode: { contains: query.search, mode: 'insensitive' } },
+              { fullName: { contains: query.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+      // Scope đặt SAU bộ lọc để luôn thắng; `studentScope` trả về `AND` nên
+      // không đụng `OR` của ô tìm kiếm ở trên (RULE 2).
+      ...studentScope(user),
+    };
+
     const where: Prisma.AlertWhereInput = {
       status: query.status,
       level: query.level,
       studentId: query.studentId,
-      student: deptFilter(user),
+      student,
     };
 
     const [items, total] = await this.prisma.$transaction([
@@ -105,7 +137,7 @@ export class AlertsService {
 
     // Giảng viên/TBM chỉ được phát cảnh báo cho sinh viên bộ môn mình.
     const student = await this.prisma.student.findFirst({
-      where: { id: dto.studentId, ...deptFilter(user) },
+      where: { id: dto.studentId, ...studentScope(user) },
     });
     if (!student) {
       throw new NotFoundException(
@@ -227,12 +259,9 @@ export class AlertsService {
     if (!alert) {
       throw new NotFoundException('Không tìm thấy cảnh báo.');
     }
-    if (
-      isDeptScoped(user) &&
-      alert.student.departmentId !== user.departmentId
-    ) {
+    if (!(await isStudentInScope(this.prisma, user, alert.studentId))) {
       throw new ForbiddenException(
-        'Cảnh báo không thuộc phạm vi bộ môn của bạn.',
+        'Cảnh báo không thuộc phạm vi sinh viên của bạn.',
       );
     }
     return alert;

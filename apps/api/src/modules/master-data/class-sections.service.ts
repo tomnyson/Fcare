@@ -4,9 +4,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { AlertStatus } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
 import type { AuthUser } from '../../common/types/auth-user';
-import { deptFilter } from '../../common/utils/dept-scope';
+import { studentScope } from '../../common/utils/dept-scope';
 import { isPrismaError } from '../../common/utils/prisma-error';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -97,9 +98,9 @@ export class ClassSectionsService {
         term: true,
         subject: { select: { code: true, name: true } },
         enrollments: {
-          // RULE 2: lưới điểm chạm sinh viên nên PHẢI đi qua deptFilter —
-          // giảng viên/TBM chỉ thấy sinh viên bộ môn mình.
-          where: { student: deptFilter(user) },
+          // RULE 2: lưới điểm chạm sinh viên nên PHẢI đi qua scope —
+          // sinh viên bộ môn mình HOẶC sinh viên lớp mình đang dạy.
+          where: { student: studentScope(user) },
           orderBy: { student: { studentCode: 'asc' } },
           select: {
             id: true,
@@ -117,6 +118,14 @@ export class ClassSectionsService {
     }
 
     const { enrollments, ...rest } = section;
+
+    // Tài liệu II.1 (sơ đồ): "ghi cấp độ vào danh sách lớp học để giảng viên
+    // theo dõi tại lớp" — gắn độ khẩn CAO NHẤT trong các cảnh báo CHƯA xử lý
+    // của sinh viên. Gom bằng một truy vấn groupBy, không lặp N+1 theo dòng.
+    const alertLevelByStudentId = await this.findOpenAlertLevels(
+      enrollments.map((e) => e.student.id),
+    );
+
     return {
       section: rest,
       rows: enrollments.map((enrollment) => ({
@@ -126,8 +135,39 @@ export class ClassSectionsService {
         fullName: enrollment.student.fullName,
         totalScore: enrollment.totalScore,
         result: enrollment.result,
+        alertLevel: alertLevelByStudentId.get(enrollment.student.id) ?? null,
       })),
     };
+  }
+
+  /**
+   * Độ khẩn cao nhất trong các cảnh báo chưa xử lý (OPEN/ACKNOWLEDGED) của từng
+   * sinh viên. Chỉ trả về số mức — RULE 1: không kèm bất kỳ thông tin cá nhân
+   * nào. Danh sách sinh viên đầu vào đã qua `studentScope` ở nơi gọi (RULE 2).
+   */
+  private async findOpenAlertLevels(
+    studentIds: readonly string[],
+  ): Promise<Map<string, number>> {
+    if (studentIds.length === 0) {
+      return new Map();
+    }
+
+    const grouped = await this.prisma.alert.groupBy({
+      by: ['studentId'],
+      where: {
+        studentId: { in: [...studentIds] },
+        status: { in: [AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED] },
+      },
+      _max: { level: true },
+    });
+
+    return new Map(
+      grouped.flatMap((row) =>
+        row._max.level === null
+          ? []
+          : [[row.studentId, row._max.level] as const],
+      ),
+    );
   }
 
   async updateGrades(
@@ -159,7 +199,7 @@ export class ClassSectionsService {
         // Cùng scope với findGrades: enrollment ngoài bộ môn không lọt vào tập
         // "owned", nên vòng kiểm tra bên dưới chặn luôn (RULE 2).
         enrollments: {
-          where: { student: deptFilter(user) },
+          where: { student: studentScope(user) },
           select: { id: true, totalScore: true, result: true },
         },
       },

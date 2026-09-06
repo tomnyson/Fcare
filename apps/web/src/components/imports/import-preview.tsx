@@ -10,11 +10,21 @@ const MAX_VISIBLE_ROWS = 50;
 interface ImportPreviewProps {
   batch: ImportBatchDetail;
   isCommitting: boolean;
+  isDiscarding: boolean;
   onCommit: () => void;
   onDiscard: () => void;
 }
 
-export function ImportPreview({ batch, isCommitting, onCommit, onDiscard }: ImportPreviewProps) {
+export function ImportPreview({
+  batch,
+  isCommitting,
+  isDiscarding,
+  onCommit,
+  onDiscard,
+}: ImportPreviewProps) {
+  // Khoá CẢ HAI nút khi một trong hai mutation đang chạy: không cho commit lô
+  // đang bị huỷ (và ngược lại), cũng không cho bấm đúp tạo 2 request cùng lô.
+  const busy = isCommitting || isDiscarding;
   const okCount = batch.summary.validRows;
   const visible = batch.rows.slice(0, MAX_VISIBLE_ROWS);
   // Allowlist theo loại import — KHÔNG đổ nguyên Object.entries(payload) ra
@@ -97,11 +107,11 @@ export function ImportPreview({ batch, isCommitting, onCommit, onDiscard }: Impo
       ) : null}
 
       <div className="flex flex-wrap gap-3">
-        <Button type="button" onClick={onCommit} disabled={isCommitting || okCount === 0}>
+        <Button type="button" onClick={onCommit} disabled={busy || okCount === 0}>
           {isCommitting ? 'Đang ghi…' : `✓ Xác nhận ghi ${okCount} dòng`}
         </Button>
-        <Button type="button" variant="secondary" onClick={onDiscard} disabled={isCommitting}>
-          Huỷ lô này
+        <Button type="button" variant="secondary" onClick={onDiscard} disabled={busy}>
+          {isDiscarding ? 'Đang huỷ…' : 'Huỷ lô này'}
         </Button>
       </div>
     </section>
