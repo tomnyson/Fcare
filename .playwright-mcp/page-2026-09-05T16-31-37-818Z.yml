@@ -1,7 +1,0 @@
-- generic [active] [ref=f16e1]:
-  - status "Đang tải phiên làm việc" [ref=f16e2]:
-    - complementary [ref=f16e3]
-    - generic [ref=f16e13]:
-      - banner [ref=f16e14]
-      - main [ref=f16e19]
-  - alert [ref=f16e25]
