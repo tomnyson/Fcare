@@ -39,6 +39,12 @@ export class MajorsService {
       if (isPrismaError(error, 'P2025')) {
         throw new NotFoundException('Không tìm thấy ngành.');
       }
+      if (isPrismaError(error, 'P2002')) {
+        throw new ConflictException(`Mã ngành "${dto.code}" đã tồn tại.`);
+      }
+      if (isPrismaError(error, 'P2003')) {
+        throw new NotFoundException('Bộ môn không tồn tại.');
+      }
       throw error;
     }
   }

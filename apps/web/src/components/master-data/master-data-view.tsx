@@ -4,6 +4,7 @@ import { Button } from '@fcare/ui-kit';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
+import { toast } from 'sonner';
 import { DataTable, Td } from '../ui/data-table';
 import { FormError, Input, Label, Select } from '../ui/form';
 import { Modal } from '../ui/modal';
@@ -100,6 +101,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
         : apiFetch(config.path, { method: 'POST', body: JSON.stringify(payload) }),
     onSuccess: async () => {
       closeForm();
+      toast.success('Lưu thành công!');
       await queryClient.invalidateQueries({ queryKey: [tab] });
       await queryClient.invalidateQueries({ queryKey: ['departments'] });
     },
@@ -113,6 +115,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
     onSuccess: async () => {
       setDeleting(null);
       setDeleteError('');
+      toast.success('Xóa thành công!');
       await queryClient.invalidateQueries({ queryKey: [tab] });
       await queryClient.invalidateQueries({ queryKey: ['departments'] });
     },
@@ -120,9 +123,91 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
       setDeleteError(err instanceof ApiError ? err.message : 'Không thể xóa.'),
   });
 
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
   function onFormSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setFormError('');
+    setFieldErrors({});
+
     const form = new FormData(event.currentTarget);
+    const code = String(form.get('code') ?? '').trim();
+    const name = String(form.get('name') ?? '').trim();
+
+    if (tab === 'departments') {
+      const errors: Record<string, string> = {};
+      if (!code) errors.code = 'Mã bộ môn không được để trống';
+      else if (code.length > 20) errors.code = 'Mã bộ môn tối đa 20 ký tự';
+      else if (!/^[A-Z0-9-]+$/.test(code)) errors.code = 'Mã bộ môn chỉ gồm chữ in hoa, số và dấu gạch ngang, không dấu';
+
+      if (!name) errors.name = 'Tên bộ môn không được để trống';
+      else if (name.length > 200) errors.name = 'Tên bộ môn tối đa 200 ký tự';
+
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        return;
+      }
+    } else if (tab === 'majors') {
+      const errors: Record<string, string> = {};
+      const departmentId = String(form.get('departmentId') ?? '').trim();
+      
+      if (!code) errors.code = 'Mã ngành không được để trống';
+      else if (code.length > 20) errors.code = 'Mã ngành tối đa 20 ký tự';
+      else if (!/^[A-Z0-9-]+$/.test(code)) errors.code = 'Mã ngành chỉ gồm chữ in hoa, số và dấu gạch ngang, không dấu';
+
+      if (!name) errors.name = 'Tên ngành không được để trống';
+      else if (name.length > 200) errors.name = 'Tên ngành tối đa 200 ký tự';
+
+      if (!departmentId) errors.departmentId = 'Vui lòng chọn bộ môn';
+
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        return;
+      }
+    } else if (tab === 'subjects') {
+      const errors: Record<string, string> = {};
+      const departmentId = String(form.get('departmentId') ?? '').trim();
+      const credits = Number(form.get('credits'));
+      
+      if (!code) errors.code = 'Mã môn học không được để trống';
+      else if (code.length > 20) errors.code = 'Mã môn học tối đa 20 ký tự';
+      else if (!/^[a-zA-Z0-9-]+$/.test(code)) errors.code = 'Mã môn học chỉ gồm chữ cái, số và dấu gạch ngang, không dấu';
+
+      if (!name) errors.name = 'Tên môn học không được để trống';
+      else if (name.length > 200) errors.name = 'Tên môn học tối đa 200 ký tự';
+
+      if (!credits) errors.credits = 'Số tín chỉ không được để trống';
+      else if (!Number.isInteger(credits)) errors.credits = 'Số tín chỉ phải là số nguyên';
+      else if (credits < 1) errors.credits = 'Số tín chỉ tối thiểu là 1';
+      else if (credits > 10) errors.credits = 'Số tín chỉ tối đa là 10';
+
+      if (!departmentId) errors.departmentId = 'Vui lòng chọn bộ môn';
+
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        return;
+      }
+    } else if (tab === 'class-sections') {
+      const errors: Record<string, string> = {};
+      const subjectId = String(form.get('subjectId') ?? '').trim();
+      const term = String(form.get('term') ?? '').trim();
+      
+      if (!code) errors.code = 'Mã lớp học phần không được để trống';
+      else if (code.length > 50) errors.code = 'Mã lớp học phần tối đa 50 ký tự';
+      else if (!/^[a-zA-Z0-9-]+$/.test(code)) errors.code = 'Mã lớp học phần chỉ gồm chữ cái, số và dấu gạch ngang, không dấu';
+
+      if (!subjectId) errors.subjectId = 'Vui lòng chọn môn học';
+
+      if (!term) errors.term = 'Học kỳ không được để trống';
+      else if (term.length > 20) errors.term = 'Học kỳ tối đa 20 ký tự';
+      else if (!/^[a-zA-Z0-9-]+$/.test(term)) errors.term = 'Học kỳ chỉ gồm chữ cái, số và dấu gạch ngang, không dấu';
+
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        return;
+      }
+    }
+
     const payloads: Partial<Record<MasterDataTabKey, Record<string, unknown>>> = {
       departments: { code: form.get('code'), name: form.get('name') },
       majors: {
@@ -351,6 +436,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
           <div>
             <Label htmlFor="code">Mã</Label>
             <Input id="code" name="code" required defaultValue={editing?.code ?? ''} />
+            {fieldErrors.code && <p className="mt-1 text-sm text-danger">{fieldErrors.code}</p>}
           </div>
 
           {tab !== 'class-sections' ? (
@@ -362,6 +448,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
                 required
                 defaultValue={editing && 'name' in editing ? editing.name : ''}
               />
+              {fieldErrors.name && <p className="mt-1 text-sm text-danger">{fieldErrors.name}</p>}
             </div>
           ) : null}
 
@@ -377,6 +464,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
                 required
                 defaultValue={editing && 'credits' in editing ? editing.credits : ''}
               />
+              {fieldErrors.credits && <p className="mt-1 text-sm text-danger">{fieldErrors.credits}</p>}
             </div>
           ) : null}
 
@@ -400,6 +488,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
                   </option>
                 ))}
               </Select>
+              {fieldErrors.departmentId && <p className="mt-1 text-sm text-danger">{fieldErrors.departmentId}</p>}
             </div>
           ) : null}
 
@@ -422,6 +511,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
                     </option>
                   ))}
                 </Select>
+                {fieldErrors.subjectId && <p className="mt-1 text-sm text-danger">{fieldErrors.subjectId}</p>}
               </div>
               <div>
                 <Label htmlFor="lecturerId">Giảng viên</Label>
@@ -453,6 +543,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
                   required
                   defaultValue={editingClassSection?.term ?? ''}
                 />
+                {fieldErrors.term && <p className="mt-1 text-sm text-danger">{fieldErrors.term}</p>}
               </div>
             </>
           ) : null}

@@ -66,6 +66,14 @@ export class ClassSectionsService {
       if (isPrismaError(error, 'P2025')) {
         throw new NotFoundException('Không tìm thấy lớp học phần.');
       }
+      if (isPrismaError(error, 'P2002')) {
+        throw new ConflictException(
+          `Mã lớp học phần "${dto.code}" đã tồn tại.`,
+        );
+      }
+      if (isPrismaError(error, 'P2003')) {
+        throw new NotFoundException('Môn học hoặc giảng viên không tồn tại.');
+      }
       throw error;
     }
   }

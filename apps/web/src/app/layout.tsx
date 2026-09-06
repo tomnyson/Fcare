@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Be_Vietnam_Pro, Inter } from 'next/font/google';
+import { Toaster } from 'sonner';
 import { Providers } from '../components/providers';
 import './globals.css';
 
@@ -31,6 +32,7 @@ export default function RootLayout({
     <html lang="vi">
       <body className={`${beVietnam.variable} ${inter.variable} antialiased`}>
         <Providers>{children}</Providers>
+        <Toaster position="top-right" richColors closeButton />
       </body>
     </html>
   );

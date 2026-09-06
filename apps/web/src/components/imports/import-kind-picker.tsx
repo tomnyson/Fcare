@@ -54,6 +54,16 @@ export function ImportKindPicker({ selected, onToggle, disabled = false }: Impor
                 </span>
               </span>
               <span className="mt-1 block text-sm text-muted">{kind.hint}</span>
+              <div className="mt-3 border-t border-border/50 pt-2 text-right">
+                <a
+                  href={kind.source === 'gradebook' ? '/samples/fcare-gradebook-mau.xlsx' : '/samples/fcare-phan-cong-mau.xlsx'}
+                  download={kind.source === 'gradebook' ? 'fcare-gradebook-mau.xlsx' : 'fcare-phan-cong-mau.xlsx'}
+                  className="text-xs font-semibold text-fpt-blue hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  ⇩ Tải mẫu {kind.source === 'gradebook' ? 'gradebook' : 'phân công'}
+                </a>
+              </div>
             </label>
           );
         })}

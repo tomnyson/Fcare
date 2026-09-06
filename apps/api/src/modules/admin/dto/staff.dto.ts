@@ -11,6 +11,7 @@ import {
   IsString,
   IsUUID,
   MaxLength,
+  Matches,
 } from 'class-validator';
 
 export class CreateStaffDto {
@@ -18,15 +19,18 @@ export class CreateStaffDto {
     example: 'gv.nguyen',
     description: 'Mã nhân viên (dùng để đăng nhập)',
   })
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(50)
+  @IsString({ message: 'Mã nhân viên phải là chuỗi' })
+  @IsNotEmpty({ message: 'Mã nhân viên không được để trống' })
+  @MaxLength(50, { message: 'Mã nhân viên tối đa 50 ký tự' })
+  @Matches(/^[a-zA-Z0-9.-]+$/, {
+    message: 'Mã nhân viên chỉ gồm chữ cái, số, dấu chấm và gạch ngang',
+  })
   staffCode!: string;
 
   @ApiProperty({ example: 'Nguyễn Văn Bình' })
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(200)
+  @IsString({ message: 'Tên nhân viên phải là chuỗi' })
+  @IsNotEmpty({ message: 'Tên nhân viên không được để trống' })
+  @MaxLength(200, { message: 'Tên nhân viên tối đa 200 ký tự' })
   fullName!: string;
 
   @ApiPropertyOptional({
@@ -46,9 +50,9 @@ export class CreateStaffDto {
 export class UpdateStaffDto {
   @ApiPropertyOptional()
   @IsOptional()
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(200)
+  @IsString({ message: 'Tên nhân viên phải là chuỗi' })
+  @IsNotEmpty({ message: 'Tên nhân viên không được để trống' })
+  @MaxLength(200, { message: 'Tên nhân viên tối đa 200 ký tự' })
   fullName?: string;
 
   @ApiPropertyOptional()

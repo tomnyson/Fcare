@@ -5,6 +5,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { DataTable, Td } from '../../../components/ui/data-table';
 import {
   FilterBar,
@@ -109,11 +110,15 @@ function StudentsPageContent() {
     },
     onSuccess: (result) => {
       void queryClient.invalidateQueries({ queryKey: ['students'] });
+      toast.success(`Đã phân ngành cho ${result.updated}/${result.requested} sinh viên.`);
       // API không liệt kê id trượt — nếu thiếu, giữ nguyên `selected` để
       // người dùng còn thấy mình vừa chọn ai (thường lệch bộ môn).
       if (result.updated < result.requested) return;
       setSelected([]);
       setMajorId('');
+    },
+    onError: (err) => {
+      toast.error(err instanceof ApiError ? err.message : 'Lỗi phân ngành.');
     },
   });
 

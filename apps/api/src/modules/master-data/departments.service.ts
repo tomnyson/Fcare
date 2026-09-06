@@ -38,6 +38,9 @@ export class DepartmentsService {
       if (isPrismaError(error, 'P2025')) {
         throw new NotFoundException('Không tìm thấy bộ môn.');
       }
+      if (isPrismaError(error, 'P2002')) {
+        throw new ConflictException(`Mã bộ môn "${dto.code}" đã tồn tại.`);
+      }
       throw error;
     }
   }
