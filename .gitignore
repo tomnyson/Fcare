@@ -47,3 +47,10 @@ apps/api/prisma/*.db
 
 # Superpowers SDD scratch (ledger, briefs, review packages)
 .superpowers/
+
+# Rác do công cụ MCP/agent sinh ra
+.omx/
+.playwright-mcp/
+
+# File khoá tạm của Excel/Word (~$Tên file.xlsx)
+~$*.xls*
