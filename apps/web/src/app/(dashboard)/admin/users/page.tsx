@@ -4,7 +4,9 @@ import { ROLE_KEYS, type RoleKey } from '@fcare/shared-types';
 import { Badge, Button } from '@fcare/ui-kit';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { CheckCircle2, ChevronDown, Copy, Search } from 'lucide-react';
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
+import { toast } from 'sonner';
 import { DataTable, Td } from '../../../../components/ui/data-table';
 import { FormError, FormSuccess, Input, Label, Select } from '../../../../components/ui/form';
 import { Modal } from '../../../../components/ui/modal';
@@ -41,6 +43,7 @@ function AdminUsersPageContent() {
   const [selected, setSelected] = useState<readonly string[]>([]);
   const [bulkDepartmentId, setBulkDepartmentId] = useState('');
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<{ [key: string]: string }>({});
   const [tempPasswordInfo, setTempPasswordInfo] = useState<{
     staffCode: string;
     tempPassword: string;
@@ -101,6 +104,8 @@ function AdminUsersPageContent() {
       setCreating(false);
       setNewRoles([]);
       setError('');
+      setFieldErrors({});
+      toast.success('Tạo người dùng thành công!');
       setTempPasswordInfo({
         staffCode: result.staff.staffCode,
         tempPassword: result.tempPassword,
@@ -115,7 +120,10 @@ function AdminUsersPageContent() {
       apiFetch<{ staffCode: string; tempPassword: string }>(`/admin/staff/${id}/reset-password`, {
         method: 'POST',
       }),
-    onSuccess: (result) => setTempPasswordInfo(result),
+    onSuccess: (result) => {
+      setTempPasswordInfo(result);
+      toast.success('Cấp lại mật khẩu thành công!');
+    },
     onError: (err) =>
       setError(err instanceof ApiError ? err.message : 'Không thể cấp lại mật khẩu.'),
   });
@@ -123,7 +131,10 @@ function AdminUsersPageContent() {
   const toggleActiveMutation = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       apiFetch(`/admin/staff/${id}`, { method: 'PATCH', body: JSON.stringify({ isActive }) }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-staff'] }),
+    onSuccess: (_, variables) => {
+      toast.success(variables.isActive ? 'Đã kích hoạt tài khoản.' : 'Đã vô hiệu hóa tài khoản.');
+      queryClient.invalidateQueries({ queryKey: ['admin-staff'] });
+    },
   });
 
   const assignMutation = useMutation({
@@ -135,6 +146,7 @@ function AdminUsersPageContent() {
     onSuccess: async () => {
       setAssigning(null);
       setError('');
+      toast.success('Gán bộ môn thành công!');
       await queryClient.invalidateQueries({ queryKey: ['admin-staff'] });
     },
     onError: (err) =>
@@ -150,10 +162,11 @@ function AdminUsersPageContent() {
       });
       return { updated: result.updated, requested: staffIds.length };
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       setSelected([]);
       setBulkDepartmentId('');
       setError('');
+      toast.success(`Đã gán bộ môn cho ${result.updated}/${result.requested} cán bộ.`);
       await queryClient.invalidateQueries({ queryKey: ['admin-staff'] });
     },
     onError: (err) =>
@@ -180,6 +193,24 @@ function AdminUsersPageContent() {
   function onCreateSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const newFieldErrors: { [key: string]: string } = {};
+
+    const staffCode = (form.get('staffCode') as string).trim();
+    if (!/^[a-zA-Z0-9.-]+$/.test(staffCode)) {
+      newFieldErrors.staffCode = 'Mã nhân viên chỉ gồm chữ cái, số, dấu chấm và gạch ngang.';
+    }
+
+    const fullName = (form.get('fullName') as string).trim();
+    if (!fullName) {
+      newFieldErrors.fullName = 'Vui lòng nhập họ tên.';
+    }
+
+    if (Object.keys(newFieldErrors).length > 0) {
+      setFieldErrors(newFieldErrors);
+      return;
+    }
+    setFieldErrors({});
+
     if (newRoles.length === 0) {
       setError('Chọn ít nhất một vai trò.');
       return;
@@ -190,8 +221,8 @@ function AdminUsersPageContent() {
       return;
     }
     createMutation.mutate({
-      staffCode: form.get('staffCode'),
-      fullName: form.get('fullName'),
+      staffCode,
+      fullName,
       roles: [...newRoles],
       ...(departmentId ? { departmentId } : {}),
     });
@@ -218,6 +249,8 @@ function AdminUsersPageContent() {
             type="button"
             onClick={() => {
               setNewRoles([]);
+              setError('');
+              setFieldErrors({});
               setCreating(true);
             }}
           >
@@ -493,10 +526,12 @@ function AdminUsersPageContent() {
           <div>
             <Label htmlFor="staffCode">Mã nhân viên</Label>
             <Input id="staffCode" name="staffCode" placeholder="vd: gv.nguyen" required />
+            {fieldErrors.staffCode ? <FormError>{fieldErrors.staffCode}</FormError> : null}
           </div>
           <div>
             <Label htmlFor="fullName">Họ tên</Label>
             <Input id="fullName" name="fullName" required />
+            {fieldErrors.fullName ? <FormError>{fieldErrors.fullName}</FormError> : null}
           </div>
           <div>
             <Label htmlFor="departmentId">

@@ -2,7 +2,9 @@
 
 import { Button, SurfaceCard } from '@fcare/ui-kit';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, Check, Loader2, Play, Trash2, Upload, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { ImportKindPicker } from './import-kind-picker';
 import { ImportPreview } from './import-preview';
 import {
@@ -165,9 +167,11 @@ export function ImportWizard({ resumeBatchId, onResumeHandled }: ImportWizardPro
         return;
       }
       finishRun();
-      if (next.order.length > 1) {
-        setDone(`Đã ghi xong ${next.results.length}/${next.order.length} loại dữ liệu.`);
-      }
+      const message = next.order.length > 1
+        ? `Đã ghi xong ${next.results.length}/${next.order.length} loại dữ liệu.`
+        : 'Ghi dữ liệu thành công.';
+      setDone(message);
+      toast.success(message);
     },
     onError: (err) => {
       const detail = err instanceof ApiError ? err.message : 'Ghi dữ liệu thất bại.';
@@ -186,10 +190,13 @@ export function ImportWizard({ resumeBatchId, onResumeHandled }: ImportWizardPro
       }
       const discardedKind = currentKind(current);
       if (discardedKind && remainingKinds(current).length > 0) {
-        stopRun(`Đã dừng chuỗi import sau khi huỷ lô "${importKindLabel(discardedKind)}".`);
+        const message = `Đã dừng chuỗi import sau khi huỷ lô "${importKindLabel(discardedKind)}".`;
+        stopRun(message);
+        toast.info(message);
         return;
       }
       clearRunState();
+      toast.success('Đã hủy lô dữ liệu.');
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Huỷ lô thất bại.'),
   });

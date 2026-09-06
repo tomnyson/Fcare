@@ -7,6 +7,7 @@ import {
   IsString,
   IsUUID,
   MaxLength,
+  Matches,
 } from 'class-validator';
 
 export class CreateClassSectionDto {
@@ -14,26 +15,33 @@ export class CreateClassSectionDto {
     example: 'PRF192-SE1901-SU25',
     description: 'Mã lớp học phần',
   })
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(50)
+  @IsString({ message: 'Mã lớp học phần phải là chuỗi' })
+  @IsNotEmpty({ message: 'Mã lớp học phần không được để trống' })
+  @MaxLength(50, { message: 'Mã lớp học phần tối đa 50 ký tự' })
+  @Matches(/^[a-zA-Z0-9-]+$/, {
+    message: 'Mã lớp học phần chỉ gồm chữ cái, số và dấu gạch ngang, không dấu',
+  })
   code!: string;
 
   @ApiProperty({ description: 'ID môn học' })
-  @IsUUID()
+  @IsUUID(4, { message: 'ID môn học không hợp lệ' })
+  @IsNotEmpty({ message: 'Vui lòng chọn môn học' })
   subjectId!: string;
 
   @ApiPropertyOptional({
     description: 'ID giảng viên phụ trách — để trống nếu chưa phân công',
   })
   @IsOptional()
-  @IsUUID()
+  @IsUUID(4, { message: 'ID giảng viên không hợp lệ' })
   lecturerId?: string;
 
   @ApiProperty({ example: 'SU25', description: 'Học kỳ' })
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(20)
+  @IsString({ message: 'Học kỳ phải là chuỗi' })
+  @IsNotEmpty({ message: 'Học kỳ không được để trống' })
+  @MaxLength(20, { message: 'Học kỳ tối đa 20 ký tự' })
+  @Matches(/^[a-zA-Z0-9-]+$/, {
+    message: 'Học kỳ chỉ gồm chữ cái, số và dấu gạch ngang, không dấu',
+  })
   term!: string;
 }
 

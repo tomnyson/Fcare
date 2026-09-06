@@ -2,9 +2,11 @@
 
 import { Badge, Button } from '@fcare/ui-kit';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CheckCircle2, ChevronDown, CheckSquare, Search } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
+import { toast } from 'sonner';
 import { DataTable, Td } from '../../../components/ui/data-table';
 import { FormError, Label, Select, Textarea } from '../../../components/ui/form';
 import {
@@ -140,7 +142,10 @@ function AlertsPageContent() {
 
   const acknowledgeMutation = useMutation({
     mutationFn: (id: string) => apiFetch(`/alerts/${id}/acknowledge`, { method: 'PATCH' }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alerts'] }),
+    onSuccess: () => {
+      toast.success('Đã tiếp nhận cảnh báo!');
+      queryClient.invalidateQueries({ queryKey: ['alerts'] });
+    },
   });
 
   const resolveMutation = useMutation({
@@ -152,6 +157,7 @@ function AlertsPageContent() {
     onSuccess: async () => {
       setResolving(null);
       setError('');
+      toast.success('Đã xử lý cảnh báo thành công!');
       await queryClient.invalidateQueries({ queryKey: ['alerts'] });
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Có lỗi xảy ra.'),

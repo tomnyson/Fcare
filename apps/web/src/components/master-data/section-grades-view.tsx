@@ -3,6 +3,7 @@
 import { Badge, Button } from '@fcare/ui-kit';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { DataTable, Td } from '../ui/data-table';
 import { FormError, FormSuccess, Input, Select } from '../ui/form';
 import { PageHeader } from '../ui/page-header';
@@ -65,6 +66,7 @@ class GradeBatchSaveError extends Error {
     public readonly savedSoFar: number,
     public readonly totalRows: number,
     public readonly sourceError: unknown,
+    public readonly failedBatch: GradeRowPayload[],
   ) {
     super('grade-batch-save-failed');
   }
@@ -115,23 +117,44 @@ export function SectionGradesView({ sectionId }: { sectionId: string }) {
           );
           updated += result.updated;
         } catch (sourceError) {
-          throw new GradeBatchSaveError(updated, rows.length, sourceError);
+          throw new GradeBatchSaveError(updated, rows.length, sourceError, batch);
         }
       }
       return updated;
     },
     onSuccess: (updated) => {
-      setSaved(`Đã lưu ${updated} dòng điểm.`);
+      const message = `Đã lưu ${updated} dòng điểm.`;
+      setSaved(message);
+      toast.success(message);
       setError('');
       queryClient.invalidateQueries({ queryKey: ['section-grades', sectionId] });
     },
     onError: (err) => {
       setSaved('');
       if (err instanceof GradeBatchSaveError) {
-        const message =
+        let message =
           err.sourceError instanceof ApiError ? err.sourceError.message : 'Lưu thất bại.';
+        
+        if (err.failedBatch) {
+          message = message.replace(/rows\.(\d+)\.([a-zA-Z]+)([^,]*)/g, (match, idxStr, field, suffix) => {
+            const idx = parseInt(idxStr, 10);
+            const failedPayload = err.failedBatch[idx];
+            const student = failedPayload ? draft.find(r => r.enrollmentId === failedPayload.enrollmentId) : null;
+            const svCode = student ? student.studentCode : `dòng ${idx + 1}`;
+            
+            const fieldName = field === 'totalScore' ? 'Điểm tổng kết' : field === 'result' ? 'Kết quả' : field;
+            
+            let viSuffix = suffix;
+            if (suffix.includes('must not be less than 0')) viSuffix = ' không được nhỏ hơn 0';
+            else if (suffix.includes('must not be greater than 10')) viSuffix = ' không được lớn hơn 10';
+            else if (suffix.includes('must be a number')) viSuffix = ' phải là một số';
+            
+            return `${fieldName} của sinh viên ${svCode}${viSuffix}`;
+          });
+        }
+
         setError(
-          `${message} Đã lưu được ${err.savedSoFar}/${err.totalRows} dòng trước khi lỗi.`,
+          `${message}. Đã lưu được ${err.savedSoFar}/${err.totalRows} dòng trước khi lỗi.`,
         );
         if (err.savedSoFar > 0) {
           queryClient.invalidateQueries({ queryKey: ['section-grades', sectionId] });

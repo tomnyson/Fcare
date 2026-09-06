@@ -3,7 +3,9 @@
 import { ISSUE_GROUPS } from '@fcare/shared-types';
 import { Badge, Button } from '@fcare/ui-kit';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { AlertTriangle, Loader2, Play } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { toast } from 'sonner';
 import { apiFetch, ApiError } from '../../lib/api';
 import { formatDateTime } from '../../lib/labels';
 import type {
@@ -164,6 +166,7 @@ export function EvaluationsTab({ studentId, user }: { studentId: string; user: A
       const term = String((variables as { term?: string }).term ?? '');
       setOpen(false);
       setError('');
+      toast.success('Lưu đánh giá thành công!');
       setPostSaveTerm(term);
       if (term) {
         setSelectedTerm(term);
@@ -189,6 +192,7 @@ export function EvaluationsTab({ studentId, user }: { studentId: string; user: A
       analysisRequestKey.current = null;
       setAnalysisError('');
       setPostSaveTerm('');
+      toast.success('Tạo phân tích AI thành công!');
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ['student-term-analysis', studentId, selectedTerm],
@@ -212,6 +216,7 @@ export function EvaluationsTab({ studentId, user }: { studentId: string; user: A
     },
     onSuccess: async () => {
       setAnalysisError('');
+      toast.success('Đã lưu bản nháp.');
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ['student-term-analysis', studentId, selectedTerm],
@@ -245,6 +250,7 @@ export function EvaluationsTab({ studentId, user }: { studentId: string; user: A
     },
     onSuccess: async () => {
       setAnalysisError('');
+      toast.success('Đã gửi đánh giá thành công!');
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ['student-term-analysis', studentId, selectedTerm],

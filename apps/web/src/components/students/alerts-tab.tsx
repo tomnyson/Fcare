@@ -4,6 +4,7 @@ import { suggestUrgencyLevel } from '@fcare/shared-types';
 import { Badge, Button } from '@fcare/ui-kit';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
+import { toast } from 'sonner';
 import { apiFetch, ApiError } from '../../lib/api';
 import {
   ALERT_LEVEL_LABELS,
@@ -55,6 +56,7 @@ export function AlertsTab({ studentId, user }: { studentId: string; user: AuthUs
     onSuccess: async () => {
       setOpen(false);
       setError('');
+      toast.success('Phát cảnh báo thành công!');
       await queryClient.invalidateQueries({ queryKey: ['alerts'] });
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Có lỗi xảy ra.'),

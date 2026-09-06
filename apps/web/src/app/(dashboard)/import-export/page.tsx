@@ -3,6 +3,7 @@
 import { Button, SurfaceCard } from '@fcare/ui-kit';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { FormError, Label, Select } from '../../../components/ui/form';
 import { PageHeader } from '../../../components/ui/page-header';
 import { ImportHistory } from '../../../components/imports/import-history';
@@ -60,6 +61,7 @@ export default function ImportExportPage() {
     onSuccess: (result) => {
       setStudentsResult(result);
       setError('');
+      toast.success('Import sinh viên thành công!');
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Import thất bại.'),
   });
@@ -69,16 +71,21 @@ export default function ImportExportPage() {
     onSuccess: (result) => {
       setGradesResult(result);
       setError('');
+      toast.success('Import điểm thành công!');
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Import thất bại.'),
   });
 
   async function onExport(path: string, fallback: string) {
     setError('');
+    toast.info('Đang chuẩn bị file...');
     try {
       await apiDownload(path, fallback);
+      toast.success('Tải file thành công!');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Export thất bại.');
+      const msg = err instanceof ApiError ? err.message : 'Export thất bại.';
+      setError(msg);
+      toast.error(msg);
     }
   }
 
@@ -143,6 +150,18 @@ export default function ImportExportPage() {
                 <Button
                   type="button"
                   variant="secondary"
+                  onClick={() => {
+                    const a = document.createElement('a');
+                    a.href = '/samples/fcare-sinh-vien-mau.xlsx';
+                    a.download = 'fcare-sinh-vien-mau.xlsx';
+                    a.click();
+                  }}
+                >
+                  Tải file mẫu
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
                   onClick={() => onExport('/excel/students/export', 'fcare-sinh-vien.xlsx')}
                 >
                   ⇩ Export sinh viên
@@ -172,18 +191,32 @@ export default function ImportExportPage() {
                   className="block w-full text-sm text-muted file:mr-3 file:rounded-md file:border-0 file:bg-fpt-orange-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-fpt-orange"
                 />
               </div>
-              <Button
-                type="button"
-                disabled={importGrades.isPending}
-                onClick={() => {
-                  const file = gradesFileRef.current?.files?.[0];
-                  if (file) {
-                    importGrades.mutate(file);
-                  }
-                }}
-              >
-                {importGrades.isPending ? 'Đang import…' : '⇧ Import bảng điểm'}
-              </Button>
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  type="button"
+                  disabled={importGrades.isPending}
+                  onClick={() => {
+                    const file = gradesFileRef.current?.files?.[0];
+                    if (file) {
+                      importGrades.mutate(file);
+                    }
+                  }}
+                >
+                  {importGrades.isPending ? 'Đang import…' : '⇧ Import bảng điểm'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    const a = document.createElement('a');
+                    a.href = '/samples/fcare-diem-mau.xlsx';
+                    a.download = 'fcare-diem-mau.xlsx';
+                    a.click();
+                  }}
+                >
+                  Tải file mẫu
+                </Button>
+              </div>
 
               <div className="border-t border-border pt-3">
                 <Label htmlFor="export-section">Export điểm theo lớp học phần</Label>

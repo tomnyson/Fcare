@@ -4,6 +4,7 @@ import { RECALLED_MESSAGE_TEXT } from '@fcare/shared-types';
 import { Button } from '@fcare/ui-kit';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { toast } from 'sonner';
 import { apiFetch, ApiError } from '../../lib/api';
 import { groupMessagesByDay } from '../../lib/discussion';
 import { useDiscussion } from '../../lib/hooks';
@@ -90,6 +91,7 @@ export function DiscussionTab({
     mutationFn: (id: string) =>
       apiFetch<DiscussionMessage>(`/discussions/messages/${id}`, { method: 'DELETE' }),
     onSuccess: async () => {
+      toast.success('Đã thu hồi tin nhắn.');
       await queryClient.invalidateQueries({ queryKey: ['discussions', studentId] });
     },
     onError: (err) =>

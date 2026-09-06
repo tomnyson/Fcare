@@ -4,6 +4,7 @@ import { Button } from '@fcare/ui-kit';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
+import { toast } from 'sonner';
 import { DataTable, Td } from '../ui/data-table';
 import { FormError, Input, Label, Select } from '../ui/form';
 import { Modal } from '../ui/modal';
@@ -45,6 +46,7 @@ export function MappingView({ tab }: { tab: MappingTabKey }) {
   const [editing, setEditing] = useState<MappingRow | null>(null);
   const [deleting, setDeleting] = useState<MappingRow | null>(null);
   const [formError, setFormError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const items = useQuery({
     queryKey: [tab],
@@ -74,6 +76,7 @@ export function MappingView({ tab }: { tab: MappingTabKey }) {
         body: JSON.stringify(body),
       }),
     onSuccess: () => {
+      toast.success('Lưu thành công!');
       queryClient.invalidateQueries({ queryKey: [tab] });
       closeForm();
     },
@@ -84,6 +87,7 @@ export function MappingView({ tab }: { tab: MappingTabKey }) {
   const remove = useMutation({
     mutationFn: (id: string) => apiFetch(`${config.path}/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
+      toast.success('Xóa thành công!');
       queryClient.invalidateQueries({ queryKey: [tab] });
       setDeleting(null);
       setFormError('');
@@ -94,18 +98,43 @@ export function MappingView({ tab }: { tab: MappingTabKey }) {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setFormError('');
+    setFieldErrors({});
+
     const form = new FormData(event.currentTarget);
-    save.mutate(
-      isAlias
-        ? {
-            alias: String(form.get('alias') ?? '').trim(),
-            departmentId: String(form.get('departmentId') ?? ''),
-          }
-        : {
-            classPrefix: String(form.get('classPrefix') ?? '').trim().toUpperCase(),
-            majorId: String(form.get('majorId') ?? ''),
-          },
-    );
+    const errors: Record<string, string> = {};
+
+    if (isAlias) {
+      const alias = String(form.get('alias') ?? '').trim();
+      const departmentId = String(form.get('departmentId') ?? '');
+
+      if (!alias) errors.alias = 'Nhãn bộ môn không được để trống';
+      else if (alias.length > 100) errors.alias = 'Nhãn bộ môn tối đa 100 ký tự';
+
+      if (!departmentId) errors.departmentId = 'Vui lòng chọn bộ môn đích';
+
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        return;
+      }
+
+      save.mutate({ alias, departmentId });
+    } else {
+      const classPrefix = String(form.get('classPrefix') ?? '').trim().toUpperCase();
+      const majorId = String(form.get('majorId') ?? '');
+
+      if (!classPrefix) errors.classPrefix = 'Tiền tố lớp không được để trống';
+      else if (!/^[A-Z]{2}$/.test(classPrefix)) errors.classPrefix = 'Tiền tố lớp phải gồm đúng 2 chữ cái';
+
+      if (!majorId) errors.majorId = 'Vui lòng chọn ngành đích';
+
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors);
+        return;
+      }
+
+      save.mutate({ classPrefix, majorId });
+    }
   }
 
   return (
@@ -197,6 +226,7 @@ export function MappingView({ tab }: { tab: MappingTabKey }) {
               <div>
                 <Label htmlFor="alias">Nhãn trong file Excel</Label>
                 <Input id="alias" name="alias" defaultValue={editing?.alias ?? ''} required />
+                {fieldErrors.alias && <p className="mt-1 text-sm text-danger">{fieldErrors.alias}</p>}
               </div>
               <div>
                 <Label htmlFor="departmentId">Bộ môn đích</Label>
@@ -213,6 +243,7 @@ export function MappingView({ tab }: { tab: MappingTabKey }) {
                     </option>
                   ))}
                 </Select>
+                {fieldErrors.departmentId && <p className="mt-1 text-sm text-danger">{fieldErrors.departmentId}</p>}
               </div>
             </>
           ) : (
@@ -227,6 +258,7 @@ export function MappingView({ tab }: { tab: MappingTabKey }) {
                   maxLength={2}
                   required
                 />
+                {fieldErrors.classPrefix && <p className="mt-1 text-sm text-danger">{fieldErrors.classPrefix}</p>}
               </div>
               <div>
                 <Label htmlFor="majorId">Ngành đích</Label>
@@ -238,6 +270,7 @@ export function MappingView({ tab }: { tab: MappingTabKey }) {
                     </option>
                   ))}
                 </Select>
+                {fieldErrors.majorId && <p className="mt-1 text-sm text-danger">{fieldErrors.majorId}</p>}
               </div>
             </>
           )}
