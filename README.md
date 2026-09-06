@@ -130,3 +130,4 @@ Theo tài liệu "Cơ sở dữ liệu và cơ chế bảo mật thông tin tron
 - Chỉ Trưởng bộ môn, Cán bộ Đào tạo, Cán bộ CTSV (và admin) được import/export Excel.
 - Đăng nhập phải ký cam kết không chia sẻ dữ liệu (consent gate — chặn toàn bộ API tới khi ký).
 - Chống CSRF bằng custom header cho cookie-auth; helmet; rate limiting toàn cục; audit log.
+# Fcare
