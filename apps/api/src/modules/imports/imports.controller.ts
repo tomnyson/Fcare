@@ -28,6 +28,9 @@ const KIND_BY_SLUG: Record<string, ImportKind> = {
   lecturer: ImportKind.LECTURER,
   schedule: ImportKind.SCHEDULE,
   gradebook: ImportKind.GRADEBOOK,
+  'section-list': ImportKind.SECTION_LIST,
+  roster: ImportKind.ROSTER,
+  'grade-attendance': ImportKind.GRADE_ATTENDANCE,
 };
 
 function requireXlsx(file: Express.Multer.File | undefined): Buffer {

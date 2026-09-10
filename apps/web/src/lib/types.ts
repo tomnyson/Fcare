@@ -1,4 +1,8 @@
-import type { RoleKey } from '@fcare/shared-types';
+import type {
+  EvaluationCriterion,
+  ForcedEscalationRule,
+  RoleKey,
+} from '@fcare/shared-types';
 
 export interface AuthUser {
   id: string;
@@ -90,6 +94,13 @@ export interface DepartmentAlias {
   department?: { id: string; code: string; name: string };
 }
 
+export interface MajorAlias {
+  id: string;
+  alias: string;
+  majorId: string;
+  major?: { id: string; code: string; name: string };
+}
+
 export interface ClassMajorRule {
   id: string;
   classPrefix: string;
@@ -163,13 +174,17 @@ export interface SectionGradesResponse {
 export interface Evaluation {
   id: string;
   term: string;
+  classSectionId: string;
   academicScore: number;
   attitudeScore: number;
-  issueGroup: number | null;
+  /** Số buổi vắng giảng viên ghi nhận; null = chưa theo dõi chuyên cần. */
+  absentSessions: number | null;
+  criteria: { criterion: EvaluationCriterion }[];
   note: string | null;
   createdAt: string;
   lecturer?: StaffRef;
   student?: Student;
+  classSection?: ClassSectionOption;
 }
 
 export interface CareLog {
@@ -232,6 +247,14 @@ export interface StudentAnalysisOutput {
   recommendations: string[];
   notificationSummary: string;
   dataLimitations: string[];
+  /** Độ khẩn AI đề xuất (1-4); cấp cuối vẫn do server chốt. */
+  suggestedLevel: 1 | 2 | 3 | 4;
+  /** Luật ép cấp AI đọc ra được từ nhận xét, kèm câu trích nguyên văn. */
+  forcedEscalation: {
+    rule: ForcedEscalationRule;
+    quote: string;
+    level: 3 | 4;
+  } | null;
 }
 
 export interface StudentTermAnalysisVersionSummary {
@@ -256,6 +279,17 @@ export interface StudentTermAnalysisSummary {
   owner: StaffRef;
   canManage: boolean;
   versions: StudentTermAnalysisVersionSummary[];
+}
+
+/**
+ * Kết quả xem trước người nhận: `systemLevel` là cấp hệ thống tính từ DRS +
+ * luật ép, `level` là cấp đang xem trước (không bao giờ thấp hơn systemLevel).
+ * Version đã gửi trả cả hai bằng `null` vì danh sách đã chốt.
+ */
+export interface StudentTermAnalysisRecipientsPreview {
+  systemLevel: number | null;
+  level: number | null;
+  recipients: StudentTermAnalysisRecipientPreview[];
 }
 
 export interface StudentTermAnalysisRecipientPreview {
@@ -289,6 +323,12 @@ export interface StudentTermAnalysisDetail {
     totalTokens: number | null;
   };
   errorMessage?: string | null;
+  /** Bản do hệ thống sinh sau nhận xét, đang chờ người nhận xét quyết định gửi. */
+  needsSendDecision?: boolean;
+  /** Nguồn nội dung đã gửi: AI tổng hợp hay giảng viên tự soạn. */
+  contentSource?: 'AI' | 'LECTURER';
+  /** Thời điểm người dùng bấm "Không gửi" — bản nháp vẫn gửi tay được sau đó. */
+  dismissedAt?: string | null;
   requestedAt?: string;
   generatedAt?: string | null;
   editedAt?: string | null;
@@ -399,7 +439,15 @@ export interface ImportResult {
 // (apps/api/src/modules/imports) tại thời điểm viết — không phải bản mô tả
 // trong brief: summary là object JSON lồng trong batch (không phải field
 // rời), preview row không có `id`, và list()/preview() không trả `createdBy`.
-export type ImportKind = 'CATALOG' | 'LECTURER' | 'SCHEDULE' | 'GRADEBOOK';
+export type ImportKind =
+  | 'CATALOG'
+  | 'LECTURER'
+  | 'SCHEDULE'
+  | 'GRADEBOOK'
+  // Bộ file nhà trường gửi đầu kỳ, chạy đúng thứ tự này.
+  | 'SECTION_LIST'
+  | 'ROSTER'
+  | 'GRADE_ATTENDANCE';
 export type ImportStatus = 'PENDING' | 'COMMITTED' | 'FAILED' | 'CANCELLED';
 
 export interface ImportSummary {
@@ -407,7 +455,13 @@ export interface ImportSummary {
   validRows: number;
   errorCount: number;
   warnings: string[];
+  /** Mã bộ môn chưa tra được — dòng dùng mã này sẽ bị BỎ QUA khi commit. */
   unmappedAliases: string[];
+  /**
+   * Mã ngành chưa tra được — sinh viên vẫn được tạo, chỉ để trống ngành.
+   * Optional: batch tạo trước khi tách hai loại không có khoá này.
+   */
+  unmappedMajorAliases?: string[];
 }
 
 export interface ImportRowView {

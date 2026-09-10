@@ -113,11 +113,36 @@ gitignore) từ file nguồn trong `docs/`: một bản **đã xoá ô PII** cho
 import thành công, một bản gắn nhãn bộ môn lạ để kiểm cảnh báo "chưa có ánh xạ".
 File nguồn giữ nguyên email và được dùng cho test chứng minh RULE 1 từ chối cả file.
 
+Bộ 3 file đầu kỳ trong `docs/tailieu/` được dùng THẲNG bản gốc (đã kiểm: không có
+email/SĐT/CCCD ở sheet nào) — xem `apps/web/e2e/term-import-flow.spec.ts`. Thiếu
+bất kỳ file nguồn nào thì global setup dừng ngay với thông báo tên file.
+
 ### Thứ tự import bắt buộc
 
-1. Danh mục môn học → 2. Danh sách giảng viên → 3. Lịch và phân công lớp → 4. Bảng điểm.
+**File phân công GV (một file, 3 sheet — tick chung được, hệ thống tự sắp thứ tự):**
 
-Chạy sai thứ tự sẽ khiến nhiều dòng bị bỏ qua vì môn học hoặc giảng viên chưa tồn tại.
+1. Danh mục môn học → 2. Danh sách giảng viên → 3. Lịch và phân công lớp.
+   Sau đó là 4. Bảng điểm (file gradebook riêng).
+
+**Bộ file nhà trường gửi đầu mỗi kỳ (`docs/tailieu/`) — ba file vật lý khác nhau,
+mỗi loại phải tải riêng một lần, KHÔNG tick chung:**
+
+1. `Danh_sach_lop_*.xlsx` → **Đầu kỳ 1/3 — Danh sách lớp**: tạo lớp học phần kèm
+   giảng viên, block, ca học, phòng, ngày bắt đầu. Mã lớp học phần được ghép từ
+   cặp *(Tên lớp, Mã môn)* vì riêng "Tên lớp" không duy nhất.
+2. `DSSV lớp môn *.xlsx` → **Đầu kỳ 2/3 — Sinh viên lớp môn**: tạo hồ sơ sinh viên
+   và ghi danh vào lớp học phần. Dòng nào chưa có lớp học phần tương ứng sẽ bị bỏ
+   qua chứ không tự tạo lớp (lớp tạo ở bước này sẽ thiếu giảng viên, ca, phòng).
+3. `LHCT *.xlsx` → **Đầu kỳ 3/3 — Điểm và chuyên cần**: ghi điểm tổng kết, kết quả,
+   cấm thi và chuyên cần (`absentSessions` / `totalSessions` + `attendanceRate`)
+   vào ghi danh đã có. Các dòng của lớp thi lại cuối kỳ (`TL_EOS test_*`) được bỏ
+   qua kèm cảnh báo ở bản xem trước — đó không phải lớp trong kế hoạch giảng dạy.
+
+Ô "Học kỳ" phải điền đúng kỳ của bộ file (ví dụ `SU26`): lớp học phần được tra
+theo cặp *(mã lớp, học kỳ)*, điền lệch kỳ thì bước 2/3 và 3/3 bỏ qua toàn bộ dòng.
+
+Chạy sai thứ tự sẽ khiến nhiều dòng bị bỏ qua vì môn học, giảng viên hoặc lớp học
+phần chưa tồn tại.
 
 ## Nguyên tắc bảo mật dữ liệu (bắt buộc)
 

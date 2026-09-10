@@ -27,7 +27,9 @@ Theo tài liệu nghiệp vụ trong `docs/` — vi phạm là lỗi CRITICAL, k
 
 - **Guard chain toàn cục theo thứ tự**: Throttler → Csrf (mutation cookie-auth cần header `X-Requested-With: XMLHttpRequest`) → JwtAuth (`@Public` bỏ qua) → Consent (`@SkipConsent`) → Policies (CASL `@CheckPolicies`).
 - **Response envelope** `{ success, data, error }` cho mọi endpoint; ngoại lệ: `StreamableFile` (Excel) và SSE (`@SkipEnvelope`). Lỗi chuẩn hóa qua `HttpExceptionFilter` kèm `code` nghiệp vụ.
-- **Escalation cảnh báo**: BullMQ queue `alert-escalation` (retry 3, backoff), enqueue timeout 1.5s → fallback gửi đồng bộ; idempotent nhờ unique `(alertId, recipientId)`. Ma trận người nhận trong `escalation.service.ts` (L2 → TBM, L3 → +Đào tạo, L4 → +CTSV + GV đang dạy, lý do ≥ 40 ký tự).
+- **Điểm rủi ro DRS**: `computeRiskScore()` trong `packages/shared-types/src/risk-score.ts` là nguồn duy nhất — `DRS = R_L + R_A + R_C + R_H + R_P`, lấy **TRUNG VỊ** điểm các giảng viên (không phải trung bình); cấp = max(cấp theo DRS, cấp ép do dữ liệu, cấp ép do AI). Web chỉ hiển thị, không tự cộng lại.
+- **Escalation cảnh báo**: BullMQ queue `alert-escalation` (retry 3, backoff), enqueue timeout 1.5s → fallback gửi đồng bộ; idempotent nhờ unique `(alertId, recipientId)`. Ma trận người nhận trong `escalation.service.ts` `computeRecipientIds()` theo `docs/tailieu/flow.png`: **mọi cấp** gửi cho tất cả giảng viên đang dạy sinh viên → L2 thêm CB CTSV (SA_OFFICER) → L3 thêm TBM của bộ môn sinh viên → L4 thêm Cán bộ Đào tạo + Trưởng CTSV (lý do ≥ 40 ký tự). Người bấm gửi bị loại khỏi danh sách.
+- **Gửi cảnh báo luôn do người bấm**: nhận xét lưu xong → AI sinh bản nháp + `needsSendDecision`, KHÔNG tự gửi. Người vừa nhận xét (hoặc chủ hồ sơ/ADMIN — `assertCanDecide`) chọn 1 trong 2: `contentSource=AI` gửi nguyên `notificationSummary`, hoặc `contentSource=LECTURER` gửi nội dung tự soạn (≥ 40 ký tự, chặn PII) **kèm digest lịch sử chăm sóc** lấy từ `sourceSnapshot.careLogs` (`care-history-digest.ts`, không query lại). Bấm "Không gửi" → `dismissedAt`, bản nháp vẫn gửi tay được sau.
 - **Realtime**: SSE `GET /notifications/stream` (cookie auth, heartbeat 25s) + polling 120s dự phòng phía web. Không đổi sang WebSocket nếu chưa được yêu cầu.
 - **Auth**: JWT access 15' + refresh 7d xoay vòng, httpOnly cookie `fcare_access`/`fcare_refresh`; đổi mật khẩu tạm bắt buộc (`PASSWORD_CHANGE_REQUIRED`).
 - Prisma **pin v6** — KHÔNG nâng Prisma 7 (breaking change datasource/driver adapter) khi chưa được yêu cầu.
@@ -57,7 +59,7 @@ Theo tài liệu nghiệp vụ trong `docs/` — vi phạm là lỗi CRITICAL, k
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **Fcare** (1117 symbols, 2739 relationships, 87 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **Fcare** (2748 symbols, 7219 relationships, 221 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
 

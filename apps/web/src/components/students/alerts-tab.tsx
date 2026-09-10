@@ -1,6 +1,6 @@
 'use client';
 
-import { suggestUrgencyLevel } from '@fcare/shared-types';
+import { type RiskScoreBreakdown } from '@fcare/shared-types';
 import { Badge, Button } from '@fcare/ui-kit';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
@@ -26,25 +26,33 @@ export function AlertsTab({ studentId, user }: { studentId: string; user: AuthUs
     queryFn: () => apiFetch<Paginated<Alert>>(`/alerts?studentId=${studentId}&limit=50`),
   });
 
-  // Dùng chung cache với tab Đánh giá — chỉ để gợi ý độ khẩn theo lần đánh giá
-  // mới nhất (danh sách đã sắp createdAt giảm dần ở API).
+  // Dùng chung cache với tab Nhận xét — chỉ để gợi ý độ khẩn theo học kỳ của
+  // bản nhận xét mới nhất (danh sách đã sắp createdAt giảm dần ở API).
   const { data: evaluations } = useQuery({
     queryKey: ['evaluations', studentId],
     queryFn: () => apiFetch<Evaluation[]>(`/evaluations?studentId=${studentId}`),
   });
 
-  const latestEvaluation = evaluations?.[0] ?? null;
-  const suggestion = latestEvaluation
-    ? suggestUrgencyLevel({
-        academicScore: latestEvaluation.academicScore,
-        attitudeScore: latestEvaluation.attitudeScore,
-        issueGroup: latestEvaluation.issueGroup,
-      })
+  const latestTerm = evaluations?.[0]?.term ?? '';
+
+  // Mức đề xuất lấy thẳng điểm DRS gộp mọi giảng viên — cùng nguồn với bảng
+  // phân rã ở tab Nhận xét, không tính lại theo một bản nhận xét đơn lẻ.
+  const { data: riskScore } = useQuery({
+    queryKey: ['risk-score', studentId, latestTerm],
+    queryFn: () =>
+      apiFetch<RiskScoreBreakdown>(
+        `/evaluations/risk-score?studentId=${studentId}&term=${encodeURIComponent(latestTerm)}`,
+      ),
+    enabled: latestTerm.length > 0,
+  });
+
+  const suggestedLevel = riskScore
+    ? Math.max(riskScore.drsLevel, riskScore.dataForcedLevel)
     : null;
 
   function openRaiseModal() {
     // Mặc định theo mức đề xuất từ đánh giá gần nhất; người phát vẫn đổi được.
-    setLevel(String(suggestion?.level ?? 1));
+    setLevel(String(suggestedLevel ?? 1));
     setError('');
     setOpen(true);
   }
@@ -140,13 +148,14 @@ export function AlertsTab({ studentId, user }: { studentId: string; user: AuthUs
               ))}
             </Select>
             <p className="mt-1.5 text-xs text-muted">
-              Mức 2 báo Trưởng bộ môn · Mức 3 thêm Cán bộ Đào tạo · Mức 4 thêm CTSV và mọi giảng
-              viên đang dạy (cần lý do ≥ 40 ký tự).
+              Mọi mức đều báo giảng viên đang dạy · Mức 2 thêm CB CTSV · Mức 3 thêm Trưởng bộ
+              môn · Mức 4 thêm Cán bộ Đào tạo và Trưởng CTSV (cần lý do ≥ 40 ký tự).
             </p>
-            {suggestion ? (
+            {suggestedLevel && riskScore ? (
               <p className="mt-1.5 rounded-md bg-fpt-orange-50 px-3 py-2 text-xs text-ink">
-                Đánh giá gần nhất ({latestEvaluation?.term}) đề xuất{' '}
-                <strong>mức {suggestion.level}</strong>: {suggestion.reasons[0]}
+                Điểm DRS học kỳ {latestTerm} là {riskScore.drs} → đề xuất{' '}
+                <strong>mức {suggestedLevel}</strong>
+                {riskScore.reasons[0] ? `: ${riskScore.reasons[0]}` : '.'}
               </p>
             ) : null}
           </div>

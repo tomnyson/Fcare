@@ -3,6 +3,11 @@ FROM node:20-alpine AS build
 RUN corepack enable
 WORKDIR /repo
 
+# Next inline biến NEXT_PUBLIC_* ngay lúc build, không đọc lại lúc chạy. Không
+# truyền ARG này thì bản production vẫn gọi http://localhost:3001/api.
+ARG NEXT_PUBLIC_API_URL=http://localhost:3001/api
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages ./packages
 COPY apps/web ./apps/web

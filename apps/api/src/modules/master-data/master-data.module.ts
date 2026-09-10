@@ -7,12 +7,14 @@ import {
   ClassSectionsController,
   DepartmentAliasesController,
   DepartmentsController,
+  MajorAliasesController,
   MajorsController,
   SubjectsController,
 } from './master-data.controller';
 import {
   ClassMajorRulesService,
   DepartmentAliasesService,
+  MajorAliasesService,
 } from './mappings.service';
 import { SubjectsService } from './subjects.service';
 
@@ -23,6 +25,7 @@ import { SubjectsService } from './subjects.service';
     SubjectsController,
     ClassSectionsController,
     DepartmentAliasesController,
+    MajorAliasesController,
     ClassMajorRulesController,
   ],
   providers: [
@@ -31,6 +34,7 @@ import { SubjectsService } from './subjects.service';
     SubjectsService,
     ClassSectionsService,
     DepartmentAliasesService,
+    MajorAliasesService,
     ClassMajorRulesService,
   ],
   exports: [
@@ -39,6 +43,7 @@ import { SubjectsService } from './subjects.service';
     SubjectsService,
     ClassSectionsService,
     DepartmentAliasesService,
+    MajorAliasesService,
     ClassMajorRulesService,
   ],
 })

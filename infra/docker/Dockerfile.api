@@ -1,5 +1,8 @@
 # --- Build stage ---
+# openssl là bắt buộc: query engine của Prisma 6 link động vào libssl, thiếu nó
+# thì container start được nhưng mọi truy vấn đều chết.
 FROM node:20-alpine AS build
+RUN apk add --no-cache openssl
 RUN corepack enable
 WORKDIR /repo
 
@@ -8,13 +11,35 @@ COPY packages ./packages
 COPY apps/api ./apps/api
 
 RUN pnpm install --frozen-lockfile --filter @fcare/api...
+# `build` = prisma generate && nest build, nên client đã được sinh trước khi
+# `pnpm deploy` gom node_modules cho bản production.
 RUN pnpm --filter @fcare/shared-types build && pnpm --filter @fcare/api build
-RUN pnpm --filter @fcare/api deploy --prod /out
+# pnpm 10 chỉ deploy workspace có inject-workspace-packages nếu không có
+# --legacy; bật inject cho cả repo sẽ đổi cách install ở máy dev nên chỉ
+# dùng cờ này trong image.
+RUN pnpm --filter @fcare/api deploy --legacy --prod /out
+# Schema + migrations không nằm trong output của `nest build`; copy tay để image
+# migrate ở dưới có đủ dữ liệu chạy `prisma migrate deploy`.
+RUN cp -r /repo/apps/api/prisma /out/prisma
+# `pnpm deploy` lấy @prisma/client nguyên bản từ store nên client đã sinh ở
+# /repo bị bỏ lại. Sinh lại ngay trong /out, nếu không runtime sẽ báo
+# "Prisma Client did not initialize yet".
+RUN cd /out && /repo/apps/api/node_modules/.bin/prisma generate --schema=/out/prisma/schema.prisma
+
+# --- Migrate stage ---
+# Chạy một lần trước khi API lên (service `migrate` trong compose). Dùng lại
+# stage build vì `prisma` CLI là devDependency, không có trong bản --prod.
+FROM build AS migrate
+WORKDIR /repo/apps/api
+CMD ["pnpm", "exec", "prisma", "migrate", "deploy"]
 
 # --- Runtime stage ---
-FROM node:20-alpine
+FROM node:20-alpine AS runtime
+RUN apk add --no-cache openssl
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build /out .
 EXPOSE 3001
-CMD ["node", "dist/main"]
+# `nest build` xuất ra dist/src/main.js (không phải dist/main.js) vì tsconfig
+# gồm cả thư mục prisma/ — sai đường dẫn này là container crash ngay khi start.
+CMD ["node", "dist/src/main.js"]

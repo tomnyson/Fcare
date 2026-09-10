@@ -16,6 +16,7 @@ import type { AuthUser } from '../../common/types/auth-user';
 import {
   CreateStudentTermAnalysisDto,
   ListStudentTermAnalysesQuery,
+  SendAnalysisDto,
   UpdateStudentAnalysisDraftDto,
 } from './dto/student-analysis.dto';
 import { StudentAnalysesService } from './student-analyses.service';
@@ -69,13 +70,34 @@ export class StudentAnalysesController {
   recipients(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,
+    @Query('level') level?: string,
   ) {
-    return this.analyses.previewRecipients(user, id);
+    const parsed = Number(level);
+    return this.analyses.previewRecipients(
+      user,
+      id,
+      Number.isInteger(parsed) && parsed >= 1 && parsed <= 4
+        ? parsed
+        : undefined,
+    );
+  }
+
+  @Post('term-analysis-versions/:id/dismiss')
+  @CheckPolicies((ability: AppAbility) => ability.can('update', 'Evaluation'))
+  dismiss(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.analyses.dismissVersion(user, id);
   }
 
   @Post('term-analysis-versions/:id/send')
   @CheckPolicies((ability: AppAbility) => ability.can('update', 'Evaluation'))
-  send(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.analyses.sendVersion(user, id);
+  send(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SendAnalysisDto,
+  ) {
+    return this.analyses.sendVersion(user, id, dto);
   }
 }

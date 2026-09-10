@@ -25,8 +25,10 @@ import { CreateDepartmentDto, UpdateDepartmentDto } from './dto/department.dto';
 import {
   CreateClassMajorRuleDto,
   CreateDepartmentAliasDto,
+  CreateMajorAliasDto,
   UpdateClassMajorRuleDto,
   UpdateDepartmentAliasDto,
+  UpdateMajorAliasDto,
 } from './dto/mapping.dto';
 import { CreateMajorDto, UpdateMajorDto } from './dto/major.dto';
 import { UpdateSectionGradesDto } from './dto/section-grades.dto';
@@ -35,6 +37,7 @@ import { MajorsService } from './majors.service';
 import {
   ClassMajorRulesService,
   DepartmentAliasesService,
+  MajorAliasesService,
 } from './mappings.service';
 import { SubjectsService } from './subjects.service';
 
@@ -244,6 +247,39 @@ export class ClassMajorRulesController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateClassMajorRuleDto,
+  ) {
+    return this.service.update(id, dto);
+  }
+
+  @Delete(':id')
+  @CheckPolicies(canManage)
+  remove(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.remove(id);
+  }
+}
+
+@ApiTags('master-data')
+@Controller('major-aliases')
+export class MajorAliasesController {
+  constructor(private readonly service: MajorAliasesService) {}
+
+  @Get()
+  @CheckPolicies(canRead)
+  findAll() {
+    return this.service.findAll();
+  }
+
+  @Post()
+  @CheckPolicies(canManage)
+  create(@Body() dto: CreateMajorAliasDto) {
+    return this.service.create(dto);
+  }
+
+  @Patch(':id')
+  @CheckPolicies(canManage)
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateMajorAliasDto,
   ) {
     return this.service.update(id, dto);
   }

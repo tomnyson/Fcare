@@ -18,6 +18,12 @@ export const MASTER_DATA_TABS = [
     path: '/department-aliases',
   },
   {
+    key: 'major-aliases',
+    label: 'Ánh xạ ngành',
+    singular: 'ánh xạ ngành',
+    path: '/major-aliases',
+  },
+  {
     key: 'class-major-rules',
     label: 'Quy tắc lớp → ngành',
     singular: 'quy tắc lớp → ngành',
@@ -38,6 +44,20 @@ export const TRAINING_AREA_ROLES: readonly RoleKey[] = [
 
 export function canViewTrainingArea(roles: readonly RoleKey[]): boolean {
   return roles.some((role) => TRAINING_AREA_ROLES.includes(role));
+}
+
+/**
+ * Chỉ ADMIN và TRAINING_OFFICER có `update MasterData` (xem
+ * apps/api/src/casl/ability.factory.ts). Các vai trò khác mở được màn hình
+ * danh mục nhưng chỉ đọc — và không gán nhanh ánh xạ được ở bản xem trước.
+ */
+export const MASTER_DATA_MANAGER_ROLES: readonly RoleKey[] = [
+  'ADMIN',
+  'TRAINING_OFFICER',
+];
+
+export function canManageMasterData(roles: readonly RoleKey[]): boolean {
+  return roles.some((role) => MASTER_DATA_MANAGER_ROLES.includes(role));
 }
 
 export function isMasterDataTabKey(value: string): value is MasterDataTabKey {

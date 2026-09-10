@@ -106,6 +106,9 @@ function makePrismaMock() {
       deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
     },
     departmentAlias: { findMany: jest.fn().mockResolvedValue([]) },
+    majorAlias: { findMany: jest.fn().mockResolvedValue([]) },
+    department: { findMany: jest.fn().mockResolvedValue([]) },
+    major: { findMany: jest.fn().mockResolvedValue([]) },
     txImportBatchUpdate,
     txImportRowDeleteMany,
     $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(tx)),
@@ -190,6 +193,41 @@ describe('ImportsService', () => {
         errorCount: 1,
         warnings: ['một cảnh báo'],
         unmappedAliases: ['THUC-TAP-TN'],
+      }),
+    );
+  });
+
+  it('tách mã ngành chưa ánh xạ khỏi mã bộ môn — hai hậu quả khác nhau', async () => {
+    parseMock.mockResolvedValue({
+      rows: [
+        {
+          sheet: 'S',
+          rowIndex: 2,
+          payload: { deptAlias: 'CNTT', majorAlias: 'CHNA' },
+        },
+        {
+          sheet: 'S',
+          rowIndex: 3,
+          payload: { deptAlias: 'LA', majorAlias: 'LTAI' },
+        },
+      ],
+      warnings: [],
+      unmappedAliases: [],
+    });
+    prisma.departmentAlias.findMany.mockResolvedValue([{ alias: 'CNTT' }]);
+    prisma.major.findMany.mockResolvedValue([{ code: 'LTAI' }]);
+    const buffer = await workbookBuffer(['Mã môn']);
+    await service.upload(user, ImportKind.CATALOG, buffer, 'a.xlsx', 'SU26');
+
+    const [createArgs] = prisma.importBatch.create.mock.calls[0] as [
+      CreateBatchArgs,
+    ];
+    expect(createArgs.data.summary).toEqual(
+      expect.objectContaining({
+        // "LA" chưa có alias lẫn mã bộ môn thật → dòng sẽ bị bỏ qua.
+        unmappedAliases: ['LA'],
+        // "LTAI" trùng Major.code nên KHÔNG bị coi là thiếu ánh xạ.
+        unmappedMajorAliases: ['CHNA'],
       }),
     );
   });

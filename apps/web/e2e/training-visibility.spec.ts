@@ -36,7 +36,7 @@ test('quản trị viên vẫn thấy và mở được khu vực Đào tạo', 
   await loginAsAdmin(page);
   const navigation = page.getByRole('navigation', { name: 'Điều hướng chính' });
   await expect(navigation.getByText('Đào tạo', { exact: true })).toBeVisible();
-  await expect(navigation.locator('a[href^="/master-data/"]')).toHaveCount(6);
+  await expect(navigation.locator('a[href^="/master-data/"]')).toHaveCount(7);
 
   await page.goto('/master-data/departments');
   await expect(page.getByRole('heading', { name: 'Đào tạo', level: 1 })).toBeVisible();

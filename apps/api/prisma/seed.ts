@@ -5,12 +5,13 @@
  * LƯU Ý BẢO MẬT: tuyệt đối không seed CCCD/SĐT/email/địa chỉ — các trường này
  * không tồn tại trong schema theo tài liệu nghiệp vụ.
  */
-import { AlertStatus, CareChannel, EnrollmentResult, PrismaClient, StudentStatus } from '@prisma/client';
+import { AlertStatus, CareChannel, EnrollmentResult, EvaluationCriterion, PrismaClient, StudentStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import {
   CLASS_MAJOR_RULES,
   DEPARTMENT_ALIASES,
   DEPARTMENTS,
+  MAJOR_ALIASES,
   MAJORS,
 } from './seed-data';
 
@@ -103,6 +104,18 @@ async function main(): Promise<void> {
       where: { alias: entry.alias },
       update: { departmentId: department.id },
       create: { alias: entry.alias, departmentId: department.id },
+    });
+  }
+
+  // ===== Alias ngành =====
+  for (const entry of MAJOR_ALIASES) {
+    const major = await prisma.major.findUniqueOrThrow({
+      where: { code: entry.majorCode },
+    });
+    await prisma.majorAlias.upsert({
+      where: { alias: entry.alias },
+      update: { majorId: major.id },
+      create: { alias: entry.alias, majorId: major.id },
     });
   }
 
@@ -264,24 +277,47 @@ async function main(): Promise<void> {
   if (evaluationCount === 0 && seStudents.length >= 3) {
     const [first, second, third] = seStudents;
 
-    await prisma.evaluation.createMany({
-      data: [
-        {
-          studentId: first!.id, lecturerId: gvBinh.id, term: 'SU25',
-          academicScore: 8, attitudeScore: 9, note: 'Học tốt, tích cực phát biểu.',
-        },
-        {
-          studentId: second!.id, lecturerId: gvBinh.id, term: 'SU25',
-          academicScore: 4, attitudeScore: 5, issueGroup: 2,
-          note: 'Hổng kiến thức nền, cần kèm thêm.',
-        },
-        {
-          studentId: third!.id, lecturerId: gvBinh.id, term: 'SU25',
-          academicScore: 3, attitudeScore: 4, issueGroup: 3,
-          note: 'Nghỉ nhiều buổi liên tiếp, có dấu hiệu chán học.',
-        },
-      ],
+    // Nhận xét gắn với lớp học phần gv.binh đang dạy lớp SE1901.
+    const prfSection = await prisma.classSection.findUniqueOrThrow({
+      where: { code_term: { code: 'PRF192-SE1901-SU25', term: 'SU25' } },
     });
+
+    const evaluationPlans = [
+      {
+        studentId: first!.id,
+        academicScore: 8, attitudeScore: 9, absentSessions: 0,
+        criteria: [] as EvaluationCriterion[],
+        note: 'Học tốt, tích cực phát biểu.',
+      },
+      {
+        studentId: second!.id,
+        academicScore: 4, attitudeScore: 5, absentSessions: 2,
+        criteria: [EvaluationCriterion.P_PART_TIME_JOB],
+        note: 'Hổng kiến thức nền, cần kèm thêm.',
+      },
+      {
+        studentId: third!.id,
+        academicScore: 3, attitudeScore: 4, absentSessions: 3,
+        criteria: [
+          EvaluationCriterion.P_OTHER_ACTIVITIES,
+          EvaluationCriterion.H_EXAM_BAN_RISK,
+        ],
+        note: 'Nghỉ nhiều buổi liên tiếp, có dấu hiệu chán học.',
+      },
+    ];
+
+    for (const plan of evaluationPlans) {
+      const { criteria, ...rest } = plan;
+      await prisma.evaluation.create({
+        data: {
+          ...rest,
+          lecturerId: gvBinh.id,
+          classSectionId: prfSection.id,
+          term: 'SU25',
+          criteria: { create: criteria.map((criterion) => ({ criterion })) },
+        },
+      });
+    }
 
     await prisma.careLog.createMany({
       data: [

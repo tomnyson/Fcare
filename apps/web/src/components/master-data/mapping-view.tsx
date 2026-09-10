@@ -10,36 +10,94 @@ import { Modal } from '../ui/modal';
 import { PageHeader } from '../ui/page-header';
 import { ApiError, apiFetch } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
-import { MASTER_DATA_TABS } from '../../lib/master-data-tabs';
+import { canManageMasterData, MASTER_DATA_TABS } from '../../lib/master-data-tabs';
 import type {
   ClassMajorRule,
   Department,
   DepartmentAlias,
   Major,
+  MajorAlias,
 } from '../../lib/types';
 
-export type MappingTabKey = 'department-aliases' | 'class-major-rules';
+export type MappingTabKey =
+  | 'department-aliases'
+  | 'major-aliases'
+  | 'class-major-rules';
 
-// Chỉ ADMIN và TRAINING_OFFICER có quyền `update MasterData` (xem
-// apps/api/src/casl/ability.factory.ts) — các vai trò khác chỉ đọc được.
-const MANAGER_ROLES = ['ADMIN', 'TRAINING_OFFICER'];
+/** Hàng gộp: chỉ phần trường ứng với tab đang mở mới có giá trị. */
+type MappingRow = Partial<DepartmentAlias> &
+  Partial<MajorAlias> &
+  Partial<ClassMajorRule> & { id: string };
 
-/** Hàng gộp: chỉ một nửa số trường có giá trị, tuỳ tab đang mở. */
-type MappingRow = Partial<DepartmentAlias> & Partial<ClassMajorRule> & { id: string };
+interface MappingConfig {
+  /** Trường khoá tra cứu trong file Excel. */
+  keyField: 'alias' | 'classPrefix';
+  keyLabel: string;
+  /** Ràng buộc nhập cho khoá — chỉ quy tắc lớp mới giới hạn 2 chữ cái. */
+  keyPattern?: string;
+  keyMaxLength?: number;
+  keyUppercase?: boolean;
+  targetField: 'departmentId' | 'majorId';
+  targetLabel: string;
+  /** Danh mục đích để đổ vào <select>. */
+  targetKind: 'department' | 'major';
+  description: string;
+  /** Hậu quả thật khi xoá — khác nhau giữa bộ môn và ngành. */
+  deleteWarning: string;
+}
 
-const DESCRIPTIONS: Record<MappingTabKey, string> = {
-  'department-aliases':
-    'Nhãn bộ môn trong file Excel của trường không trùng mã bộ môn trong hệ thống. Mỗi nhãn chưa ánh xạ khiến dòng dữ liệu tương ứng bị bỏ qua khi import.',
-  'class-major-rules':
-    'Hai chữ cái đầu của mã lớp hành chính xác định ngành học. Thiếu quy tắc thì sinh viên rơi vào hàng chờ gán ngành thủ công.',
+/**
+ * Ba tab ánh xạ chỉ khác nhau ở cặp (khoá, đích) nên dùng chung một view.
+ * Hậu quả khi THIẾU ánh xạ thì KHÁC nhau và phải nói đúng: thiếu ánh xạ bộ môn
+ * → dòng bị bỏ qua; thiếu ánh xạ ngành → sinh viên vẫn được tạo nhưng để trống
+ * ngành (xem `RosterCommitter`).
+ */
+const MAPPING_CONFIGS: Record<MappingTabKey, MappingConfig> = {
+  'department-aliases': {
+    keyField: 'alias',
+    keyLabel: 'Nhãn trong file Excel',
+    targetField: 'departmentId',
+    targetLabel: 'Bộ môn đích',
+    targetKind: 'department',
+    description:
+      'Nhãn bộ môn trong file Excel của trường không trùng mã bộ môn trong hệ thống. Mỗi nhãn chưa ánh xạ khiến dòng dữ liệu tương ứng bị bỏ qua khi import.',
+    deleteWarning:
+      'Xóa ánh xạ này? Các lần import sau sẽ bỏ qua dòng dùng nhãn tương ứng, trừ khi nhãn trùng đúng mã bộ môn trong hệ thống.',
+  },
+  'major-aliases': {
+    keyField: 'alias',
+    keyLabel: 'Mã ngành trong file Excel',
+    targetField: 'majorId',
+    targetLabel: 'Ngành đích',
+    targetKind: 'major',
+    description:
+      'Cột "Mã ngành" của file DSSV lớp môn dùng mã riêng của phòng đào tạo (LTWE02, DIMA01…), không trùng mã ngành trong hệ thống. Thiếu ánh xạ thì sinh viên VẪN được tạo, chỉ để trống ngành.',
+    deleteWarning:
+      'Xóa ánh xạ này? Các lần import sau sẽ tạo sinh viên với ngành để trống, trừ khi mã trùng đúng mã ngành trong hệ thống.',
+  },
+  'class-major-rules': {
+    keyField: 'classPrefix',
+    keyLabel: 'Tiền tố lớp (2 chữ cái)',
+    keyPattern: '[A-Za-z]{2}',
+    keyMaxLength: 2,
+    keyUppercase: true,
+    targetField: 'majorId',
+    targetLabel: 'Ngành đích',
+    targetKind: 'major',
+    description:
+      'Hai chữ cái đầu của mã lớp hành chính xác định ngành học. Thiếu quy tắc thì sinh viên rơi vào hàng chờ gán ngành thủ công.',
+    deleteWarning:
+      'Xóa quy tắc này? Sinh viên có mã lớp bắt đầu bằng tiền tố này sẽ rơi vào hàng chờ gán ngành thủ công.',
+  },
 };
 
 export function MappingView({ tab }: { tab: MappingTabKey }) {
   const queryClient = useQueryClient();
   const { data: me } = useMe();
   const config = MASTER_DATA_TABS.find((item) => item.key === tab)!;
-  const isAlias = tab === 'department-aliases';
-  const canManage = me?.user.roles.some((role) => MANAGER_ROLES.includes(role)) ?? false;
+  const mapping = MAPPING_CONFIGS[tab];
+  const wantsDepartment = mapping.targetKind === 'department';
+  const canManage = canManageMasterData(me?.user.roles ?? []);
 
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<MappingRow | null>(null);
@@ -53,13 +111,14 @@ export function MappingView({ tab }: { tab: MappingTabKey }) {
   const departments = useQuery({
     queryKey: ['departments'],
     queryFn: () => apiFetch<Department[]>('/departments'),
-    enabled: isAlias,
+    enabled: wantsDepartment,
   });
   const majors = useQuery({
     queryKey: ['majors'],
     queryFn: () => apiFetch<Major[]>('/majors'),
-    enabled: !isAlias,
+    enabled: !wantsDepartment,
   });
+  const targets = wantsDepartment ? departments.data : majors.data;
 
   function closeForm() {
     setCreating(false);
@@ -95,24 +154,18 @@ export function MappingView({ tab }: { tab: MappingTabKey }) {
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    save.mutate(
-      isAlias
-        ? {
-            alias: String(form.get('alias') ?? '').trim(),
-            departmentId: String(form.get('departmentId') ?? ''),
-          }
-        : {
-            classPrefix: String(form.get('classPrefix') ?? '').trim().toUpperCase(),
-            majorId: String(form.get('majorId') ?? ''),
-          },
-    );
+    const key = String(form.get(mapping.keyField) ?? '').trim();
+    save.mutate({
+      [mapping.keyField]: mapping.keyUppercase ? key.toUpperCase() : key,
+      [mapping.targetField]: String(form.get(mapping.targetField) ?? ''),
+    });
   }
 
   return (
     <>
       <PageHeader
         title={config.label}
-        description={DESCRIPTIONS[tab]}
+        description={mapping.description}
         actions={
           canManage ? (
             <Button type="button" onClick={() => setCreating(true)}>
@@ -150,40 +203,37 @@ export function MappingView({ tab }: { tab: MappingTabKey }) {
       ) : null}
 
       <DataTable
-        headers={
-          isAlias
-            ? ['Nhãn trong file Excel', 'Bộ môn đích', ...(canManage ? ['Thao tác'] : [])]
-            : ['Tiền tố lớp', 'Ngành đích', ...(canManage ? ['Thao tác'] : [])]
-        }
+        headers={[
+          mapping.keyLabel,
+          mapping.targetLabel,
+          ...(canManage ? ['Thao tác'] : []),
+        ]}
         isLoading={items.isLoading}
         skeletonRows={6}
         isEmpty={!items.isLoading && !items.isError && (items.data?.length ?? 0) === 0}
         emptyMessage="Chưa có ánh xạ nào."
       >
-        {(items.data ?? []).map((row) => (
-          <tr key={row.id} className="transition-colors hover:bg-fpt-orange-50/40">
-            <Td className="font-semibold text-ink">
-              {isAlias ? row.alias : row.classPrefix}
-            </Td>
-            <Td>
-              {isAlias
-                ? `${row.department?.code ?? '—'} — ${row.department?.name ?? ''}`
-                : `${row.major?.code ?? '—'} — ${row.major?.name ?? ''}`}
-            </Td>
-            {canManage ? (
-              <Td>
-                <div className="flex gap-2">
-                  <Button type="button" variant="secondary" onClick={() => setEditing(row)}>
-                    Sửa
-                  </Button>
-                  <Button type="button" variant="secondary" onClick={() => setDeleting(row)}>
-                    Xóa
-                  </Button>
-                </div>
-              </Td>
-            ) : null}
-          </tr>
-        ))}
+        {(items.data ?? []).map((row) => {
+          const target = wantsDepartment ? row.department : row.major;
+          return (
+            <tr key={row.id} className="transition-colors hover:bg-fpt-orange-50/40">
+              <Td className="font-semibold text-ink">{row[mapping.keyField]}</Td>
+              <Td>{`${target?.code ?? '—'} — ${target?.name ?? ''}`}</Td>
+              {canManage ? (
+                <Td>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="secondary" onClick={() => setEditing(row)}>
+                      Sửa
+                    </Button>
+                    <Button type="button" variant="secondary" onClick={() => setDeleting(row)}>
+                      Xóa
+                    </Button>
+                  </div>
+                </Td>
+              ) : null}
+            </tr>
+          );
+        })}
       </DataTable>
 
       <Modal
@@ -192,55 +242,33 @@ export function MappingView({ tab }: { tab: MappingTabKey }) {
         onClose={closeForm}
       >
         <form onSubmit={onSubmit} className="space-y-4">
-          {isAlias ? (
-            <>
-              <div>
-                <Label htmlFor="alias">Nhãn trong file Excel</Label>
-                <Input id="alias" name="alias" defaultValue={editing?.alias ?? ''} required />
-              </div>
-              <div>
-                <Label htmlFor="departmentId">Bộ môn đích</Label>
-                <Select
-                  id="departmentId"
-                  name="departmentId"
-                  defaultValue={editing?.departmentId ?? ''}
-                  required
-                >
-                  <option value="">Chọn bộ môn…</option>
-                  {(departments.data ?? []).map((department) => (
-                    <option key={department.id} value={department.id}>
-                      {department.code} — {department.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </>
-          ) : (
-            <>
-              <div>
-                <Label htmlFor="classPrefix">Tiền tố lớp (2 chữ cái)</Label>
-                <Input
-                  id="classPrefix"
-                  name="classPrefix"
-                  defaultValue={editing?.classPrefix ?? ''}
-                  pattern="[A-Za-z]{2}"
-                  maxLength={2}
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="majorId">Ngành đích</Label>
-                <Select id="majorId" name="majorId" defaultValue={editing?.majorId ?? ''} required>
-                  <option value="">Chọn ngành…</option>
-                  {(majors.data ?? []).map((major) => (
-                    <option key={major.id} value={major.id}>
-                      {major.code} — {major.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </>
-          )}
+          <div>
+            <Label htmlFor={mapping.keyField}>{mapping.keyLabel}</Label>
+            <Input
+              id={mapping.keyField}
+              name={mapping.keyField}
+              defaultValue={editing?.[mapping.keyField] ?? ''}
+              pattern={mapping.keyPattern}
+              maxLength={mapping.keyMaxLength}
+              required
+            />
+          </div>
+          <div>
+            <Label htmlFor={mapping.targetField}>{mapping.targetLabel}</Label>
+            <Select
+              id={mapping.targetField}
+              name={mapping.targetField}
+              defaultValue={editing?.[mapping.targetField] ?? ''}
+              required
+            >
+              <option value="">Chọn {mapping.targetLabel.toLowerCase()}…</option>
+              {(targets ?? []).map((target) => (
+                <option key={target.id} value={target.id}>
+                  {target.code} — {target.name}
+                </option>
+              ))}
+            </Select>
+          </div>
           <FormError>{formError}</FormError>
           <div className="flex gap-3">
             <Button type="submit" disabled={save.isPending}>
@@ -258,9 +286,7 @@ export function MappingView({ tab }: { tab: MappingTabKey }) {
         open={deleting !== null}
         onClose={() => setDeleting(null)}
       >
-        <p className="text-sm text-ink">
-          Xóa ánh xạ này? Các lần import sau sẽ bỏ qua dòng dùng nhãn tương ứng.
-        </p>
+        <p className="text-sm text-ink">{mapping.deleteWarning}</p>
         <FormError>{formError}</FormError>
         <div className="mt-4 flex gap-3">
           <Button

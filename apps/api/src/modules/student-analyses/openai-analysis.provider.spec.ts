@@ -6,6 +6,18 @@ const snapshot: AnalysisSourceSnapshot = {
   focusTerm: '2025A',
   enrollments: [],
   evaluations: [],
+  careLogs: [],
+  riskScore: {
+    components: { RL: 0, RA: 0, RC: 0, RH: 0, RP: 0 },
+    drs: 0,
+    drsLevel: 1,
+    dataForcedLevel: 1,
+    evaluationCount: 0,
+    medianAcademic: 0,
+    medianAttitude: 0,
+    triggeredCriteria: [],
+    reasons: [],
+  },
   limitations: ['Khong co du lieu hoc phan hoc ky trong tam'],
 };
 
@@ -18,6 +30,8 @@ const parsedOutput = {
   recommendations: ['Tiep tuc duy tri lich hoc deu'],
   notificationSummary: 'Ket qua hien tai on dinh.',
   dataLimitations: ['Du lieu nhan xet con it'],
+  suggestedLevel: 1 as const,
+  forcedEscalation: null,
 };
 
 describe('OpenAiAnalysisProvider', () => {
@@ -60,7 +74,7 @@ describe('OpenAiAnalysisProvider', () => {
       model: 'custom-model',
       store: false,
       reasoning: { effort: 'medium' },
-      max_output_tokens: 1_500,
+      max_output_tokens: 2_000,
       input: JSON.stringify(snapshot),
     });
     expect(request.text.format).toBeDefined();

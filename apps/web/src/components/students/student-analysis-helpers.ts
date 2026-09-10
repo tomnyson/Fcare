@@ -70,6 +70,10 @@ export function editableAnalysisOutput(output: StudentAnalysisOutput) {
     recommendations: toLineBlock(output.recommendations),
     notificationSummary: output.notificationSummary,
     dataLimitations: toLineBlock(output.dataLimitations),
+    // Hai trường ép cấp đi kèm nguyên vẹn: người duyệt không sửa ở form này,
+    // nhưng schema phía API bắt buộc phải có khi PATCH bản nháp.
+    suggestedLevel: output.suggestedLevel,
+    forcedEscalation: output.forcedEscalation,
   };
 }
 
@@ -83,5 +87,7 @@ export function parseEditableAnalysisOutput(form: ReturnType<typeof editableAnal
     recommendations: fromLineBlock(form.recommendations),
     notificationSummary: form.notificationSummary.trim(),
     dataLimitations: fromLineBlock(form.dataLimitations),
+    suggestedLevel: form.suggestedLevel,
+    forcedEscalation: form.forcedEscalation,
   };
 }

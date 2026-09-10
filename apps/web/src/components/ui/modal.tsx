@@ -2,14 +2,26 @@
 
 import { useEffect, useRef, type ReactNode } from 'react';
 
+/**
+ * Bề ngang hộp thoại. Mặc định 'md' cho form ngắn; 'lg' dành cho form nhiều
+ * cột (nhận xét sinh viên) để hai nhóm radio không bị bóp thành cột hẹp.
+ */
+type ModalSize = 'md' | 'lg';
+
+const SIZE_CLASSES: Record<ModalSize, string> = {
+  md: 'max-w-lg',
+  lg: 'max-w-3xl',
+};
+
 interface ModalProps {
   title: string;
   open: boolean;
   onClose: () => void;
+  size?: ModalSize;
   children: ReactNode;
 }
 
-export function Modal({ title, open, onClose, children }: ModalProps) {
+export function Modal({ title, open, onClose, size = 'md', children }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   /** Phần tử đang focus lúc dialog mở — phải trả focus về đúng chỗ này khi đóng. */
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -58,7 +70,7 @@ export function Modal({ title, open, onClose, children }: ModalProps) {
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-[var(--radius-card)] border-t-4 border-fpt-orange bg-white p-6 shadow-xl outline-none"
+        className={`max-h-[85vh] w-full ${SIZE_CLASSES[size]} overflow-y-auto rounded-[var(--radius-card)] border-t-4 border-fpt-orange bg-white p-6 shadow-xl outline-none`}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-4">

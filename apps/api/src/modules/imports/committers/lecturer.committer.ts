@@ -7,6 +7,7 @@ import type {
   ParsedRow,
   PrismaTx,
 } from '../types';
+import { aliasKey, loadDepartmentByAlias } from './department-lookup';
 
 interface LecturerPayload {
   username: string;
@@ -14,11 +15,6 @@ interface LecturerPayload {
   lecturerType: 'FULL' | 'PART' | null;
   /** Mã bộ môn suy từ sheet phân công lớp; null khi chưa suy được. */
   deptAlias: string | null;
-}
-
-/** Khoá tra alias: cắt khoảng trắng + hạ chữ thường (giống catalog.committer). */
-function aliasKey(raw: string): string {
-  return raw.trim().toLowerCase();
 }
 
 export class LecturerCommitter implements ImportCommitter {
@@ -38,13 +34,7 @@ export class LecturerCommitter implements ImportCommitter {
       payload.username.toUpperCase(),
     );
 
-    // Nạp một lần cho cả lô — tránh N+1.
-    const aliases = await tx.departmentAlias.findMany({
-      select: { alias: true, departmentId: true },
-    });
-    const departmentByAlias = new Map(
-      aliases.map((entry) => [aliasKey(entry.alias), entry.departmentId]),
-    );
+    const departmentByAlias = await loadDepartmentByAlias(tx);
 
     const existing = await tx.staff.findMany({
       where: {

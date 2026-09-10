@@ -24,6 +24,9 @@ function makeTx() {
         { alias: 'CONG-NGHE-THONG-TIN', departmentId: 'dept-cntt' },
       ]),
     },
+    department: {
+      findMany: jest.fn().mockResolvedValue([{ id: 'dept-tk', code: 'TKDH' }]),
+    },
     subject: {
       findMany: jest.fn().mockResolvedValue([{ id: 'sub-1', code: 'ITA107' }]),
       create: jest.fn().mockResolvedValue({ id: 'new' }),
@@ -31,6 +34,7 @@ function makeTx() {
     },
   } as unknown as PrismaTx & {
     departmentAlias: { findMany: jest.Mock };
+    department: { findMany: jest.Mock };
     subject: { findMany: jest.Mock; create: jest.Mock; update: jest.Mock };
   };
 }
@@ -84,6 +88,16 @@ describe('CatalogCommitter', () => {
     );
     expect(tx.subject.create).not.toHaveBeenCalled();
     expect(result).toEqual({ created: 0, updated: 0, skipped: 1 });
+  });
+
+  it('mã bộ môn thật trong file vẫn tra được dù chưa khai ánh xạ', async () => {
+    const tx = makeTx();
+    const result = await committer.commit(
+      [row({ code: 'DGD201', deptAlias: 'TKDH', ...BASE })],
+      tx,
+      ctx,
+    );
+    expect(result).toEqual({ created: 1, updated: 0, skipped: 0 });
   });
 
   it('tra alias phân biệt hoa thường và khoảng trắng thừa', async () => {

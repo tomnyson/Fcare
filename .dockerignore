@@ -1,0 +1,35 @@
+# Build context của image chỉ cần source + lockfile. Không loại trừ những thư
+# mục dưới đây thì `docker build` phải nuốt vài GB node_modules/.next và rất dễ
+# OOM trên VPS nhỏ.
+node_modules
+**/node_modules
+.pnpm-store
+
+.next
+**/.next
+dist
+**/dist
+.turbo
+**/.turbo
+out
+**/out
+
+.git
+.github
+.claude
+.gitnexus
+
+# Kết quả test và file dữ liệu nặng — không thuộc runtime.
+test-results
+**/test-results
+playwright-report
+**/playwright-report
+coverage
+**/coverage
+docs
+e2e/fixtures/generated
+
+# Secret không bao giờ được đóng vào image.
+.env
+.env.*
+!.env.example

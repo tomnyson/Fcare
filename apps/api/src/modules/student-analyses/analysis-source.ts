@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { EVALUATION_CRITERIA } from '@fcare/shared-types';
 
 const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 const PHONE_PATTERN = /(?<!\d)(?:\+?84|0)(?:[ .-]?\d){9,10}(?!\d)/g;
@@ -25,15 +26,44 @@ const analysisSourceEvaluationSchema = z.object({
   term: z.string(),
   academicScore: z.number(),
   attitudeScore: z.number(),
-  issueGroup: z.number().nullable(),
+  absentSessions: z.number().nullable(),
+  criteria: z.array(z.enum(EVALUATION_CRITERIA)),
   note: z.string().nullable(),
   updatedAt: z.string().datetime(),
+});
+
+const analysisSourceCareLogSchema = z.object({
+  channel: z.string(),
+  content: z.string(),
+  outcome: z.string().nullable(),
+  nextAction: z.string().nullable(),
+  createdAt: z.string().datetime(),
+});
+
+const analysisSourceRiskScoreSchema = z.object({
+  components: z.object({
+    RL: z.number(),
+    RA: z.number(),
+    RC: z.number(),
+    RH: z.number(),
+    RP: z.number(),
+  }),
+  drs: z.number(),
+  drsLevel: z.number(),
+  dataForcedLevel: z.number(),
+  evaluationCount: z.number(),
+  medianAcademic: z.number(),
+  medianAttitude: z.number(),
+  triggeredCriteria: z.array(z.enum(EVALUATION_CRITERIA)),
+  reasons: z.array(z.string()),
 });
 
 export const analysisSourceSnapshotSchema = z.object({
   focusTerm: z.string(),
   enrollments: z.array(analysisSourceEnrollmentSchema),
   evaluations: z.array(analysisSourceEvaluationSchema),
+  careLogs: z.array(analysisSourceCareLogSchema),
+  riskScore: analysisSourceRiskScoreSchema,
   limitations: z.array(z.string()),
 });
 
@@ -43,6 +73,7 @@ export type AnalysisSourceEnrollment = z.infer<
 export type AnalysisSourceEvaluation = z.infer<
   typeof analysisSourceEvaluationSchema
 >;
+export type AnalysisSourceCareLog = z.infer<typeof analysisSourceCareLogSchema>;
 export type AnalysisSourceSnapshot = z.infer<
   typeof analysisSourceSnapshotSchema
 >;

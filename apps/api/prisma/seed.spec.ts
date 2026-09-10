@@ -2,6 +2,7 @@ import {
   CLASS_MAJOR_RULES,
   DEPARTMENT_ALIASES,
   DEPARTMENTS,
+  MAJOR_ALIASES,
   MAJORS,
 } from './seed-data';
 
@@ -77,6 +78,46 @@ describe('dữ liệu danh mục seed', () => {
     for (const rule of CLASS_MAJOR_RULES) {
       expect(rule.classPrefix).toMatch(/^[A-Z]{2}$/);
       expect(majorCodes.has(rule.majorCode)).toBe(true);
+    }
+  });
+
+  it('mọi alias ngành trỏ tới một ngành có thật và không trùng nhau', () => {
+    const majorCodes = new Set(MAJORS.map((m) => m.code));
+    for (const entry of MAJOR_ALIASES) {
+      expect(majorCodes.has(entry.majorCode)).toBe(true);
+    }
+    const aliases = MAJOR_ALIASES.map((a) => a.alias);
+    expect(new Set(aliases).size).toBe(aliases.length);
+  });
+
+  it('không seed alias ngành trùng chính Major.code — committer đã tra mã thật', () => {
+    const majorCodes = new Set(MAJORS.map((m) => m.code));
+    for (const entry of MAJOR_ALIASES) {
+      expect(majorCodes.has(entry.alias)).toBe(false);
+    }
+  });
+
+  it('phủ 12 mã ngành suy được của file DSSV lớp môn, chừa 4 mã chưa rõ', () => {
+    const aliases = new Set(MAJOR_ALIASES.map((a) => a.alias));
+    for (const raw of [
+      'LTAI01',
+      'LTWE02',
+      'LTWE04',
+      'PTPM02',
+      'UDPM01',
+      'UDPM02',
+      'TKDH02',
+      'DIMA01',
+      'MASA01',
+      'LOGI01',
+      'LOGI02',
+      'LOGI03',
+    ]) {
+      expect(aliases.has(raw)).toBe(true);
+    }
+    // Chưa xác định được ngành đối ứng → phải nổi lên ở bản xem trước.
+    for (const unknown of ['CHNA', 'CE', 'UI_DP', '6340302_01']) {
+      expect(aliases.has(unknown)).toBe(false);
     }
   });
 

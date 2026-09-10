@@ -9,9 +9,10 @@ interface ImportKindPickerProps {
 }
 
 /**
- * Bước 1 của trình hướng dẫn: tick một hoặc nhiều loại dữ liệu. Ba loại đọc từ
- * cùng file phân công có thể tick chung và chạy chuỗi; Bảng điểm là file khác
- * nên loại trừ với nhóm trên (luật ở `toggleImportKind`, không nằm ở đây).
+ * Bước 1 của trình hướng dẫn: tick một hoặc nhiều loại dữ liệu. Chỉ các loại
+ * ĐỌC CÙNG MỘT FILE mới tick chung được và chạy chuỗi — ba loại của file phân
+ * công. Bảng điểm và bộ ba file đầu kỳ mỗi loại một file riêng nên loại trừ
+ * nhau (luật ở `toggleImportKind`, không nằm ở đây).
  */
 export function ImportKindPicker({ selected, onToggle, disabled = false }: ImportKindPickerProps) {
   return (
@@ -19,8 +20,8 @@ export function ImportKindPicker({ selected, onToggle, disabled = false }: Impor
       <legend className="mb-1 text-sm font-semibold text-ink">1. Chọn loại dữ liệu</legend>
       <p className="mb-3 text-xs text-muted">
         Có thể tick nhiều loại cùng file phân công — hệ thống chạy lần lượt theo thứ tự bắt buộc
-        (môn học → giảng viên → lịch lớp), mỗi loại đều có bước xem trước. Bảng điểm là file riêng
-        nên chọn riêng.
+        (môn học → giảng viên → lịch lớp), mỗi loại đều có bước xem trước. Các loại còn lại mỗi
+        loại một file nên phải chọn và tải riêng: bộ ba đầu kỳ chạy đúng thứ tự 1/3 → 2/3 → 3/3.
       </p>
       <div className="grid gap-3 md:grid-cols-2">
         {IMPORT_KINDS.map((kind) => {

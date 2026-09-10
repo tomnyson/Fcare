@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACADEMIC_BAND_SUGGESTIONS,
+  BAND_CLASSIFICATIONS,
+  BAND_RANGE_LABELS,
   ATTITUDE_BAND_DESCRIPTIONS,
   ISSUE_GROUPS,
   ISSUE_GROUP_SUGGESTIONS,
   SCORE_BANDS,
   evaluationGuidance,
+  issueGroupsFromCriteria,
   scoreBand,
-  suggestUrgencyLevel,
 } from '@fcare/shared-types';
 
 describe('scoreBand', () => {
@@ -45,6 +47,23 @@ describe('bảng nội dung theo tài liệu', () => {
     }
   });
 
+  it('mỗi dải có xếp loại học lực và nhãn dải đúng chữ trong tài liệu', () => {
+    expect(BAND_CLASSIFICATIONS).toEqual({
+      '10-9': 'Xuất sắc / Giỏi',
+      '8-7': 'Khá',
+      '6-5': 'Trung bình',
+      '4-3': 'Yếu',
+      '2-1': 'Kém',
+    });
+    expect(BAND_RANGE_LABELS).toEqual({
+      '10-9': '9–10',
+      '8-7': '7–8',
+      '6-5': '5–6',
+      '4-3': '3–4',
+      '2-1': '1–2',
+    });
+  });
+
   it('nhóm vấn đề đúng 4 nhóm của tài liệu, không phải nhãn cũ trong UI', () => {
     expect(ISSUE_GROUPS.map((group) => group.value)).toEqual([1, 2, 3, 4]);
     expect(ISSUE_GROUPS[0]?.label).toContain('chuyên ngành');
@@ -62,85 +81,74 @@ describe('bảng nội dung theo tài liệu', () => {
   });
 });
 
-describe('suggestUrgencyLevel', () => {
-  it('sinh viên tốt mọi mặt → mức 1', () => {
-    const result = suggestUrgencyLevel({ academicScore: 9, attitudeScore: 10, issueGroup: null });
-    expect(result.level).toBe(1);
+describe('issueGroupsFromCriteria', () => {
+  it('suy nhóm vấn đề từ tiêu chí đã tích, giữ thứ tự 1→4', () => {
+    expect(
+      issueGroupsFromCriteria(['P_PSYCHOLOGICAL', 'P_PART_TIME_JOB', 'P_NOT_FIT_MAJOR']),
+    ).toEqual([1, 2, 4]);
   });
 
-  it('có nhóm vấn đề 1-3 nhưng điểm khá → tối thiểu mức 2', () => {
-    const result = suggestUrgencyLevel({ academicScore: 8, attitudeScore: 8, issueGroup: 2 });
-    expect(result.level).toBe(2);
-    expect(result.reasons.join(' ')).toContain('Nhóm 2');
+  it('tiêu chí học tập (H_*) không thuộc nhóm vấn đề nào', () => {
+    expect(issueGroupsFromCriteria(['H_NO_QUIZ_CMS', 'H_EXAM_BAN_RISK'])).toEqual([]);
   });
 
-  it('một điểm rơi dải 4-3 → mức 2', () => {
-    expect(suggestUrgencyLevel({ academicScore: 4, attitudeScore: 9, issueGroup: null }).level).toBe(
-      2,
-    );
-  });
-
-  it('một điểm rơi dải 2-1 → mức 3', () => {
-    expect(suggestUrgencyLevel({ academicScore: 2, attitudeScore: 8, issueGroup: null }).level).toBe(
-      3,
-    );
-  });
-
-  it('cả hai điểm rơi dải 2-1 → mức 4', () => {
-    expect(suggestUrgencyLevel({ academicScore: 1, attitudeScore: 2, issueGroup: null }).level).toBe(
-      4,
-    );
-  });
-
-  it('nhóm 4 (tâm lí, gia đình, muốn nghỉ học) luôn là mức 4 dù điểm cao', () => {
-    const result = suggestUrgencyLevel({ academicScore: 10, attitudeScore: 10, issueGroup: 4 });
-    expect(result.level).toBe(4);
-    expect(result.reasons.join(' ')).toContain('Nhóm 4');
-  });
-
-  it('lấy mức cao nhất trong các lý do áp dụng được', () => {
-    const result = suggestUrgencyLevel({ academicScore: 2, attitudeScore: 4, issueGroup: 3 });
-    expect(result.level).toBe(3);
-    expect(result.reasons.length).toBeGreaterThan(1);
-  });
-
-  it('luôn trả mức trong khoảng 1-4', () => {
-    for (let academic = 1; academic <= 10; academic += 1) {
-      for (let attitude = 1; attitude <= 10; attitude += 1) {
-        const { level } = suggestUrgencyLevel({
-          academicScore: academic,
-          attitudeScore: attitude,
-          issueGroup: null,
-        });
-        expect(level).toBeGreaterThanOrEqual(1);
-        expect(level).toBeLessThanOrEqual(4);
-      }
-    }
+  it('khó khăn tài chính dùng chung nhóm 2 với đi làm thêm', () => {
+    expect(issueGroupsFromCriteria(['P_FINANCIAL_HARDSHIP'])).toEqual([2]);
   });
 });
 
 describe('evaluationGuidance', () => {
-  it('gộp mô tả, giải pháp và mức đề xuất cho một lần đánh giá', () => {
+  it('gộp mô tả, giải pháp và mức đề xuất cho một bản nhận xét', () => {
     const guidance = evaluationGuidance({
       academicScore: 3,
       attitudeScore: 5,
-      issueGroup: 2,
+      criteria: ['P_PART_TIME_JOB'],
     });
 
     expect(guidance.academicBand).toBe('4-3');
     expect(guidance.attitudeBand).toBe('6-5');
+    expect(guidance.criterionLabels).toEqual(['Đi làm thêm ảnh hưởng việc học']);
     expect(guidance.lecturerActions.length).toBeGreaterThanOrEqual(2);
     expect(guidance.studentAffairsActions.length).toBeGreaterThanOrEqual(1);
+    // R_L 3 + R_A 2 + R_P 2 = 7 → dải 5-8 → cấp 2.
     expect(guidance.suggestedLevel).toBe(2);
+    expect(guidance.suggestedLevelReasons.at(-1)).toBe(
+      'Tổng DRS của riêng bản nhận xét này: 7 điểm.',
+    );
   });
 
-  it('không có nhóm vấn đề thì không sinh việc cho CB CTSV', () => {
+  it('không tích tiêu chí nào thì không sinh việc cho CB CTSV', () => {
     const guidance = evaluationGuidance({
       academicScore: 9,
       attitudeScore: 9,
-      issueGroup: null,
+      criteria: [],
     });
     expect(guidance.studentAffairsActions).toEqual([]);
     expect(guidance.lecturerActions.length).toBeGreaterThan(0);
+    expect(guidance.suggestedLevel).toBe(1);
+  });
+
+  it('ý định nghỉ học nặng 9 điểm nên đẩy lên cấp 3 dù điểm đẹp', () => {
+    const guidance = evaluationGuidance({
+      academicScore: 10,
+      attitudeScore: 10,
+      criteria: ['P_DROPOUT_INTENT'],
+    });
+    expect(guidance.issueGroups).toEqual([4]);
+    expect(guidance.suggestedLevel).toBe(3);
+  });
+
+  it('mức đề xuất luôn nằm trong khoảng 1-4', () => {
+    for (let academic = 1; academic <= 10; academic += 1) {
+      for (let attitude = 1; attitude <= 10; attitude += 1) {
+        const { suggestedLevel } = evaluationGuidance({
+          academicScore: academic,
+          attitudeScore: attitude,
+          criteria: [],
+        });
+        expect(suggestedLevel).toBeGreaterThanOrEqual(1);
+        expect(suggestedLevel).toBeLessThanOrEqual(4);
+      }
+    }
   });
 });

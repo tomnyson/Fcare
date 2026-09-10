@@ -20,7 +20,7 @@ describe('EscalationService — ma trận báo tin theo độ khẩn', () => {
           .fn()
           .mockImplementation(({ where }: { where: StaffRolesWhere }) => {
             if (where.classSections) {
-              // Giảng viên đang dạy sinh viên (chỉ dùng ở mức 4)
+              // Giảng viên đang dạy sinh viên — có mặt ở mọi cấp độ
               return Promise.resolve([{ id: 'gv-chi' }, { id: RAISER }]);
             }
             const keys = where.roles?.some.role.key.in ?? [];
@@ -38,34 +38,34 @@ describe('EscalationService — ma trận báo tin theo độ khẩn', () => {
     return new EscalationService(prisma as unknown as PrismaService);
   }
 
-  it('mức 1: giảng viên tự xử lý — không ai nhận thông báo', async () => {
+  it('cấp 1: tất cả giảng viên đang dạy sinh viên', async () => {
     const recipients = await makeService().computeRecipientIds(
       'sv-1',
       1,
       RAISER,
     );
-    expect(recipients).toEqual([]);
+    expect(recipients.sort()).toEqual(['gv-chi']);
   });
 
-  it('mức 2: chỉ trưởng bộ môn của sinh viên', async () => {
+  it('cấp 2: thêm cán bộ phòng CTSV', async () => {
     const recipients = await makeService().computeRecipientIds(
       'sv-1',
       2,
       RAISER,
     );
-    expect(recipients.sort()).toEqual(['tbm-se']);
+    expect(recipients.sort()).toEqual(['ctsv-lan', 'gv-chi']);
   });
 
-  it('mức 3: trưởng bộ môn + cán bộ đào tạo', async () => {
+  it('cấp 3: thêm trưởng bộ môn của sinh viên', async () => {
     const recipients = await makeService().computeRecipientIds(
       'sv-1',
       3,
       RAISER,
     );
-    expect(recipients.sort()).toEqual(['dt-hoa', 'tbm-se']);
+    expect(recipients.sort()).toEqual(['ctsv-lan', 'gv-chi', 'tbm-se']);
   });
 
-  it('mức 4: thêm CTSV và mọi giảng viên đang dạy, loại trừ người phát', async () => {
+  it('cấp 4: thêm trưởng phòng Đào tạo và trưởng phòng CTSV', async () => {
     const recipients = await makeService().computeRecipientIds(
       'sv-1',
       4,
@@ -78,6 +78,14 @@ describe('EscalationService — ma trận báo tin theo độ khẩn', () => {
       'gv-chi',
       'tbm-se',
     ]);
-    expect(recipients).not.toContain(RAISER);
+  });
+
+  it('người phát cảnh báo không tự nhận thông báo', async () => {
+    const recipients = await makeService().computeRecipientIds(
+      'sv-1',
+      4,
+      'gv-chi',
+    );
+    expect(recipients).not.toContain('gv-chi');
   });
 });

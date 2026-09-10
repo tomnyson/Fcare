@@ -77,3 +77,27 @@ export const CLASS_MAJOR_RULES: Array<{ classPrefix: string; majorCode: string }
   { classPrefix: 'MS', majorCode: 'MASA' },
   { classPrefix: 'LO', majorCode: 'LOGI' },
 ];
+
+/**
+ * Mã ngành ở cột "Mã ngành" của file DSSV lớp môn — hệ mã riêng của phòng đào
+ * tạo, KHÔNG trùng `Major.code`. Mã trùng thẳng `Major.code` ("LTAI", "LTGA",
+ * "TTSK") cố ý không có ở đây: committer đã tra `Major.code` làm fallback.
+ *
+ * CHNA, CE, UI_DP và 6340302_01 CỐ Ý bỏ trống — chưa xác định được ngành đối
+ * ứng, phải để nổi lên ở bản xem trước cho admin ánh xạ tay tại
+ * "Đào tạo → Ánh xạ ngành" (spec §8 rủi ro 3).
+ */
+export const MAJOR_ALIASES: Array<{ alias: string; majorCode: string }> = [
+  { alias: 'LTAI01', majorCode: 'LTAI' },
+  { alias: 'LTWE02', majorCode: 'LTWE' },
+  { alias: 'LTWE04', majorCode: 'LTWE' },
+  { alias: 'PTPM02', majorCode: 'PTPM' },
+  { alias: 'UDPM01', majorCode: 'UDPM' },
+  { alias: 'UDPM02', majorCode: 'UDPM' },
+  { alias: 'TKDH02', majorCode: 'TKDH' },
+  { alias: 'DIMA01', majorCode: 'DIGI' },
+  { alias: 'MASA01', majorCode: 'MASA' },
+  { alias: 'LOGI01', majorCode: 'LOGI' },
+  { alias: 'LOGI02', majorCode: 'LOGI' },
+  { alias: 'LOGI03', majorCode: 'LOGI' },
+];

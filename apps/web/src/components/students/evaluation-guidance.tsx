@@ -1,13 +1,21 @@
 'use client';
 
 import { Badge } from '@fcare/ui-kit';
-import { evaluationGuidance, type EvaluationScores } from '@fcare/shared-types';
+import {
+  BAND_CLASSIFICATIONS,
+  BAND_RANGE_LABELS,
+  evaluationGuidance,
+  type EvaluationScores,
+} from '@fcare/shared-types';
 import { ALERT_LEVEL_LABELS, ALERT_LEVEL_TONES } from '../../lib/labels';
 
 /**
- * Hiển thị "Giải pháp gợi ý (*)" và độ khẩn ĐỀ XUẤT cho một lần đánh giá
- * (tài liệu II.1). Đây chỉ là gợi ý — hệ thống không tự phát cảnh báo, người
- * dùng vẫn phải tự bấm "Phát cảnh báo" và nhập lý do.
+ * Hiển thị "Giải pháp gợi ý (*)" và độ khẩn ĐỀ XUẤT cho một lần nhận xét
+ * (tài liệu II.1). Nhóm vấn đề được suy từ các tiêu chí đã tích
+ * (`issueGroupsFromCriteria`), không còn hỏi giảng viên chọn tay.
+ *
+ * Mức ở đây tính như thể chỉ có mình bản nhận xét này; cấp chính thức của sinh
+ * viên là DRS trên trung vị mọi giảng viên — xem `<RiskScorePanel/>`.
  */
 
 function ActionList({ title, actions }: { title: string; actions: readonly string[] }) {
@@ -63,16 +71,31 @@ export function EvaluationGuidancePanel({
         </span>
       </div>
 
+      {guidance.criterionLabels.length > 0 ? (
+        <ul className="mt-3 flex flex-wrap gap-1.5">
+          {guidance.criterionLabels.map((label) => (
+            <li
+              key={label}
+              className="rounded-full border border-border bg-white px-2.5 py-0.5 text-xs text-ink"
+            >
+              {label}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
       <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
         <div>
           <dt className="text-xs font-bold uppercase tracking-wide text-muted">
-            Khả năng học tập ({guidance.academicBand})
+            Khả năng học tập — {BAND_CLASSIFICATIONS[guidance.academicBand]} (
+            {BAND_RANGE_LABELS[guidance.academicBand]})
           </dt>
           <dd className="text-ink">{guidance.academicDescription}</dd>
         </div>
         <div>
           <dt className="text-xs font-bold uppercase tracking-wide text-muted">
-            Thái độ học tập ({guidance.attitudeBand})
+            Thái độ học tập — {BAND_CLASSIFICATIONS[guidance.attitudeBand]} (
+            {BAND_RANGE_LABELS[guidance.attitudeBand]})
           </dt>
           <dd className="text-ink">{guidance.attitudeDescription}</dd>
         </div>
@@ -96,8 +119,8 @@ export function EvaluationGuidancePanel({
 
       {showHandoffHint ? (
         <p className="mt-3 text-xs text-muted">
-          Mức đề xuất chỉ để tham khảo. Muốn thông báo cho Trưởng bộ môn / Đào tạo / CTSV thì sau
-          khi lưu, sang tab <strong>Cảnh báo</strong> để phát cảnh báo — hệ thống không tự phát.
+          Mức đề xuất chỉ tính trên bản nhận xét này. Cấp độ khẩn chính thức là điểm DRS gộp mọi
+          giảng viên ở bảng phía trên — hệ thống không tự phát cảnh báo.
         </p>
       ) : null}
     </section>

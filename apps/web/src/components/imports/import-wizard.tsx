@@ -18,6 +18,7 @@ import { ApiError, apiFetch, apiUpload } from '../../lib/api';
 import {
   importKindLabel,
   orderImportKinds,
+  slugOfKind,
   toggleImportKind,
   type ImportKindSlug,
 } from '../../lib/import-kinds';
@@ -25,7 +26,6 @@ import type {
   ImportBatchDetail,
   ImportCommitResult,
   ImportDiscardResult,
-  ImportKind,
 } from '../../lib/types';
 
 const TERM_PATTERN = /^[A-Z]{2}\d{2}$/;
@@ -36,8 +36,9 @@ const STEP_LABELS = ['Chọn loại', 'Tải file', 'Xem trước', 'Xác nhận
  * - imports: lịch sử import vừa đổi trạng thái
  * - subjects: CATALOG tạo/cập nhật môn học
  * - admin-staff / admin-staff-lecturers: LECTURER tạo tài khoản giảng viên
- * - class-sections: SCHEDULE tạo/cập nhật lớp học phần
- * - students / enrollments: GRADEBOOK tạo/cập nhật sinh viên và điểm */
+ * - class-sections: SCHEDULE và SECTION_LIST tạo/cập nhật lớp học phần
+ * - students / enrollments: GRADEBOOK, ROSTER, GRADE_ATTENDANCE tạo/cập nhật
+ *   sinh viên, ghi danh, điểm và chuyên cần */
 const COMMIT_AFFECTED_QUERY_KEYS: string[][] = [
   ['imports'],
   ['subjects'],
@@ -47,10 +48,6 @@ const COMMIT_AFFECTED_QUERY_KEYS: string[][] = [
   ['students'],
   ['enrollments'],
 ];
-
-function slugOfKind(kind: ImportKind): ImportKindSlug {
-  return kind.toLowerCase() as ImportKindSlug;
-}
 
 /** Tham số commit truyền tường minh qua mutate() — không đọc `batch` từ closure. */
 interface CommitInput {

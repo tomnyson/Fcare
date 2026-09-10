@@ -8,8 +8,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateClassMajorRuleDto,
   CreateDepartmentAliasDto,
+  CreateMajorAliasDto,
   UpdateClassMajorRuleDto,
   UpdateDepartmentAliasDto,
+  UpdateMajorAliasDto,
 } from './dto/mapping.dto';
 
 @Injectable()
@@ -124,6 +126,64 @@ export class ClassMajorRulesService {
     } catch (error) {
       if (isPrismaError(error, 'P2025')) {
         throw new NotFoundException('Không tìm thấy quy tắc lớp → ngành.');
+      }
+      throw error;
+    }
+  }
+}
+
+/**
+ * Ánh xạ mã ngành trong file Excel → ngành trong hệ thống. File DSSV lớp môn
+ * dùng mã ngành riêng của phòng đào tạo ("LTWE02", "DIMA01"), không trùng
+ * `Major.code`. Thiếu ánh xạ thì sinh viên vẫn được tạo nhưng để trống ngành
+ * (xem `RosterCommitter`) — KHÔNG bỏ dòng, khác với ánh xạ bộ môn.
+ */
+@Injectable()
+export class MajorAliasesService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  findAll() {
+    return this.prisma.majorAlias.findMany({
+      orderBy: { alias: 'asc' },
+      include: { major: { select: { id: true, code: true, name: true } } },
+    });
+  }
+
+  async create(dto: CreateMajorAliasDto) {
+    try {
+      return await this.prisma.majorAlias.create({ data: dto });
+    } catch (error) {
+      if (isPrismaError(error, 'P2002')) {
+        throw new ConflictException(`Nhãn "${dto.alias}" đã được ánh xạ.`);
+      }
+      if (isPrismaError(error, 'P2003')) {
+        throw new NotFoundException('Ngành học không tồn tại.');
+      }
+      throw error;
+    }
+  }
+
+  async update(id: string, dto: UpdateMajorAliasDto) {
+    try {
+      return await this.prisma.majorAlias.update({ where: { id }, data: dto });
+    } catch (error) {
+      if (isPrismaError(error, 'P2025')) {
+        throw new NotFoundException('Không tìm thấy ánh xạ ngành.');
+      }
+      if (isPrismaError(error, 'P2002')) {
+        throw new ConflictException(`Nhãn "${dto.alias}" đã được ánh xạ.`);
+      }
+      throw error;
+    }
+  }
+
+  async remove(id: string) {
+    try {
+      await this.prisma.majorAlias.delete({ where: { id } });
+      return { deleted: true };
+    } catch (error) {
+      if (isPrismaError(error, 'P2025')) {
+        throw new NotFoundException('Không tìm thấy ánh xạ ngành.');
       }
       throw error;
     }

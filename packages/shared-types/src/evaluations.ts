@@ -32,6 +32,29 @@ export function scoreBand(score: number): ScoreBand {
   return matched?.band ?? '2-1';
 }
 
+/**
+ * Xếp loại học lực của từng dải điểm — ghi chú cuối tài liệu nghiệp vụ yêu cầu
+ * radio hiện XẾP LOẠI, không phải con số trần: giảng viên chọn "Yếu" nhanh và
+ * chắc tay hơn chọn "4-3". Dải vẫn là khoá dữ liệu, xếp loại chỉ là nhãn hiển
+ * thị nên điểm gửi lên API và công thức DRS không đổi.
+ */
+export const BAND_CLASSIFICATIONS: Record<ScoreBand, string> = {
+  '10-9': 'Xuất sắc / Giỏi',
+  '8-7': 'Khá',
+  '6-5': 'Trung bình',
+  '4-3': 'Yếu',
+  '2-1': 'Kém',
+};
+
+/** Dải điểm viết theo chiều tăng dần như trong tài liệu ("9–10", "7–8"…). */
+export const BAND_RANGE_LABELS: Record<ScoreBand, string> = {
+  '10-9': '9–10',
+  '8-7': '7–8',
+  '6-5': '5–6',
+  '4-3': '3–4',
+  '2-1': '1–2',
+};
+
 /** Đánh giá về khả năng học tập — mô tả từng dải. */
 export const ACADEMIC_BAND_DESCRIPTIONS: Record<ScoreBand, string> = {
   '10-9': 'SV có khả năng tiếp thu bài học, khả năng tự học, sáng tạo.',
@@ -131,124 +154,3 @@ export const ISSUE_GROUP_SUGGESTIONS: Record<IssueGroup, IssueGroupSuggestion> =
     studentAffairs: ['Gọi điện tư vấn và kết nối với thông tin gia đình.'],
   },
 };
-
-export interface EvaluationScores {
-  academicScore: number;
-  attitudeScore: number;
-  issueGroup: number | null;
-}
-
-export interface UrgencySuggestion {
-  /** Độ khẩn ĐỀ XUẤT 1-4. Không tự phát cảnh báo — người dùng vẫn phải xác nhận. */
-  level: 1 | 2 | 3 | 4;
-  /** Các lý do đã kích hoạt, sắp theo mức giảm dần. */
-  reasons: string[];
-}
-
-interface UrgencyRule {
-  level: UrgencySuggestion['level'];
-  reason: string;
-  matches: (scores: EvaluationScores) => boolean;
-}
-
-/**
- * Tài liệu mô tả 4 mức độ khẩn và ma trận người nhận, nhưng KHÔNG quy định
- * công thức suy ra mức từ điểm. Bộ luật dưới đây là đề xuất của hệ thống, bám
- * theo tinh thần các dải điểm: dải 2-1 là "báo lại với nhà Trường", dải 4-3 là
- * "gặp riêng", nhóm 4 là vấn đề tâm lí/nghỉ học. Nếu nhà trường ban hành công
- * thức chính thức thì sửa đúng chỗ này.
- */
-const URGENCY_RULES: readonly UrgencyRule[] = [
-  {
-    level: 4,
-    reason: 'Nhóm 4: vấn đề tâm lí, gia đình, cuộc sống, chán học muốn nghỉ học.',
-    matches: ({ issueGroup }) => issueGroup === 4,
-  },
-  {
-    level: 4,
-    reason: 'Cả điểm học tập và thái độ đều ở dải 2-1.',
-    matches: ({ academicScore, attitudeScore }) =>
-      scoreBand(academicScore) === '2-1' && scoreBand(attitudeScore) === '2-1',
-  },
-  {
-    level: 3,
-    reason: 'Có điểm ở dải 2-1 — tài liệu yêu cầu báo lại với nhà Trường.',
-    matches: ({ academicScore, attitudeScore }) =>
-      scoreBand(academicScore) === '2-1' || scoreBand(attitudeScore) === '2-1',
-  },
-  {
-    level: 2,
-    reason: 'Có điểm ở dải 4-3 — cần gặp riêng, phụ đạo hoặc kèm cặp.',
-    matches: ({ academicScore, attitudeScore }) =>
-      scoreBand(academicScore) === '4-3' || scoreBand(attitudeScore) === '4-3',
-  },
-  {
-    level: 2,
-    reason: 'Nhóm 1: SV không phù hợp với chuyên ngành đã chọn.',
-    matches: ({ issueGroup }) => issueGroup === 1,
-  },
-  {
-    level: 2,
-    reason: 'Nhóm 2: SV đi làm thêm nên không có thời gian học tập.',
-    matches: ({ issueGroup }) => issueGroup === 2,
-  },
-  {
-    level: 2,
-    reason: 'Nhóm 3: SV dành thời gian cho các hoạt động khác.',
-    matches: ({ issueGroup }) => issueGroup === 3,
-  },
-];
-
-/** Mức đề xuất = mức cao nhất trong các luật khớp; không khớp luật nào → mức 1. */
-export function suggestUrgencyLevel(scores: EvaluationScores): UrgencySuggestion {
-  const matched = URGENCY_RULES.filter((rule) => rule.matches(scores));
-  if (matched.length === 0) {
-    return { level: 1, reasons: ['Điểm học tập và thái độ đều ổn, chưa ghi nhận vấn đề khác.'] };
-  }
-
-  const sorted = [...matched].sort((left, right) => right.level - left.level);
-  return {
-    level: sorted[0]?.level ?? 1,
-    reasons: sorted.map((rule) => rule.reason),
-  };
-}
-
-export interface EvaluationGuidance {
-  academicBand: ScoreBand;
-  attitudeBand: ScoreBand;
-  academicDescription: string;
-  attitudeDescription: string;
-  /** Việc giảng viên nên làm — gợi ý theo dải điểm + theo nhóm vấn đề. */
-  lecturerActions: string[];
-  /** Việc cán bộ phòng CTSV nên làm — chỉ sinh khi có nhóm vấn đề. */
-  studentAffairsActions: string[];
-  suggestedLevel: UrgencySuggestion['level'];
-  suggestedLevelReasons: string[];
-}
-
-function isIssueGroup(value: number | null): value is IssueGroup {
-  return value !== null && (ISSUE_GROUP_VALUES as readonly number[]).includes(value);
-}
-
-/** Gộp toàn bộ nội dung gợi ý cho một lần đánh giá — thuần, không side effect. */
-export function evaluationGuidance(scores: EvaluationScores): EvaluationGuidance {
-  const academicBand = scoreBand(scores.academicScore);
-  const attitudeBand = scoreBand(scores.attitudeScore);
-  const group = isIssueGroup(scores.issueGroup) ? scores.issueGroup : null;
-  const groupSuggestion = group === null ? null : ISSUE_GROUP_SUGGESTIONS[group];
-  const urgency = suggestUrgencyLevel(scores);
-
-  return {
-    academicBand,
-    attitudeBand,
-    academicDescription: ACADEMIC_BAND_DESCRIPTIONS[academicBand],
-    attitudeDescription: ATTITUDE_BAND_DESCRIPTIONS[attitudeBand],
-    lecturerActions: [
-      ACADEMIC_BAND_SUGGESTIONS[academicBand],
-      ...(groupSuggestion?.lecturer ?? []),
-    ],
-    studentAffairsActions: [...(groupSuggestion?.studentAffairs ?? [])],
-    suggestedLevel: urgency.level,
-    suggestedLevelReasons: urgency.reasons,
-  };
-}

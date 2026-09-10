@@ -26,6 +26,8 @@ describe('NotificationsService', () => {
             recommendations: ['Theo dõi'],
             notificationSummary: 'Cần theo dõi.',
             dataLimitations: [],
+            suggestedLevel: 2,
+            forcedEscalation: null,
           },
           aiOriginal: { secret: 'raw-model-output' },
         },

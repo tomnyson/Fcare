@@ -23,7 +23,7 @@ import { PageSkeleton } from '../../../../components/dashboard/shell-skeleton';
 
 const TABS = [
   { key: 'enrollments', label: 'Học phần & điểm' },
-  { key: 'evaluations', label: 'Đánh giá' },
+  { key: 'evaluations', label: 'Nhận xét' },
   { key: 'care-logs', label: 'Nhật ký chăm sóc' },
   { key: 'alerts', label: 'Cảnh báo' },
   { key: 'discussion', label: 'Trao đổi' },

@@ -1,6 +1,7 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { AlertsModule } from '../alerts/alerts.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import type { AcademicAnalysisProvider } from './analysis-provider';
 import {
@@ -19,6 +20,7 @@ import { StudentAnalysesService } from './student-analyses.service';
   imports: [
     ConfigModule,
     NotificationsModule,
+    AlertsModule,
     BullModule.registerQueue({ name: STUDENT_ANALYSIS_QUEUE }),
   ],
   controllers: [StudentAnalysesController],
@@ -44,5 +46,7 @@ import { StudentAnalysesService } from './student-analyses.service';
           : openai,
     },
   ],
+  // EvaluationsModule cần service này để tự chạy phân tích sau khi lưu nhận xét.
+  exports: [StudentAnalysesService],
 })
 export class StudentAnalysesModule {}

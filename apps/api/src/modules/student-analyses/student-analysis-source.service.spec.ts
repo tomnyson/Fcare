@@ -105,7 +105,8 @@ describe('StudentAnalysisSourceService.buildSnapshot', () => {
           term: '2025A',
           academicScore: 7,
           attitudeScore: 8,
-          issueGroup: 1,
+          absentSessions: 1,
+          criteria: [{ criterion: 'P_PART_TIME_JOB' }],
           note: 'Nguyen Van A lien he qua email sv001@example.edu',
           updatedAt: new Date('2026-08-24T00:00:00.000Z'),
           lecturer: {
@@ -115,6 +116,7 @@ describe('StudentAnalysisSourceService.buildSnapshot', () => {
           },
         },
       ],
+      careLogs: [],
     });
 
     const first = await service.buildSnapshot('student-1', '2025A');
@@ -140,7 +142,8 @@ describe('StudentAnalysisSourceService.buildSnapshot', () => {
           term: '2025A',
           academicScore: 7,
           attitudeScore: 8,
-          issueGroup: 1,
+          absentSessions: 1,
+          criteria: [{ criterion: 'P_PART_TIME_JOB' }],
           note: 'dia chi: 12 Nguyen Hue',
           updatedAt: new Date('2026-08-24T00:00:00.000Z'),
           lecturer: {
@@ -150,6 +153,7 @@ describe('StudentAnalysisSourceService.buildSnapshot', () => {
           },
         },
       ],
+      careLogs: [],
     });
 
     const result = await service.buildSnapshot('student-1', '2025A');

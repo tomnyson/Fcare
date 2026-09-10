@@ -28,8 +28,9 @@ const MANAGER_ROLES = ['ADMIN', 'TRAINING_OFFICER'];
 
 /**
  * Gợi ý điều kiện xóa theo từng danh mục — hiển thị trong modal xác nhận.
- * Partial vì hai tab ánh xạ (`department-aliases`, `class-major-rules`) được
- * MASTER_DATA_TABS khai báo nhưng render qua MappingView, không qua đây.
+ * Partial vì ba tab ánh xạ (`department-aliases`, `major-aliases`,
+ * `class-major-rules`) được MASTER_DATA_TABS khai báo nhưng render qua
+ * MappingView, không qua đây.
  */
 const DELETE_HINTS: Partial<Record<MasterDataTabKey, string>> = {
   departments:

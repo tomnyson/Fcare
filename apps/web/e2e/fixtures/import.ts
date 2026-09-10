@@ -6,6 +6,9 @@ export const IMPORT_KIND_LABELS = {
   lecturer: 'Danh sách giảng viên',
   schedule: 'Lịch và phân công lớp',
   gradebook: 'Bảng điểm',
+  'section-list': 'Đầu kỳ 1/3 — Danh sách lớp',
+  roster: 'Đầu kỳ 2/3 — Sinh viên lớp môn',
+  'grade-attendance': 'Đầu kỳ 3/3 — Điểm và chuyên cần',
 } as const;
 
 export type ImportKindKey = keyof typeof IMPORT_KIND_LABELS;

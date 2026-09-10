@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { computeRiskScore } from '@fcare/shared-types';
 import type { AuthUser } from '../../common/types/auth-user';
 import { studentScope } from '../../common/utils/dept-scope';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -90,12 +91,24 @@ export class StudentAnalysisSourceService {
             term: true,
             academicScore: true,
             attitudeScore: true,
-            issueGroup: true,
+            absentSessions: true,
+            criteria: { select: { criterion: true } },
             note: true,
             updatedAt: true,
             lecturer: {
               select: { fullName: true, staffCode: true, username: true },
             },
+          },
+        },
+        careLogs: {
+          orderBy: { createdAt: 'asc' },
+          take: 50,
+          select: {
+            channel: true,
+            content: true,
+            outcome: true,
+            nextAction: true,
+            createdAt: true,
           },
         },
       },
@@ -141,12 +154,37 @@ export class StudentAnalysisSourceService {
         term: evaluation.term,
         academicScore: evaluation.academicScore,
         attitudeScore: evaluation.attitudeScore,
-        issueGroup: evaluation.issueGroup,
+        absentSessions: evaluation.absentSessions,
+        criteria: evaluation.criteria.map((mark) => mark.criterion),
         note: evaluation.note
           ? redactAnalysisText(evaluation.note, [...identifiers])
           : null,
         updatedAt: evaluation.updatedAt.toISOString(),
       })),
+      // Nhật ký chăm sóc là chữ cán bộ gõ — che định danh y hệt phần ghi chú.
+      careLogs: student.careLogs.map((log) => ({
+        channel: log.channel,
+        content: redactAnalysisText(log.content, [...identifiers]),
+        outcome: log.outcome
+          ? redactAnalysisText(log.outcome, [...identifiers])
+          : null,
+        nextAction: log.nextAction
+          ? redactAnalysisText(log.nextAction, [...identifiers])
+          : null,
+        createdAt: log.createdAt.toISOString(),
+      })),
+      // Bảng phân rã DRS đi kèm snapshot để prompt AI và bản lưu giải trình
+      // cùng nhìn một con số. Vẫn là hàm thuần, không truy vấn thêm.
+      riskScore: computeRiskScore(
+        student.evaluations
+          .filter((item) => item.term === focusTerm)
+          .map((item) => ({
+            academicScore: item.academicScore,
+            attitudeScore: item.attitudeScore,
+            absentSessions: item.absentSessions,
+            criteria: item.criteria.map((mark) => mark.criterion),
+          })),
+      ),
       limitations: [],
     };
 

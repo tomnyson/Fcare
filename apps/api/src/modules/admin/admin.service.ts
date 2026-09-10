@@ -122,6 +122,7 @@ export class AdminService {
     if (!existing) {
       throw new NotFoundException('Không tìm thấy nhân viên.');
     }
+    this.assertNotSelfLockout(adminId, id, dto);
 
     const roleRecords = dto.roles ? await this.requireRoles(dto.roles) : null;
     // Kiểm tra trên trạng thái SAU khi cập nhật: đổi vai trò và đổi bộ môn có
@@ -248,6 +249,31 @@ export class AdminService {
     });
 
     return { updated: result.count };
+  }
+
+  /**
+   * Chỉ ADMIN mới vào được `/admin/staff` (CASL). Admin tự gỡ vai trò ADMIN
+   * hoặc tự khóa tài khoản mình là tự nhốt mình ngoài cửa — và không có luồng
+   * email nào để tự mở lại (RULE 1: hệ thống không lưu email).
+   */
+  private assertNotSelfLockout(
+    adminId: string,
+    targetId: string,
+    dto: UpdateStaffDto,
+  ): void {
+    if (adminId !== targetId) {
+      return;
+    }
+    if (dto.roles && !dto.roles.includes('ADMIN')) {
+      throw new BadRequestException(
+        'Không thể tự gỡ vai trò Quản trị hệ thống của chính mình — nhờ một admin khác thực hiện.',
+      );
+    }
+    if (dto.isActive === false) {
+      throw new BadRequestException(
+        'Không thể tự khóa tài khoản của chính mình.',
+      );
+    }
   }
 
   /**

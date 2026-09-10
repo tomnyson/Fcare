@@ -9,6 +9,7 @@ import type { AuthUser } from '../../common/types/auth-user';
 import { isDeptScoped } from '../../common/utils/dept-scope';
 import { PrismaService } from '../../prisma/prisma.service';
 import { assertNoForbiddenValues, loadWorkbook } from '../excel/excel-utils';
+import { aliasKey, isAliasKnown } from './alias-match';
 import type {
   ImportCommitter,
   ImportContext,
@@ -82,30 +83,24 @@ export class ImportsService {
     const ctx: ImportContext = { term, user, prisma: this.prisma };
     const result = await parser.parse(workbook, ctx);
 
-    // Alias bộ môn có trong file nhưng chưa có trong bảng ánh xạ → hiện ở
-    // bản xem trước để admin gán trước khi commit (spec §8 rủi ro 3).
-    const fileAliases = new Set(
-      result.rows
-        .map((row) =>
-          typeof row.payload.deptAlias === 'string'
-            ? row.payload.deptAlias.trim()
-            : '',
-        )
-        .filter((alias) => alias !== ''),
+    // Mã bộ môn/ngành có trong file nhưng chưa ánh xạ được → hiện ở bản xem
+    // trước để admin gán trước khi commit (spec §8 rủi ro 3). Hai loại tách
+    // riêng vì HẬU QUẢ khác nhau: thiếu ánh xạ bộ môn thì dòng bị bỏ qua,
+    // thiếu ánh xạ ngành thì sinh viên vẫn được tạo nhưng để trống ngành.
+    result.unmappedAliases.push(
+      ...(await this.findUnmappedAliases(
+        result.rows,
+        'deptAlias',
+        () => this.loadDepartmentKeys(),
+        false,
+      )),
     );
-    if (fileAliases.size > 0) {
-      const known = await this.prisma.departmentAlias.findMany({
-        select: { alias: true },
-      });
-      const knownKeys = new Set(
-        known.map((entry) => entry.alias.trim().toLowerCase()),
-      );
-      for (const alias of fileAliases) {
-        if (!knownKeys.has(alias.toLowerCase())) {
-          result.unmappedAliases.push(alias);
-        }
-      }
-    }
+    const unmappedMajorAliases = await this.findUnmappedAliases(
+      result.rows,
+      'majorAlias',
+      () => this.loadMajorKeys(),
+      true,
+    );
 
     const errorCount = result.rows.filter((row) => row.error).length;
 
@@ -122,6 +117,7 @@ export class ImportsService {
           errorCount,
           warnings: result.warnings,
           unmappedAliases: result.unmappedAliases,
+          unmappedMajorAliases,
         },
       },
     });
@@ -305,5 +301,65 @@ export class ImportsService {
       entityId: batchId,
     });
     return { id: batchId };
+  }
+
+  /**
+   * Khoá tra bộ môn: alias đã gán CỘNG mã bộ môn thật — file nhà trường nhiều
+   * khi ghi thẳng mã trong DB, không cần bắt admin tự ánh xạ trùng lặp.
+   */
+  private async loadDepartmentKeys(): Promise<string[]> {
+    const [aliases, departments] = await Promise.all([
+      this.prisma.departmentAlias.findMany({ select: { alias: true } }),
+      this.prisma.department.findMany({ select: { code: true } }),
+    ]);
+    return [
+      ...aliases.map((entry) => entry.alias),
+      ...departments.map((entry) => entry.code),
+    ];
+  }
+
+  /** Khoá tra ngành: alias đã gán cộng mã ngành thật (xem `loadDepartmentKeys`). */
+  private async loadMajorKeys(): Promise<string[]> {
+    const [aliases, majors] = await Promise.all([
+      this.prisma.majorAlias.findMany({ select: { alias: true } }),
+      this.prisma.major.findMany({ select: { code: true } }),
+    ]);
+    return [
+      ...aliases.map((entry) => entry.alias),
+      ...majors.map((entry) => entry.code),
+    ];
+  }
+
+  /**
+   * Mã trong file ("CHNA" cho ngành, "SE" cho bộ môn) không phải mã trong DB —
+   * phải đi qua bảng ánh xạ tương ứng. Trả về các mã chưa ánh xạ để admin gán
+   * trước khi commit. Không truy vấn DB khi file không có cột đó.
+   *
+   * `allowBaseMatch` PHẢI khớp với cách committer tra: bật cho ngành (bỏ hậu tố
+   * khoá tuyển sinh), tắt cho bộ môn. Lệch nhau thì bản xem trước nói một đằng,
+   * lúc ghi làm một nẻo.
+   */
+  private async findUnmappedAliases(
+    rows: ParsedRow[],
+    field: 'deptAlias' | 'majorAlias',
+    loadKnown: () => Promise<string[]>,
+    allowBaseMatch: boolean,
+  ): Promise<string[]> {
+    const fileAliases = new Set(
+      rows
+        .map((row) => {
+          const value = row.payload[field];
+          return typeof value === 'string' ? value.trim() : '';
+        })
+        .filter((alias) => alias !== ''),
+    );
+    if (fileAliases.size === 0) {
+      return [];
+    }
+    const known = await loadKnown();
+    const knownKeys = new Set(known.map((key) => aliasKey(key)));
+    return Array.from(fileAliases).filter(
+      (alias) => !isAliasKnown(knownKeys, alias, allowBaseMatch),
+    );
   }
 }

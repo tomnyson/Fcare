@@ -56,6 +56,7 @@ const TRAINING_ICONS: Record<MasterDataTabKey, NavIcon | undefined> = {
   subjects: IconSubjects,
   'class-sections': IconSections,
   'department-aliases': undefined,
+  'major-aliases': undefined,
   'class-major-rules': undefined,
 };
 
@@ -67,7 +68,7 @@ function tab(key: MasterDataTabKey): NavLeaf {
   return { kind: 'leaf', href: `/master-data/${found.key}`, label: found.label, icon: TRAINING_ICONS[key] };
 }
 
-/** Nhóm Đào tạo: 4 danh mục chính, hai danh mục ánh xạ nằm dưới Lớp học phần. */
+/** Nhóm Đào tạo: 4 danh mục chính, ba danh mục ánh xạ nằm dưới Lớp học phần. */
 function trainingSection(): NavSection {
   return {
     id: 'training',
@@ -88,7 +89,11 @@ function trainingSection(): NavSection {
             label: 'Lớp học phần',
             icon: IconSections,
             href: '/master-data/class-sections',
-            children: [tab('department-aliases'), tab('class-major-rules')],
+            children: [
+              tab('department-aliases'),
+              tab('major-aliases'),
+              tab('class-major-rules'),
+            ],
           },
         ],
       },

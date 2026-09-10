@@ -59,8 +59,12 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.web
+      args:
+        # Next inline biến này lúc build; đặt ở `environment` là quá muộn.
+        # Hậu tố /api là bắt buộc (apps/web/src/lib/api.ts gọi thẳng URL này).
+        NEXT_PUBLIC_API_URL: http://localhost:3001/api
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:3001
+      HOSTNAME: 0.0.0.0
     ports:
       - '3000:3000'
     depends_on:

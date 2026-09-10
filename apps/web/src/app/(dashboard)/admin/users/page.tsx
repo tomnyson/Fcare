@@ -10,6 +10,7 @@ import { FormError, FormSuccess, Input, Label, Select } from '../../../../compon
 import { Modal } from '../../../../components/ui/modal';
 import { PageHeader } from '../../../../components/ui/page-header';
 import { apiFetch, ApiError } from '../../../../lib/api';
+import { useMe } from '../../../../lib/hooks';
 import { ROLE_LABELS } from '../../../../lib/labels';
 import type { Department, StaffMember } from '../../../../lib/types';
 
@@ -24,6 +25,7 @@ const DEPT_SCOPED_ROLES: readonly RoleKey[] = ['LECTURER', 'HEAD_OF_DEPT'];
 
 function AdminUsersPageContent() {
   const queryClient = useQueryClient();
+  const { data: me } = useMe();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -38,6 +40,8 @@ function AdminUsersPageContent() {
   const [creating, setCreating] = useState(false);
   const [newRoles, setNewRoles] = useState<readonly RoleKey[]>([]);
   const [assigning, setAssigning] = useState<StaffMember | null>(null);
+  const [editingRoles, setEditingRoles] = useState<StaffMember | null>(null);
+  const [roleDraft, setRoleDraft] = useState<readonly RoleKey[]>([]);
   const [selected, setSelected] = useState<readonly string[]>([]);
   const [bulkDepartmentId, setBulkDepartmentId] = useState('');
   const [error, setError] = useState('');
@@ -141,6 +145,23 @@ function AdminUsersPageContent() {
       setError(err instanceof ApiError ? err.message : 'Không gán được bộ môn.'),
   });
 
+  const rolesMutation = useMutation({
+    mutationFn: ({ id, roles }: { id: string; roles: readonly RoleKey[] }) =>
+      apiFetch(`/admin/staff/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ roles: [...roles] }),
+      }),
+    onSuccess: async () => {
+      setEditingRoles(null);
+      setError('');
+      await queryClient.invalidateQueries({ queryKey: ['admin-staff'] });
+      // Vai trò của chính mình đổi → menu/quyền trên web phải đọc lại ngay.
+      await queryClient.invalidateQueries({ queryKey: ['me'] });
+    },
+    onError: (err) =>
+      setError(err instanceof ApiError ? err.message : 'Không đổi được vai trò.'),
+  });
+
   const bulkAssignMutation = useMutation({
     mutationFn: async () => {
       const staffIds = [...selected];
@@ -169,6 +190,42 @@ function AdminUsersPageContent() {
     setSelected((current) =>
       checked ? [...current, id] : current.filter((value) => value !== id),
     );
+  }
+
+  /** Vai trò của người đang được sửa, dùng để bật/tắt cảnh báo bộ môn. */
+  const editRolesNeedDepartment = roleDraft.some((role) =>
+    DEPT_SCOPED_ROLES.includes(role),
+  );
+  const editingSelf = editingRoles !== null && editingRoles.id === me?.user.id;
+
+  function openRoleEditor(member: StaffMember) {
+    setError('');
+    setRoleDraft(member.roles.map(({ role }) => role.key));
+    setEditingRoles(member);
+  }
+
+  function toggleDraftRole(role: RoleKey, checked: boolean) {
+    setRoleDraft((current) =>
+      checked ? [...current, role] : current.filter((value) => value !== role),
+    );
+  }
+
+  function onRolesSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingRoles) return;
+    if (roleDraft.length === 0) {
+      setError('Chọn ít nhất một vai trò.');
+      return;
+    }
+    // Chặn sớm ở web để admin thấy đúng việc cần làm trước (gán bộ môn),
+    // API vẫn chặn lần nữa — cùng quy tắc, hai lớp.
+    if (editRolesNeedDepartment && !editingRoles.departmentId) {
+      setError(
+        `${editingRoles.staffCode} chưa có bộ môn — gán bộ môn trước khi cấp vai trò Giảng viên/Trưởng bộ môn.`,
+      );
+      return;
+    }
+    rolesMutation.mutate({ id: editingRoles.id, roles: roleDraft });
   }
 
   function toggleRole(role: RoleKey, checked: boolean) {
@@ -415,6 +472,13 @@ function AdminUsersPageContent() {
                 <button
                   type="button"
                   className="text-fpt-blue hover:underline"
+                  onClick={() => openRoleEditor(member)}
+                >
+                  Đổi vai trò
+                </button>
+                <button
+                  type="button"
+                  className="text-fpt-blue hover:underline"
                   onClick={() => resetMutation.mutate(member.id)}
                 >
                   Cấp lại mật khẩu
@@ -482,6 +546,69 @@ function AdminUsersPageContent() {
             </Button>
             <Button type="submit" disabled={assignMutation.isPending}>
               {assignMutation.isPending ? 'Đang lưu…' : 'Lưu bộ môn'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        title="Đổi vai trò"
+        open={editingRoles !== null}
+        onClose={() => setEditingRoles(null)}
+      >
+        <form onSubmit={onRolesSubmit} className="space-y-4">
+          <FormError>{error}</FormError>
+          <p className="text-sm text-muted">
+            <strong className="text-ink">{editingRoles?.staffCode}</strong> —{' '}
+            {editingRoles?.fullName}
+            {editingRoles?.department
+              ? ` (${editingRoles.department.name})`
+              : ' (chưa có bộ môn)'}
+          </p>
+          <fieldset>
+            <legend className="mb-2 text-sm font-semibold text-ink">Vai trò</legend>
+            <div className="grid grid-cols-2 gap-2">
+              {ROLE_KEYS.map((role) => {
+                // Gỡ vai trò ADMIN của chính mình là tự nhốt mình ngoài cửa —
+                // hệ thống không có email để tự mở lại. API cũng chặn.
+                const locked = editingSelf && role === 'ADMIN';
+                return (
+                  <label
+                    key={role}
+                    className={`flex items-center gap-2 text-sm ${
+                      locked ? 'text-muted' : 'text-ink'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={roleDraft.includes(role)}
+                      disabled={locked}
+                      onChange={(event) => toggleDraftRole(role, event.target.checked)}
+                      className="h-4 w-4 accent-[var(--color-fpt-orange)]"
+                    />
+                    {ROLE_LABELS[role]}
+                    {locked ? ' (không thể tự gỡ)' : ''}
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+          {editRolesNeedDepartment && !editingRoles?.departmentId ? (
+            <FormError>
+              Giảng viên và Trưởng bộ môn bắt buộc thuộc một bộ môn — gán bộ môn trước, nếu
+              không tài khoản sẽ không thấy sinh viên nào.
+            </FormError>
+          ) : null}
+          <p className="rounded-md bg-fpt-orange-50 p-3 text-xs text-muted">
+            Vai trò quyết định quyền xem sinh viên, nhập/xuất Excel và nhận cảnh báo leo thang.
+            Danh sách vai trò mới thay thế hoàn toàn danh sách cũ; thao tác được ghi vào nhật ký.
+          </p>
+          <div className="flex justify-end gap-3">
+            <Button variant="ghost" type="button" onClick={() => setEditingRoles(null)}>
+              Hủy
+            </Button>
+            <Button type="submit" disabled={rolesMutation.isPending}>
+              {rolesMutation.isPending ? 'Đang lưu…' : 'Lưu vai trò'}
             </Button>
           </div>
         </form>

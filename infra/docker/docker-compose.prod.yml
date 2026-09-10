@@ -1,0 +1,131 @@
+# Stack production của FCare (aaPanel / VPS).
+#
+# Khác bản dev (docker-compose.yml): không có mailhog, Postgres/Redis chỉ nghe
+# trên loopback, app luôn tự khởi động lại, và schema DB do service `migrate`
+# chạy một lần trước khi API lên.
+#
+#   cp env.production.sample .env.production   # rồi điền secret thật
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d
+#
+# Nginx của aaPanel proxy 443 → 127.0.0.1:3000 (web) và /api → 127.0.0.1:3001.
+name: fcare-prod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
+    # Chỉ loopback: cổng 5432 mở ra Internet là lộ toàn bộ dữ liệu sinh viên.
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Chạy một lần rồi thoát. API chờ service này kết thúc thành công mới lên, nên
+  # không bao giờ có chuyện app chạy trên schema cũ.
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.api
+      target: migrate
+    restart: 'no'
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.api
+      target: runtime
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
+      API_PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://redis:6379
+      # Phải là origin thật của web: CORS chạy kèm credentials và cookie đăng
+      # nhập là httpOnly + secure khi NODE_ENV=production.
+      WEB_ORIGIN: ${PUBLIC_WEB_ORIGIN}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
+      AI_ANALYSIS_ENABLED: ${AI_ANALYSIS_ENABLED:-false}
+      AI_PROVIDER: ${AI_PROVIDER:-deepseek}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+    ports:
+      - '127.0.0.1:3001:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://127.0.0.1:3001/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.web
+      args:
+        # Inline lúc build — đổi giá trị này thì phải build lại image web.
+        NEXT_PUBLIC_API_URL: ${PUBLIC_WEB_ORIGIN}/api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
+      PORT: 3000
+      # Server standalone của Next mặc định chỉ nghe localhost trong container.
+      HOSTNAME: 0.0.0.0
+    ports:
+      - '127.0.0.1:3000:3000'
+    depends_on:
+      - api
+
+volumes:
+  postgres-data:
+  redis-data:

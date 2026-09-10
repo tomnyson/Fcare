@@ -43,6 +43,7 @@ model Major {
   department      Department       @relation(fields: [departmentId], references: [id])
   students        Student[]
   classMajorRules ClassMajorRule[]
+  aliases         MajorAlias[]
 
   @@map("majors")
 }
@@ -90,6 +91,7 @@ model ClassSection {
   subject     Subject      @relation(fields: [subjectId], references: [id])
   lecturer    Staff?       @relation(fields: [lecturerId], references: [id])
   enrollments Enrollment[]
+  evaluations Evaluation[]
 
   @@unique([code, term])
   @@map("class_sections")
@@ -120,6 +122,7 @@ model Staff {
   ownedTermAnalyses            StudentTermAnalysis[]          @relation("StudentTermAnalysisOwner")
   createdTermAnalysisVersions  StudentTermAnalysisVersion[]   @relation("StudentTermAnalysisVersionCreatedBy")
   reviewedTermAnalysisVersions StudentTermAnalysisVersion[]   @relation("StudentTermAnalysisVersionReviewedBy")
+  dismissedTermAnalysisVersions StudentTermAnalysisVersion[]  @relation("StudentTermAnalysisVersionDismissedBy")
   termAnalysisRecipients       StudentTermAnalysisRecipient[]
   careLogs                     CareLog[]
   raisedAlerts                 Alert[]                        @relation("AlertRaisedBy")
@@ -223,13 +226,13 @@ model Student {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
-  major        Major?                @relation(fields: [majorId], references: [id])
-  department   Department            @relation(fields: [departmentId], references: [id])
-  enrollments  Enrollment[]
-  evaluations  Evaluation[]
-  termAnalyses StudentTermAnalysis[]
-  careLogs     CareLog[]
-  alerts       Alert[]
+  major              Major?                @relation(fields: [majorId], references: [id])
+  department         Department            @relation(fields: [departmentId], references: [id])
+  enrollments        Enrollment[]
+  evaluations        Evaluation[]
+  termAnalyses       StudentTermAnalysis[]
+  careLogs           CareLog[]
+  alerts             Alert[]
   discussionMessages DiscussionMessage[]
   discussionReads    DiscussionRead[]
 
@@ -249,6 +252,8 @@ model Enrollment {
   studentId      String
   classSectionId String
   attendanceRate Float? // 0..100
+  absentSessions Int? // số buổi đã nghỉ (cột "Số buổi nghỉ/TS")
+  totalSessions  Int? // tổng số buổi của lớp học phần
   midtermScore   Float? // 0..10
   finalScore     Float? // 0..10
   totalScore     Float? // 0..10
@@ -267,23 +272,54 @@ model Enrollment {
 // ===== Chăm sóc & cảnh báo =====
 
 // Đánh giá SV: học lực 1-10, thái độ 1-10, nhóm vấn đề 1-4
+// Tiêu chí nhận xét theo tài liệu II.2 mục 3 (R_P) và mục 4 (R_H).
+// Tên thành viên phải trùng `EvaluationCriterion` trong @fcare/shared-types.
+enum EvaluationCriterion {
+  P_NOT_FIT_MAJOR
+  P_PART_TIME_JOB
+  P_OTHER_ACTIVITIES
+  P_FAMILY_HARDSHIP
+  P_FINANCIAL_HARDSHIP
+  P_PSYCHOLOGICAL
+  P_DROPOUT_INTENT
+  H_NO_QUIZ_CMS
+  H_EXAM_BAN_RISK
+  H_NO_RESPONSE
+}
+
+// Nhận xét của MỘT giảng viên cho MỘT sinh viên ở MỘT lớp học phần.
 model Evaluation {
-  id            String   @id @default(uuid())
-  studentId     String
-  lecturerId    String
-  term          String
-  academicScore Int // 1..10
-  attitudeScore Int // 1..10
-  issueGroup    Int? // 1..4 — nhóm vấn đề cần can thiệp
-  note          String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String   @id @default(uuid())
+  studentId      String
+  lecturerId     String
+  classSectionId String
+  term           String
+  academicScore  Int // 1..10 → R_L
+  attitudeScore  Int // 1..10 → R_A
+  absentSessions Int? // số buổi vắng GV ghi nhận → R_C; null = chưa nhận xét chuyên cần
+  note           String? // nhận xét chữ — đầu vào cho AI xét ép cấp độ
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  student  Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  lecturer Staff   @relation(fields: [lecturerId], references: [id])
+  student      Student                   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  lecturer     Staff                     @relation(fields: [lecturerId], references: [id])
+  classSection ClassSection              @relation(fields: [classSectionId], references: [id])
+  criteria     EvaluationCriterionMark[]
 
+  @@unique([lecturerId, classSectionId, studentId])
   @@index([studentId, term])
   @@map("evaluations")
+}
+
+model EvaluationCriterionMark {
+  id           String              @id @default(uuid())
+  evaluationId String
+  criterion    EvaluationCriterion
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  @@unique([evaluationId, criterion])
+  @@map("evaluation_criteria")
 }
 
 enum CareChannel {
@@ -328,10 +364,11 @@ model Alert {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  student       Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  raisedBy      Staff          @relation("AlertRaisedBy", fields: [raisedById], references: [id])
-  resolvedBy    Staff?         @relation("AlertResolvedBy", fields: [resolvedById], references: [id])
-  notifications Notification[]
+  student          Student                        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  raisedBy         Staff                          @relation("AlertRaisedBy", fields: [raisedById], references: [id])
+  resolvedBy       Staff?                         @relation("AlertResolvedBy", fields: [resolvedById], references: [id])
+  notifications    Notification[]
+  analysisVersions StudentTermAnalysisVersion[]
 
   @@index([studentId, status])
   @@index([level, status])
@@ -369,6 +406,12 @@ model Notification {
   @@map("notifications")
 }
 
+/** Nội dung thực sự được gửi đi: bản AI tổng hợp hay bản giảng viên tự soạn. */
+enum AnalysisContentSource {
+  AI
+  LECTURER
+}
+
 enum StudentTermAnalysisStatus {
   QUEUED
   GENERATING
@@ -402,6 +445,9 @@ model StudentTermAnalysisVersion {
   version         Int
   status          StudentTermAnalysisStatus @default(QUEUED)
   idempotencyKey  String                    @unique
+  // Bản do hệ thống tự sinh sau khi giảng viên lưu nhận xét: sinh xong thì hỏi
+  // người vừa nhận xét có gửi hay không, không tự gửi.
+  needsSendDecision Boolean                 @default(false)
   sourceSnapshot  Json
   sourceHash      String
   aiOriginal      Json?
@@ -413,8 +459,16 @@ model StudentTermAnalysisVersion {
   reasoningTokens Int?
   totalTokens     Int?
   errorMessage    String?
+  // Nguồn nội dung đã gửi; null = chưa gửi.
+  contentSource   AnalysisContentSource?
+  // Nội dung giảng viên tự soạn (đã lọc PII) khi chọn không dùng bản AI.
+  lecturerNote    String?
   createdById     String
   reviewedById    String?
+  // Người bấm "Không gửi" cho bản gợi ý — bản nháp vẫn còn để gửi tay sau.
+  dismissedById   String?
+  dismissedAt     DateTime?
+  alertId         String?
   requestedAt     DateTime                  @default(now())
   generatedAt     DateTime?
   editedAt        DateTime?
@@ -426,6 +480,10 @@ model StudentTermAnalysisVersion {
   analysis      StudentTermAnalysis            @relation(fields: [analysisId], references: [id], onDelete: Cascade)
   createdBy     Staff                          @relation("StudentTermAnalysisVersionCreatedBy", fields: [createdById], references: [id])
   reviewedBy    Staff?                         @relation("StudentTermAnalysisVersionReviewedBy", fields: [reviewedById], references: [id])
+  dismissedBy   Staff?                         @relation("StudentTermAnalysisVersionDismissedBy", fields: [dismissedById], references: [id])
+  // Cảnh báo sinh ra lúc gửi bản phân tích. Giữ ở version để job giao hàng chạy
+  // sau (BullMQ) vẫn gắn được thông báo vào đúng cảnh báo.
+  alert         Alert?                         @relation(fields: [alertId], references: [id], onDelete: SetNull)
   recipients    StudentTermAnalysisRecipient[]
   notifications Notification[]
 
@@ -433,6 +491,8 @@ model StudentTermAnalysisVersion {
   @@index([analysisId, status])
   @@index([createdById])
   @@index([reviewedById])
+  @@index([dismissedById])
+  @@index([alertId])
   @@map("student_term_analysis_versions")
 }
 
@@ -471,6 +531,19 @@ model DepartmentAlias {
   @@map("department_aliases")
 }
 
+// Ánh xạ mã ngành trong file Excel về Major: "CHNA" → ngành Ngôn ngữ Trung.
+// Không đoán ngành khi thiếu alias — import trả về unmappedAliases để admin khai báo.
+model MajorAlias {
+  id        String   @id @default(uuid())
+  alias     String   @unique
+  majorId   String
+  createdAt DateTime @default(now())
+
+  major Major @relation(fields: [majorId], references: [id], onDelete: Cascade)
+
+  @@map("major_aliases")
+}
+
 // Suy ngành từ tiền tố mã lớp hành chính: "AI21301" → ngành LTAI.
 model ClassMajorRule {
   id          String   @id @default(uuid())
@@ -490,6 +563,11 @@ enum ImportKind {
   LECTURER
   SCHEDULE
   GRADEBOOK
+  // Bộ file nhà trường gửi đầu kỳ (docs/tailieu/). Chạy đúng thứ tự:
+  // SECTION_LIST → ROSTER → GRADE_ATTENDANCE.
+  SECTION_LIST
+  ROSTER
+  GRADE_ATTENDANCE
 }
 
 enum ImportStatus {
@@ -506,7 +584,7 @@ model ImportBatch {
   fileName     String
   term         String
   uploadedById String
-  summary      Json // { toCreate, toUpdate, errorCount, warnings, unmappedAliases }
+  summary      Json // { toCreate, toUpdate, errorCount, warnings, unmappedAliases, unmappedMajorAliases }
   createdAt    DateTime     @default(now())
   committedAt  DateTime?
 

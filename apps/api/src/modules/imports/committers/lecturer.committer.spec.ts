@@ -54,11 +54,15 @@ function makeTx() {
         { alias: 'UDPM', departmentId: 'dept-udpm' },
       ]),
     },
+    department: {
+      findMany: jest.fn().mockResolvedValue([{ id: 'dept-tk', code: 'TKDH' }]),
+    },
   } as unknown as PrismaTx & {
     staff: { findMany: jest.Mock; create: jest.Mock; update: jest.Mock };
     role: { findUniqueOrThrow: jest.Mock };
     staffRole: { createMany: jest.Mock };
     departmentAlias: { findMany: jest.Mock };
+    department: { findMany: jest.Mock };
   };
 }
 

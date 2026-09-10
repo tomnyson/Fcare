@@ -14,5 +14,6 @@ import { ALERT_ESCALATION_QUEUE } from './notification-dispatch.service';
   ],
   controllers: [AlertsController],
   providers: [AlertsService, EscalationService, EscalationProcessor],
+  exports: [EscalationService],
 })
 export class AlertsModule {}

@@ -6,7 +6,7 @@ import { DataTable, Td } from '../ui/data-table';
 import { FormError } from '../ui/form';
 import { ApiError, apiFetch } from '../../lib/api';
 import { formatDateTime } from '../../lib/labels';
-import { IMPORT_KINDS } from '../../lib/import-kinds';
+import { IMPORT_KIND_LABEL_BY_KIND } from '../../lib/import-kinds';
 import type { ImportBatchSummary, ImportStatus } from '../../lib/types';
 
 const STATUS_LABELS: Record<ImportStatus, string> = {
@@ -22,10 +22,6 @@ const STATUS_TONES: Record<ImportStatus, 'warning' | 'success' | 'danger' | 'neu
   FAILED: 'danger',
   CANCELLED: 'neutral',
 };
-
-const KIND_LABELS: Record<string, string> = Object.fromEntries(
-  IMPORT_KINDS.map((kind) => [kind.slug.toUpperCase(), kind.label]),
-);
 
 interface ImportHistoryProps {
   /** Batch PENDING bị bỏ rơi (refresh trang mất state wizard) — bấm vào để nạp lại
@@ -80,7 +76,7 @@ export function ImportHistory({ onResume }: ImportHistoryProps) {
               }`}
             >
               <Td className="whitespace-nowrap text-muted">{formatDateTime(batch.createdAt)}</Td>
-              <Td>{KIND_LABELS[batch.kind] ?? batch.kind}</Td>
+              <Td>{IMPORT_KIND_LABEL_BY_KIND[batch.kind] ?? batch.kind}</Td>
               <Td>{batch.term}</Td>
               <Td className="max-w-xs truncate">{batch.fileName}</Td>
               <Td>{batch.summary.totalRows}</Td>

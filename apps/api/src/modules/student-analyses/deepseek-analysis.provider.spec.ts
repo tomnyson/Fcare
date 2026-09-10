@@ -6,6 +6,18 @@ const snapshot: AnalysisSourceSnapshot = {
   focusTerm: '2025A',
   enrollments: [],
   evaluations: [],
+  careLogs: [],
+  riskScore: {
+    components: { RL: 0, RA: 0, RC: 0, RH: 0, RP: 0 },
+    drs: 0,
+    drsLevel: 1,
+    dataForcedLevel: 1,
+    evaluationCount: 0,
+    medianAcademic: 0,
+    medianAttitude: 0,
+    triggeredCriteria: [],
+    reasons: [],
+  },
   limitations: ['Khong co du lieu hoc phan hoc ky trong tam'],
 };
 
@@ -18,6 +30,8 @@ const validOutput = {
   recommendations: ['Tiep tuc duy tri lich hoc deu'],
   notificationSummary: 'Ket qua hien tai on dinh.',
   dataLimitations: ['Du lieu nhan xet con it'],
+  suggestedLevel: 1 as const,
+  forcedEscalation: null,
 };
 
 function makeConfig(overrides: Record<string, string> = {}) {
@@ -38,10 +52,14 @@ function withClient(provider: DeepSeekAnalysisProvider, create: jest.Mock) {
   return provider;
 }
 
-function completion(content: string | null, model = 'deepseek-chat') {
+function completion(
+  content: string | null,
+  model = 'deepseek-chat',
+  finishReason = 'stop',
+) {
   return {
     model,
-    choices: [{ message: { content } }],
+    choices: [{ message: { content }, finish_reason: finishReason }],
     usage: {
       prompt_tokens: 120,
       completion_tokens: 80,
@@ -87,7 +105,9 @@ describe('DeepSeekAnalysisProvider', () => {
       model: 'deepseek-chat',
       response_format: { type: 'json_object' },
     });
-    expect(request.max_tokens).toBeGreaterThanOrEqual(1_500);
+    // Model suy luan (deepseek-v4-flash) tinh ca reasoning_content vao max_tokens:
+    // tran hep thi content ve rong va ca luot phan tich hong.
+    expect(request.max_tokens).toBeGreaterThanOrEqual(8_000);
 
     const system = request.messages.find(
       (message) => message.role === 'system',
@@ -205,5 +225,19 @@ describe('DeepSeekAnalysisProvider', () => {
     expect(
       new DeepSeekAnalysisProvider(makeConfig() as never).modelName(),
     ).toBe('deepseek-chat');
+  });
+
+  it('noi ro bi cat khi model dung het token cho phan suy luan', async () => {
+    const create = jest
+      .fn()
+      .mockResolvedValue(completion(null, 'deepseek-v4-flash', 'length'));
+    const provider = withClient(
+      new DeepSeekAnalysisProvider(
+        makeConfig({ DEEPSEEK_API_KEY: 'key' }) as never,
+      ),
+      create,
+    );
+
+    await expect(provider.generate(snapshot)).rejects.toThrow(/token/i);
   });
 });

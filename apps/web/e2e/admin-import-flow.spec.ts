@@ -60,7 +60,7 @@ test.describe('Quản trị viên import và dọn dữ liệu', () => {
 
     // Nhãn lạ xuất hiện cả trong bảng xem trước lẫn khối cảnh báo; chỉ khối
     // cảnh báo mới chứng minh UI đã NHẬN RA nó chưa có ánh xạ.
-    const warning = page.getByRole('status').filter({ hasText: /nhãn bộ môn chưa có ánh xạ/ });
+    const warning = page.getByRole('status').filter({ hasText: /mã bộ môn chưa có ánh xạ/ });
     await expect(warning).toBeVisible();
     await expect(warning.getByText(UNMAPPED_ALIAS)).toBeVisible();
 
@@ -270,11 +270,18 @@ test.describe('Quản trị viên import và dọn dữ liệu', () => {
     const before = await checkboxes.count();
     test.skip(before === 0, 'Dữ liệu dev không còn sinh viên thiếu ngành để gán.');
 
-    await checkboxes.first().check();
+    const firstCheckbox = checkboxes.first();
+    const assignedCode = ((await firstCheckbox.getAttribute('aria-label')) ?? '')
+      .replace('Chọn sinh viên ', '')
+      .trim();
+
+    await firstCheckbox.check();
     await page.getByLabel('Ngành cần gán').selectOption({ index: 1 });
     await page.getByRole('button', { name: 'Gán ngành cho sinh viên đã chọn' }).click();
     await expect(page.getByText(/^Đã gán ngành cho \d+ sinh viên\.$/)).toBeVisible();
-    await expect(checkboxes).toHaveCount(before - 1);
+    // Danh sách phân trang nên tổng số ô chọn có thể được lấp lại từ trang sau;
+    // bằng chứng đúng là CHÍNH sinh viên vừa gán đã rời khỏi bộ lọc.
+    await expect(page.getByLabel(`Chọn sinh viên ${assignedCode}`)).toHaveCount(0);
   });
 
   test('lịch sử import ghi lại mọi lượt', async ({ page }) => {

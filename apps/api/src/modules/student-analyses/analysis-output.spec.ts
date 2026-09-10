@@ -11,6 +11,8 @@ const validOutput = {
   recommendations: ['Hen gap giang vien co van trong 2 tuan toi'],
   notificationSummary: 'Can theo doi sat mot so hoc phan.',
   dataLimitations: ['Chua co nhan xet tu mot so hoc phan'],
+  suggestedLevel: 2 as const,
+  forcedEscalation: null,
 };
 
 describe('academicAnalysisOutputSchema', () => {
@@ -18,6 +20,32 @@ describe('academicAnalysisOutputSchema', () => {
     expect(academicAnalysisOutputSchema.parse(validOutput)).toEqual(
       validOutput,
     );
+  });
+
+  it('chấp nhận forcedEscalation có đủ luật, trích dẫn và cấp', () => {
+    const parsed = academicAnalysisOutputSchema.safeParse({
+      ...validOutput,
+      suggestedLevel: 4,
+      forcedEscalation: {
+        rule: 'NO_LONGER_WANTS_TO_STUDY',
+        quote: 'em không còn muốn học nữa',
+        level: 4,
+      },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('từ chối forcedEscalation thiếu trích dẫn', () => {
+    const parsed = academicAnalysisOutputSchema.safeParse({
+      ...validOutput,
+      suggestedLevel: 4,
+      forcedEscalation: {
+        rule: 'NO_LONGER_WANTS_TO_STUDY',
+        quote: '',
+        level: 4,
+      },
+    });
+    expect(parsed.success).toBe(false);
   });
 
   it('tu choi payload khong co khuyen nghi bat buoc', () => {

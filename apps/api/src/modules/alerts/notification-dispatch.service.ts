@@ -18,6 +18,8 @@ export type NotificationSource =
   | {
       kind: 'analysis';
       analysisVersionId: string;
+      /** Cảnh báo sinh cùng bản phân tích — thông báo mang cả hai con trỏ. */
+      alertId?: string;
       targetUrl: string;
     }
   | {
@@ -127,6 +129,7 @@ export class NotificationDispatchService {
       return row;
     }
     row.analysisVersionId = data.source.analysisVersionId;
+    row.alertId = data.source.alertId ?? null;
     row.targetUrl = data.source.targetUrl;
     return row;
   }

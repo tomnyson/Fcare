@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/unbound-method */
 
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   NotFoundException,
@@ -28,6 +29,18 @@ const adminUser = {
   departmentId: null,
 } as AuthUser;
 
+const emptyRiskScore = {
+  components: { RL: 0, RA: 0, RC: 0, RH: 0, RP: 0 },
+  drs: 0,
+  drsLevel: 1 as const,
+  dataForcedLevel: 1 as const,
+  evaluationCount: 0,
+  medianAcademic: 0,
+  medianAttitude: 0,
+  triggeredCriteria: [],
+  reasons: [],
+};
+
 const parsedOutput = {
   riskLevel: 'HIGH' as const,
   summary: 'Can theo doi sat ket qua hoc tap.',
@@ -37,6 +50,8 @@ const parsedOutput = {
   recommendations: ['Hen gap co van hoc tap'],
   notificationSummary: 'Co dau hieu giam sut ket qua.',
   dataLimitations: ['Du lieu nhan xet mot hoc phan chua day du'],
+  suggestedLevel: 3 as const,
+  forcedEscalation: null,
 };
 
 function makeManagedVersion(
@@ -52,6 +67,8 @@ function makeManagedVersion(
       focusTerm: '2025A',
       enrollments: [],
       evaluations: [],
+      careLogs: [],
+      riskScore: emptyRiskScore,
       limitations: [],
     },
     aiOriginal: parsedOutput,
@@ -118,6 +135,19 @@ function makeService() {
     enrollment: {
       findMany: jest.fn(),
     },
+    staff: {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: 'gv-2',
+          staffCode: 'GV002',
+          fullName: 'Tran Thi B',
+          departmentId: 'dept-1',
+        },
+      ]),
+    },
+    alert: {
+      create: jest.fn().mockResolvedValue({ id: 'alert-1' }),
+    },
     notification: {
       findMany: jest.fn(),
       count: jest.fn(),
@@ -145,6 +175,8 @@ function makeService() {
         focusTerm: '2025A',
         enrollments: [],
         evaluations: [],
+        careLogs: [],
+        riskScore: emptyRiskScore,
         limitations: [],
       },
       hash: 'hash-1',
@@ -152,6 +184,9 @@ function makeService() {
   };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const notifications = { deliver: jest.fn().mockResolvedValue(0) };
+  const escalation = {
+    computeRecipientIds: jest.fn().mockResolvedValue(['gv-2']),
+  };
   const provider = {
     generate: jest.fn(),
     modelName: jest.fn(() => 'gpt-5.6-luna'),
@@ -165,6 +200,7 @@ function makeService() {
     source,
     audit,
     notifications,
+    escalation,
     provider,
     queue,
     service: new StudentAnalysesService(
@@ -173,6 +209,7 @@ function makeService() {
       audit as never,
       source as never,
       notifications as never,
+      escalation as never,
       provider,
       queue as never,
     ),
@@ -391,6 +428,8 @@ describe('StudentAnalysesService delivery recovery', () => {
 describe('StudentAnalysesService.sendVersion', () => {
   beforeEach(() => jest.clearAllMocks());
 
+  const sendDto = { confirmedLevel: 2, contentSource: 'AI' as const };
+
   it('tra ve 409 STALE_ANALYSIS khi source hash da thay doi', async () => {
     const { prisma, service, source } = makeService();
     prisma.studentTermAnalysisVersion.findUnique = jest
@@ -401,17 +440,19 @@ describe('StudentAnalysesService.sendVersion', () => {
         focusTerm: '2025A',
         enrollments: [],
         evaluations: [],
+        careLogs: [],
+        riskScore: emptyRiskScore,
         limitations: [],
       },
       hash: 'hash-2',
     });
 
     await expect(
-      service.sendVersion(ownerUser, 'version-1'),
+      service.sendVersion(ownerUser, 'version-1', sendDto),
     ).rejects.toBeInstanceOf(ConflictException);
 
     await service
-      .sendVersion(ownerUser, 'version-1')
+      .sendVersion(ownerUser, 'version-1', sendDto)
       .catch((error: unknown) => {
         const response = (error as ConflictException).getResponse() as {
           code?: string;
@@ -420,25 +461,394 @@ describe('StudentAnalysesService.sendVersion', () => {
       });
   });
 
-  it('tra ve 409 NO_RECIPIENTS khi khong tim thay giang vien nhan', async () => {
-    const { prisma, service } = makeService();
+  it('tra ve 409 NO_RECIPIENTS khi ma tran khong ra nguoi nhan nao', async () => {
+    const { prisma, service, escalation } = makeService();
     prisma.studentTermAnalysisVersion.findUnique = jest
       .fn()
       .mockResolvedValue(makeManagedVersion());
-    prisma.enrollment.findMany = jest.fn().mockResolvedValue([]);
-
-    await expect(
-      service.sendVersion(ownerUser, 'version-1'),
-    ).rejects.toBeInstanceOf(ConflictException);
+    escalation.computeRecipientIds.mockResolvedValue([]);
 
     await service
-      .sendVersion(ownerUser, 'version-1')
+      .sendVersion(ownerUser, 'version-1', sendDto)
       .catch((error: unknown) => {
         const response = (error as ConflictException).getResponse() as {
           code?: string;
         };
         expect(response.code).toBe('NO_RECIPIENTS');
       });
+    expect.assertions(1);
+  });
+
+  it('không cho hạ độ khẩn xuống dưới mức hệ thống tính', async () => {
+    const { prisma, service } = makeService();
+    prisma.studentTermAnalysisVersion.findUnique = jest.fn().mockResolvedValue(
+      makeManagedVersion({
+        sourceSnapshot: {
+          focusTerm: '2025A',
+          enrollments: [],
+          evaluations: [],
+          careLogs: [],
+          riskScore: { ...emptyRiskScore, drsLevel: 3 },
+          limitations: [],
+        },
+      }),
+    );
+
+    await expect(
+      service.sendVersion(ownerUser, 'version-1', {
+        confirmedLevel: 2,
+        contentSource: 'AI',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('cấp 4 bắt buộc nội dung gửi từ 40 ký tự', async () => {
+    const { prisma, service } = makeService();
+    prisma.studentTermAnalysisVersion.findUnique = jest
+      .fn()
+      .mockResolvedValue(makeManagedVersion());
+
+    await expect(
+      service.sendVersion(ownerUser, 'version-1', {
+        confirmedLevel: 4,
+        contentSource: 'LECTURER',
+        lecturerNote: 'Nghỉ nhiều',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('tạo cảnh báo ở cấp đã xác nhận rồi lưu người nhận theo ma trận', async () => {
+    const { prisma, service, escalation } = makeService();
+    prisma.studentTermAnalysisVersion.findUnique = jest
+      .fn()
+      .mockResolvedValue(makeManagedVersion());
+    (
+      prisma.studentTermAnalysisVersion.updateMany as jest.Mock
+    ).mockResolvedValue({ count: 1 });
+
+    const result = await service.sendVersion(ownerUser, 'version-1', sendDto);
+
+    expect(escalation.computeRecipientIds).toHaveBeenCalledWith(
+      'student-1',
+      2,
+      ownerUser.id,
+    );
+    expect(prisma.alert.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          level: 2,
+          raisedById: ownerUser.id,
+          reason: 'Co dau hieu giam sut ket qua.',
+        }),
+      }),
+    );
+    expect(prisma.studentTermAnalysisRecipient.createMany).toHaveBeenCalledWith(
+      {
+        data: [
+          {
+            versionId: 'version-1',
+            recipientId: 'gv-2',
+            recipientStaffCode: 'GV002',
+            recipientFullName: 'Tran Thi B',
+            recipientDepartmentId: 'dept-1',
+          },
+        ],
+      },
+    );
+    expect(result.alertId).toBe('alert-1');
+    expect(result.recipientCount).toBe(1);
+  });
+  it('chọn nội dung giảng viên thì gửi kèm lịch sử chăm sóc', async () => {
+    const { prisma, service } = makeService();
+    prisma.studentTermAnalysisVersion.findUnique = jest.fn().mockResolvedValue(
+      makeManagedVersion({
+        sourceSnapshot: {
+          focusTerm: '2025A',
+          enrollments: [],
+          evaluations: [],
+          careLogs: [
+            {
+              channel: 'IN_PERSON',
+              content: 'Gặp riêng sinh viên sau buổi học',
+              outcome: 'Hứa đi học đủ tuần sau',
+              nextAction: null,
+              createdAt: '2026-09-01T02:00:00.000Z',
+            },
+          ],
+          riskScore: emptyRiskScore,
+          limitations: [],
+        },
+      }),
+    );
+    (
+      prisma.studentTermAnalysisVersion.updateMany as jest.Mock
+    ).mockResolvedValue({ count: 1 });
+
+    await service.sendVersion(ownerUser, 'version-1', {
+      confirmedLevel: 2,
+      contentSource: 'LECTURER',
+      lecturerNote:
+        'Em này nghỉ 4 buổi liên tiếp, cần cố vấn học tập vào cuộc.',
+    });
+
+    const alertCalls = (prisma.alert.create as unknown as jest.Mock).mock
+      .calls as [{ data: Record<string, unknown> }][];
+    const reason = alertCalls[0][0].data.reason as string;
+    expect(reason).toContain('cần cố vấn học tập vào cuộc');
+    expect(reason).toContain('Lịch sử chăm sóc gần đây:');
+    expect(reason).toContain('01/09/2026 · Gặp trực tiếp');
+    expect(reason).not.toContain('Co dau hieu giam sut ket qua.');
+  });
+
+  it('chọn nội dung giảng viên nhưng bỏ trống thì báo lỗi', async () => {
+    const { prisma, service } = makeService();
+    prisma.studentTermAnalysisVersion.findUnique = jest
+      .fn()
+      .mockResolvedValue(makeManagedVersion());
+
+    await expect(
+      service.sendVersion(ownerUser, 'version-1', {
+        confirmedLevel: 2,
+        contentSource: 'LECTURER',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('từ chối nội dung giảng viên có số điện thoại hay email', async () => {
+    const { prisma, service } = makeService();
+    prisma.studentTermAnalysisVersion.findUnique = jest
+      .fn()
+      .mockResolvedValue(makeManagedVersion());
+
+    await service
+      .sendVersion(ownerUser, 'version-1', {
+        confirmedLevel: 2,
+        contentSource: 'LECTURER',
+        lecturerNote:
+          'Đã gọi cho sinh viên theo số 0912345678 nhưng không nghe máy.',
+      })
+      .catch((error: unknown) => {
+        const response = (error as BadRequestException).getResponse() as {
+          code?: string;
+        };
+        expect(response.code).toBe('ANALYSIS_PII_REJECTED');
+      });
+    expect(prisma.alert.create).not.toHaveBeenCalled();
+    expect.assertions(2);
+  });
+
+  it('người vừa nhận xét được quyết định gửi dù không sở hữu hồ sơ', async () => {
+    const { prisma, service } = makeService();
+    prisma.studentTermAnalysisVersion.findUnique = jest.fn().mockResolvedValue(
+      makeManagedVersion({
+        createdById: otherLecturer.id,
+        createdBy: {
+          id: otherLecturer.id,
+          staffCode: 'GV002',
+          fullName: 'Tran Thi B',
+        },
+      }),
+    );
+    (
+      prisma.studentTermAnalysisVersion.updateMany as jest.Mock
+    ).mockResolvedValue({ count: 1 });
+
+    await expect(
+      service.sendVersion(otherLecturer, 'version-1', sendDto),
+    ).resolves.toMatchObject({ alertId: 'alert-1' });
+  });
+
+  it('người ngoài cuộc vẫn không được gửi', async () => {
+    const { prisma, service } = makeService();
+    prisma.studentTermAnalysisVersion.findUnique = jest
+      .fn()
+      .mockResolvedValue(makeManagedVersion());
+
+    await expect(
+      service.sendVersion(otherLecturer, 'version-1', sendDto),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('StudentAnalysesService.dismissVersion', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('bấm không gửi thì giữ nháp, không tạo cảnh báo', async () => {
+    const { prisma, service } = makeService();
+    prisma.studentTermAnalysisVersion.findUnique = jest
+      .fn()
+      .mockResolvedValue(makeManagedVersion());
+    (
+      prisma.studentTermAnalysisVersion.updateMany as jest.Mock
+    ).mockResolvedValue({ count: 1 });
+
+    const result = await service.dismissVersion(ownerUser, 'version-1');
+
+    expect(result).toMatchObject({ dismissed: true });
+    const updateCalls = (
+      prisma.studentTermAnalysisVersion.updateMany as unknown as jest.Mock
+    ).mock.calls as [{ data: Record<string, unknown> }][];
+    expect(updateCalls[0][0].data.dismissedById).toBe(ownerUser.id);
+    expect(prisma.alert.create).not.toHaveBeenCalled();
+  });
+
+  it('không bỏ qua được bản đã gửi', async () => {
+    const { prisma, service } = makeService();
+    prisma.studentTermAnalysisVersion.findUnique = jest
+      .fn()
+      .mockResolvedValue(
+        makeManagedVersion({ status: StudentTermAnalysisStatus.SENT }),
+      );
+
+    await expect(
+      service.dismissVersion(ownerUser, 'version-1'),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+describe('StudentAnalysesService — tự phân tích sau nhận xét', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const autoInput = {
+    user: ownerUser,
+    studentId: 'student-1',
+    term: '2025A',
+    evaluationId: 'nx-1',
+    revision: new Date('2026-09-08T02:00:00.000Z'),
+  };
+
+  it('tạo version chờ quyết định gửi và đẩy job sinh phân tích', async () => {
+    const { prisma, queue, service } = makeService();
+    prisma.studentTermAnalysisVersion.findUnique = jest
+      .fn()
+      .mockResolvedValue(null);
+    prisma.studentTermAnalysisVersion.findFirst = jest
+      .fn()
+      .mockResolvedValue(null);
+    prisma.studentTermAnalysisVersion.create = jest.fn().mockResolvedValue(
+      makeManagedVersion({
+        id: 'version-auto',
+        status: StudentTermAnalysisStatus.QUEUED,
+        needsSendDecision: true,
+      }),
+    );
+
+    const versionId = await service.requestAutoAnalysis(autoInput);
+
+    expect(versionId).toBe('version-auto');
+    const createCalls = (
+      prisma.studentTermAnalysisVersion.create as unknown as jest.Mock
+    ).mock.calls as [{ data: Record<string, unknown> }][];
+    const created = createCalls[0][0];
+    expect(created.data.needsSendDecision).toBe(true);
+    expect(created.data.idempotencyKey).toBe(
+      `evaluation:nx-1:${autoInput.revision.getTime()}`,
+    );
+    expect(queue.add).toHaveBeenCalledWith(
+      'generate-analysis',
+      { kind: 'generate', versionId: 'version-auto' },
+      expect.objectContaining({ jobId: 'generate-version-auto' }),
+    );
+  });
+
+  it('nuốt lỗi khi đang có version chạy dở, không làm hỏng lượt nhận xét', async () => {
+    const { prisma, service } = makeService();
+    prisma.studentTermAnalysisVersion.findUnique = jest
+      .fn()
+      .mockResolvedValue(null);
+    prisma.studentTermAnalysisVersion.findFirst = jest.fn().mockResolvedValue({
+      id: 'version-dang-chay',
+      status: StudentTermAnalysisStatus.QUEUED,
+    });
+
+    await expect(service.requestAutoAnalysis(autoInput)).resolves.toBeNull();
+  });
+
+  it('không chạy gì khi tính năng AI đang tắt', async () => {
+    const { config, prisma, service } = makeService();
+    config.get.mockImplementation((key: string, fallback?: string) =>
+      key === 'AI_ANALYSIS_ENABLED' ? 'false' : fallback,
+    );
+
+    await expect(service.requestAutoAnalysis(autoInput)).resolves.toBeNull();
+    expect(prisma.studentTermAnalysisVersion.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('StudentAnalysesService.processGeneration', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  function arrangeGenerated(ctx: ReturnType<typeof makeService>) {
+    const { prisma, provider } = ctx;
+    prisma.studentTermAnalysisVersion.findUnique = jest
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'version-1',
+        status: StudentTermAnalysisStatus.QUEUED,
+        sourceSnapshot: {
+          focusTerm: '2025A',
+          enrollments: [],
+          evaluations: [],
+          careLogs: [],
+          riskScore: emptyRiskScore,
+          limitations: [],
+        },
+        createdById: ownerUser.id,
+      })
+      .mockResolvedValue(makeManagedVersion());
+    prisma.studentTermAnalysisVersion.updateMany = jest
+      .fn()
+      .mockResolvedValue({ count: 1 });
+    provider.generate.mockResolvedValue({
+      output: parsedOutput,
+      model: 'gpt-5.6-luna',
+      inputTokens: 10,
+      outputTokens: 20,
+    });
+  }
+
+  it('sinh xong thì dừng ở bản nháp, chờ người vừa nhận xét quyết định gửi', async () => {
+    const ctx = makeService();
+    arrangeGenerated(ctx);
+
+    await ctx.service.processGeneration('version-1');
+
+    const updateCalls = (
+      ctx.prisma.studentTermAnalysisVersion.updateMany as unknown as jest.Mock
+    ).mock.calls as [{ data: Record<string, unknown> }][];
+    expect(updateCalls[1][0].data.status).toBe(StudentTermAnalysisStatus.DRAFT);
+    expect(ctx.prisma.alert.create).not.toHaveBeenCalled();
+    expect(ctx.escalation.computeRecipientIds).not.toHaveBeenCalled();
+  });
+});
+
+describe('StudentAnalysesService — cấp độ cuối', () => {
+  it('lấy mức cao nhất giữa DRS, ép từ dữ liệu và ép từ AI', () => {
+    const { service } = makeService();
+    expect(service.resolveFinalLevel(2, 3, null)).toBe(3);
+    expect(service.resolveFinalLevel(2, 1, 4)).toBe(4);
+    expect(service.resolveFinalLevel(4, 3, 3)).toBe(4);
+    expect(service.resolveFinalLevel(1, 1, null)).toBe(1);
+  });
+
+  it('bỏ qua ép từ AI khi trích dẫn không có thật trong nhận xét nguồn', () => {
+    const { service } = makeService();
+    expect(
+      service.aiForcedLevel(
+        { rule: 'NO_LONGER_WANTS_TO_STUDY', quote: 'câu bịa', level: 4 },
+        ['em vẫn đang cố gắng'],
+      ),
+    ).toBeNull();
+    expect(
+      service.aiForcedLevel(
+        {
+          rule: 'NO_LONGER_WANTS_TO_STUDY',
+          quote: 'không còn muốn học',
+          level: 4,
+        },
+        ['thưa cô em không còn muốn học nữa'],
+      ),
+    ).toBe(4);
   });
 });
 

@@ -21,6 +21,21 @@ export const GRADEBOOK_FILE = path.join(
   'gradebook_20260504174543_hoactm_64_119_all_ (1).xlsx',
 );
 
+/**
+ * Bộ 3 file nhà trường gửi đầu kỳ (`docs/tailieu/`). Đã kiểm: KHÔNG chứa
+ * email/SĐT/CCCD ở bất kỳ sheet nào, nên dùng thẳng bản gốc — không cần bản
+ * phái sinh như file phân công GV. Thứ tự trong danh sách này cũng là thứ tự
+ * import bắt buộc.
+ */
+const TERM_DIR = path.join(DOCS_DIR, 'tailieu');
+
+export const SECTION_LIST_FILE = path.join(TERM_DIR, 'Danh_sach_lop_Su26.xlsx');
+export const ROSTER_FILE = path.join(TERM_DIR, 'DSSV lớp môn SU26.xlsx');
+export const GRADE_ATTENDANCE_FILE = path.join(TERM_DIR, 'LHCT SU26.xlsx');
+
+/** Học kỳ của bộ file đầu kỳ — mã lớp học phần được tra theo đúng term này. */
+export const TERM_FILES_TERM = 'SU26';
+
 /** Bản phân công GV đã xoá ô PII — đúng thao tác mà UI yêu cầu người dùng làm. */
 export const ASSIGNMENT_FILE_CLEAN = path.join(ARTIFACT_DIR, 'phan-cong-gv-da-xoa-pii.xlsx');
 
@@ -115,8 +130,15 @@ export async function buildExcelFixtures(): Promise<void> {
   if (!fs.existsSync(ASSIGNMENT_FILE_RAW)) {
     throw new Error(`Thiếu file nguồn: ${ASSIGNMENT_FILE_RAW}`);
   }
-  if (!fs.existsSync(GRADEBOOK_FILE)) {
-    throw new Error(`Thiếu file nguồn: ${GRADEBOOK_FILE}`);
+  for (const source of [
+    GRADEBOOK_FILE,
+    SECTION_LIST_FILE,
+    ROSTER_FILE,
+    GRADE_ATTENDANCE_FILE,
+  ]) {
+    if (!fs.existsSync(source)) {
+      throw new Error(`Thiếu file nguồn: ${source}`);
+    }
   }
   fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
 

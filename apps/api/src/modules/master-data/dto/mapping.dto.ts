@@ -45,3 +45,20 @@ export class CreateClassMajorRuleDto {
 export class UpdateClassMajorRuleDto extends PartialType(
   CreateClassMajorRuleDto,
 ) {}
+
+export class CreateMajorAliasDto {
+  @ApiProperty({
+    example: 'LTWE02',
+    description: 'Mã ngành xuất hiện ở cột "Mã ngành" của file DSSV lớp môn',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  alias!: string;
+
+  @ApiProperty({ description: 'ID ngành đích' })
+  @IsUUID()
+  majorId!: string;
+}
+
+export class UpdateMajorAliasDto extends PartialType(CreateMajorAliasDto) {}

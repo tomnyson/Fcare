@@ -5,6 +5,7 @@ import type {
   ParsedRow,
   PrismaTx,
 } from '../types';
+import { aliasKey, loadDepartmentByAlias } from './department-lookup';
 
 interface CatalogPayload {
   code: string;
@@ -19,11 +20,6 @@ interface CatalogPayload {
   attendanceRateRequired: number | null;
 }
 
-/** Khoá tra alias: cắt khoảng trắng + hạ chữ thường. */
-function aliasKey(raw: string): string {
-  return raw.trim().toLowerCase();
-}
-
 export class CatalogCommitter implements ImportCommitter {
   async commit(
     rows: ParsedRow[],
@@ -33,13 +29,7 @@ export class CatalogCommitter implements ImportCommitter {
     // Committer chỉ tra alias + upsert theo mã môn, không dùng term/user —
     // chỉ giữ tham số để khớp chữ ký ImportCommitter.commit.
     void ctx;
-    // Nạp một lần cho cả lô (449 dòng) — tránh N+1.
-    const aliases = await tx.departmentAlias.findMany({
-      select: { alias: true, departmentId: true },
-    });
-    const departmentByAlias = new Map(
-      aliases.map((entry) => [aliasKey(entry.alias), entry.departmentId]),
-    );
+    const departmentByAlias = await loadDepartmentByAlias(tx);
 
     const codes = rows.map(
       (row) => (row.payload as unknown as CatalogPayload).code,

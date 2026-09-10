@@ -17,14 +17,19 @@ import type { AuthUser } from '../../common/types/auth-user';
 import {
   CreateEvaluationDto,
   ListEvaluationsQuery,
+  RiskScoreQuery,
   UpdateEvaluationDto,
 } from './dto/evaluation.dto';
 import { EvaluationsService } from './evaluations.service';
+import { RiskScoreService } from './risk-score.service';
 
 @ApiTags('evaluations')
 @Controller('evaluations')
 export class EvaluationsController {
-  constructor(private readonly evaluationsService: EvaluationsService) {}
+  constructor(
+    private readonly evaluationsService: EvaluationsService,
+    private readonly riskScoreService: RiskScoreService,
+  ) {}
 
   @Get()
   @CheckPolicies((ability: AppAbility) => ability.can('read', 'Evaluation'))
@@ -36,6 +41,17 @@ export class EvaluationsController {
   @CheckPolicies((ability: AppAbility) => ability.can('create', 'Evaluation'))
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateEvaluationDto) {
     return this.evaluationsService.create(user, dto);
+  }
+
+  // Đặt trước mọi route ':id' để Nest không bắt nhầm 'risk-score' thành tham số.
+  @Get('risk-score')
+  @CheckPolicies((ability: AppAbility) => ability.can('read', 'Evaluation'))
+  riskScore(@CurrentUser() user: AuthUser, @Query() query: RiskScoreQuery) {
+    return this.riskScoreService.forStudentTerm(
+      user,
+      query.studentId,
+      query.term,
+    );
   }
 
   @Patch(':id')

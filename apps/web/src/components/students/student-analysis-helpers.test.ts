@@ -43,6 +43,12 @@ describe('editableAnalysisOutput', () => {
       recommendations: ['Gặp cố vấn'],
       notificationSummary: 'Cần theo dõi sát',
       dataLimitations: ['Chưa có evaluation học kỳ hiện tại'],
+      suggestedLevel: 3 as const,
+      forcedEscalation: {
+        rule: 'DROPOUT_INTENT' as const,
+        quote: 'em định nghỉ học',
+        level: 3 as const,
+      },
     };
     expect(parseEditableAnalysisOutput(editableAnalysisOutput(source))).toEqual(source);
   });

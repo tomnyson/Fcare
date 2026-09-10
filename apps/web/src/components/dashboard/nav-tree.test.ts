@@ -46,12 +46,13 @@ describe('nav-tree — dựng cây theo vai trò', () => {
     expect(hrefs(sections[0].items)).not.toContain('/master-data/departments');
   });
 
-  it('quản trị viên thấy đủ ba khu vực và đủ 6 danh mục Đào tạo', () => {
+  it('quản trị viên thấy đủ ba khu vực và đủ 7 danh mục Đào tạo', () => {
     const sections = buildNavSections(user(['ADMIN']));
     expect(sections.map((section) => section.id)).toEqual(['main', 'training', 'system']);
     const trainingHrefs = hrefs(sections[1].items).filter((href) => href.startsWith('/master-data/'));
     // Lớp học phần vừa là liên kết vừa là nhóm nên xuất hiện đúng một lần.
-    expect(new Set(trainingHrefs).size).toBe(6);
+    expect(new Set(trainingHrefs).size).toBe(7);
+    expect(trainingHrefs).toContain('/master-data/major-aliases');
   });
 
   it('cán bộ CTSV không thấy mục Import / Export nên không có khu vực Hệ thống', () => {
