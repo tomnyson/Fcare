@@ -197,15 +197,57 @@ E2E_BASE_URL=https://fcare.example.com E2E_API_URL=https://fcare.example.com \
 **Cập nhật phiên bản**
 
 ```bash
-cd /www/wwwroot/fcare && git pull
-cd infra/docker
-docker compose --env-file .env.production -f docker-compose.prod.yml exec postgres \
-  pg_dump -U fcare -Fc fcare > /root/backup-truoc-deploy.dump   # luôn dump trước
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+cd /www/wwwroot/fcare/infra/docker && ./update.sh
 ```
 
-Migration của Prisma là forward-only: rollback = khôi phục dump vừa tạo rồi
-`git checkout` lại tag cũ và build lại.
+Script làm đúng thứ tự bắt buộc: **dump DB → git pull → build lại → chờ
+`/api/health` xanh**. Dump đứng trước vì migration của Prisma là forward-only —
+đường lui duy nhất là bản dump của schema CŨ, chụp trước khi `migrate` chạy.
+Hỏng ở bước nào script cũng dừng và in sẵn lệnh rollback; nó KHÔNG tự rollback
+vì việc đó đụng dữ liệu thật.
+
+```bash
+./update.sh --help          # danh sách cờ
+./update.sh --force         # build lại kể cả khi không có commit mới
+./update.sh --branch=main   # ép máy chủ về đúng nhánh (CI/CD dùng cờ này)
+```
+
+## 8. Tự động triển khai (CI/CD qua SSH)
+
+`.github/workflows/deploy.yml` chạy theo gitflow: push `develop` → môi trường
+**staging**, push `main` → **production**. CI (lint · typecheck · test · build)
+phải xanh thì mới SSH vào máy chủ chạy `update.sh`. Máy chủ tự `git pull`, CI
+không đẩy file hay image nào lên — không cần registry, không mở thêm cổng.
+
+Chuẩn bị cho **mỗi** môi trường ở Settings → Environments:
+
+| Loại | Tên | Giá trị |
+|---|---|---|
+| Secret | `SSH_HOST` | IP hoặc tên miền máy chủ |
+| Secret | `SSH_USER` | user deploy (thuộc nhóm `docker`) |
+| Secret | `SSH_PASSWORD` | mật khẩu SSH của user deploy |
+| Secret | `SSH_KNOWN_HOSTS` | `ssh-keyscan -p <cổng> <host>` |
+| Variable | `SSH_PORT` | cổng SSH (mặc định 22) |
+| Variable | `DEPLOY_PATH` | `/www/wwwroot/fcare` |
+| Variable | `PUBLIC_URL` | `https://fcare.example.com` |
+
+Trên máy chủ: repo clone sẵn ở `DEPLOY_PATH` với **deploy key chỉ đọc** (không
+dùng tài khoản cá nhân), `.env.production` đã điền secret và `chmod 600` — file
+này không bao giờ đi qua CI.
+
+Workflow đăng nhập bằng **mật khẩu** (`sshpass -e`, mật khẩu truyền qua biến
+`SSHPASS` nên không lộ ra dòng lệnh trên runner). `SSH_KNOWN_HOSTS` vì thế là
+bắt buộc và workflow chạy `StrictHostKeyChecking=yes`: với xác thực mật khẩu,
+ghim vân tay máy chủ là chốt chặn duy nhất — dùng `StrictHostKeyChecking=no` là
+gửi thẳng mật khẩu cho bất kỳ máy nào giả danh host.
+
+Mật khẩu yếu hơn khoá (không giới hạn được quyền, đi qua CI mỗi lần deploy):
+khi máy chủ bật được khoá, đổi `SSH_PASSWORD` → `SSH_PRIVATE_KEY` rồi thay
+`sshpass -e ssh` bằng `ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o
+BatchMode=yes`. Trong lúc còn dùng mật khẩu: đặt mật khẩu dài, bật fail2ban cho
+`sshd` và cân nhắc đổi cổng SSH — runner của GitHub không có IP cố định nên
+không whitelist IP được. Bật **Required reviewers** cho environment `production`
+nếu muốn duyệt tay trước khi lên bản chính thức.
 
 **Backup**: aaPanel → Cron → Shell Script chạy hằng ngày, giữ 14 bản và đẩy về
 remote storage:
@@ -225,7 +267,7 @@ docker compose --env-file .env.production -f docker-compose.prod.yml logs -f --t
 
 aaPanel → Monitor: bật cảnh báo RAM > 85% và disk > 80%.
 
-## 8. Lỗi thường gặp
+## 9. Lỗi thường gặp
 
 | Triệu chứng | Nguyên nhân | Xử lý |
 |---|---|---|
@@ -237,3 +279,6 @@ aaPanel → Monitor: bật cảnh báo RAM > 85% và disk > 80%.
 | Thông báo chỉ về sau ~2 phút | Nginx buffer SSE | Thêm block `location /api/notifications/stream` |
 | `Prisma Client did not initialize yet` | Image build thiếu bước generate trong `/out` | Build lại bằng Dockerfile hiện tại |
 | `exec format error` khi start container | Image build cho kiến trúc khác (arm64 vs amd64) | Build lại với `--platform linux/amd64` |
+| Job Deploy đỏ ở bước SSH, `Host key verification failed` | `SSH_KNOWN_HOSTS` sai hoặc máy chủ đổi khoá | Chạy lại `ssh-keyscan -p <cổng> <host>` rồi cập nhật secret |
+| Job Deploy đỏ ở bước SSH, `Permission denied, please try again` | `SSH_PASSWORD` sai, hoặc `sshd` tắt `PasswordAuthentication` | Thử tay `ssh user@host`; nếu cần bật lại `PasswordAuthentication yes` trong `/etc/ssh/sshd_config` |
+| `update.sh` dừng vì "Thư mục làm việc đang bẩn" | Có người sửa file trực tiếp trên máy chủ | `git status` xem sửa gì, rồi `git checkout -- <file>` hoặc commit lại |

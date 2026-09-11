@@ -1,0 +1,153 @@
+# Tự động triển khai theo gitflow qua SSH.
+#
+#    develop ──push──► môi trường staging
+#    main    ──push──► môi trường production
+#
+# Luồng: CI (lint + typecheck + test + build) phải xanh → SSH vào máy chủ →
+# chạy infra/docker/update.sh (dump DB → git pull → build lại → chờ health).
+# Máy chủ tự pull mã nguồn, CI KHÔNG đẩy file hay image nào lên — không cần mở
+# thêm cổng, không cần registry.
+#
+# Chuẩn bị một lần cho MỖI môi trường (Settings → Environments → staging /
+# production):
+#
+# Secrets
+#   SSH_HOST          IP hoặc tên miền máy chủ
+#   SSH_USER          user chạy deploy (nên là user riêng, thuộc nhóm docker)
+#   SSH_PASSWORD      mật khẩu SSH của user đó
+#   SSH_KNOWN_HOSTS   kết quả `ssh-keyscan -p <cổng> <host>` — ghim vân tay
+#                     máy chủ; CỐ Ý không dùng StrictHostKeyChecking=no vì như
+#                     thế là gửi thẳng MẬT KHẨU cho bất kỳ máy nào giả danh
+#                     host. Với xác thực mật khẩu, đây là chốt chặn duy nhất.
+#
+# Đăng nhập bằng mật khẩu là lựa chọn tạm: mật khẩu đi qua CI mỗi lần deploy và
+# không giới hạn được quyền như khoá riêng. Khi máy chủ bật được khoá, đổi
+# SSH_PASSWORD thành SSH_PRIVATE_KEY rồi thay `sshpass -e ssh` bằng
+# `ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes`.
+#
+# Variables
+#   SSH_PORT          cổng SSH (mặc định 22)
+#   DEPLOY_PATH       thư mục repo trên máy chủ, vd /www/wwwroot/fcare
+#   PUBLIC_URL        origin công khai để smoke test, vd https://fcare.example.com
+#
+# Trên máy chủ:
+#   - repo đã clone sẵn ở DEPLOY_PATH, remote `origin` dùng deploy key có
+#     quyền đọc (Settings → Deploy keys), không dùng tài khoản cá nhân.
+#   - infra/docker/.env.production đã điền secret thật, chmod 600. File này
+#     KHÔNG bao giờ đi qua CI.
+#   - `sudo -n docker ps` chạy được không cần mật khẩu, hoặc user thuộc nhóm docker.
+#
+# Bật "Required reviewers" cho environment production nếu muốn duyệt tay trước
+# khi lên bản chính thức.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Môi trường triển khai
+        type: choice
+        options: [staging, production]
+        default: staging
+      force:
+        description: Build lại kể cả khi không có commit mới
+        type: boolean
+        default: false
+
+# Hai lần deploy chồng nhau vào cùng một máy chủ là hỏng: docker build và
+# prisma migrate deploy không chịu được chạy song song. Xếp hàng, KHÔNG huỷ bản
+# đang chạy giữa chừng.
+concurrency:
+  group: deploy-${{ inputs.environment || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'staging') }}
+      url: ${{ vars.PUBLIC_URL }}
+    steps:
+      - name: Kiểm tra cấu hình môi trường
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+        run: |
+          missing=()
+          for key in SSH_HOST SSH_USER SSH_PASSWORD SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            [ -n "${!key:-}" ] || missing+=("$key")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Thiếu cấu hình cho môi trường này: ${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Ghim vân tay máy chủ
+        env:
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          # sshpass không có sẵn trên runner ubuntu.
+          sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Triển khai
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+          # sshpass đọc mật khẩu từ biến SSHPASS (cờ -e). KHÔNG dùng `-p <pass>`:
+          # tham số dòng lệnh lộ ra với mọi tiến trình trên runner.
+          SSHPASS: ${{ secrets.SSH_PASSWORD }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          DEPLOY_BRANCH: ${{ github.ref_name }}
+          FORCE_FLAG: ${{ inputs.force && '--force' || '' }}
+        run: |
+          set -euo pipefail
+          # update.sh tự dump DB trước, tự chờ health sau, và thoát khác 0
+          # khi hỏng → job này đỏ theo. Đẩy script qua stdin thay vì nhét lệnh
+          # vào chuỗi để khỏi phải lồng ba tầng dấu nháy.
+          # BatchMode=yes sẽ tắt luôn hỏi mật khẩu nên KHÔNG dùng ở đây;
+          # PubkeyAuthentication=no để ssh khỏi thử khoá của runner rồi bị máy
+          # chủ đếm là lần đăng nhập sai.
+          sshpass -e ssh \
+              -o PreferredAuthentications=password,keyboard-interactive \
+              -o PubkeyAuthentication=no \
+              -o StrictHostKeyChecking=yes \
+              -o ConnectTimeout=15 \
+              -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash -s <<REMOTE
+          set -euo pipefail
+          cd '$DEPLOY_PATH'
+          ./infra/docker/update.sh --branch='$DEPLOY_BRANCH' $FORCE_FLAG
+          REMOTE
+
+      - name: Smoke test qua Internet
+        if: vars.PUBLIC_URL != ''
+        run: |
+          set -euo pipefail
+          # update.sh mới chỉ chứng minh app khoẻ ở loopback. Bước này kiểm tra
+          # cả chặng Nginx + SSL của aaPanel.
+          for attempt in $(seq 1 10); do
+            if curl -fsS --max-time 10 "${{ vars.PUBLIC_URL }}/api/health" >/dev/null; then
+              echo "Health qua Internet OK (lần $attempt)."
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "::error::${{ vars.PUBLIC_URL }}/api/health không trả 200 sau 60s." >&2
+          exit 1
+
+      - name: Dọn dấu vết SSH
+        if: always()
+        run: rm -f ~/.ssh/known_hosts

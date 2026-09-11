@@ -2,8 +2,11 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
+  # Gọi lại được từ deploy.yml: không deploy khi cổng kiểm tra chưa xanh, mà
+  # cũng không nhân đôi các bước này ở hai file.
+  workflow_call:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
