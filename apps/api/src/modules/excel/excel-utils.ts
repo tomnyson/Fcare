@@ -3,8 +3,9 @@ import { EnrollmentResult } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 
 /**
- * Các cột PII bị CẤM theo tài liệu nghiệp vụ. File import chứa bất kỳ cột nào
- * khớp mẫu này sẽ bị từ chối toàn bộ — không được đưa CCCD/SĐT/email/địa chỉ vào hệ thống.
+ * Các cột PII bị CẤM theo tài liệu nghiệp vụ. Cột nào có header khớp mẫu này
+ * sẽ bị xoá sạch trước khi parser chạm tới — không được đưa CCCD/SĐT/email/địa
+ * chỉ vào hệ thống.
  */
 export const FORBIDDEN_HEADER_PATTERN =
   /(cccd|cmnd|căn cước|can cuoc|điện thoại|dien thoai|sđt|sdt|phone|mobile|email|địa chỉ|dia chi|address)/i;
@@ -51,17 +52,6 @@ export function readHeaderRow(worksheet: ExcelJS.Worksheet): string[] {
   return headers;
 }
 
-export function assertNoForbiddenColumns(headers: string[]): void {
-  const forbidden = headers.find((header) =>
-    FORBIDDEN_HEADER_PATTERN.test(header),
-  );
-  if (forbidden) {
-    throw new BadRequestException(
-      `File bị từ chối: cột "${forbidden}" thuộc nhóm dữ liệu bị cấm lưu trữ (CCCD/SĐT/email/địa chỉ).`,
-    );
-  }
-}
-
 export async function loadWorkbook(buffer: Buffer): Promise<ExcelJS.Workbook> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
@@ -81,45 +71,86 @@ export function getWorksheet(
   );
 }
 
+/** Số thứ tự cột → chữ cái Excel (9 → "I") để admin mở file là thấy ngay. */
+export function columnLetter(column: number): string {
+  let letter = '';
+  let remaining = column;
+  while (remaining > 0) {
+    const index = (remaining - 1) % 26;
+    letter = String.fromCharCode(65 + index) + letter;
+    remaining = (remaining - index - 1) / 26;
+  }
+  return letter;
+}
+
 /**
- * Quét toàn bộ ô của mọi sheet. Từ chối CẢ FILE nếu dính — không lọc bỏ cột,
- * vì tài liệu nghiệp vụ quy định "Excel import từ chối cột cấm".
- * Thông báo lỗi chỉ vị trí nhưng KHÔNG lặp lại giá trị PII.
+ * Xoá sạch mọi ô PII của workbook NGAY TRONG BỘ NHỚ, trước khi parser đọc, rồi
+ * trả về cảnh báo cho từng cột đã đụng tới.
+ *
+ * Trước đây hàm này ném lỗi từ chối cả file. Thực tế file nguồn của trường
+ * (phân công GV) luôn kèm cột email không header, nên không ai import được gì
+ * cho tới khi sửa file bằng tay. Nay bỏ qua phần dính và import tiếp — RULE 1
+ * vẫn nguyên vẹn vì giá trị bị xoá trước khi có bất kỳ ai đọc được nó, và mọi
+ * parser chỉ đọc cột cố định hoặc cột tìm theo tên nên PII không có đường vào
+ * payload.
+ *
+ * CỐ Ý sửa tại chỗ thay vì tạo bản sao: workbook là đối tượng nội bộ của một
+ * lần upload, và nhân bản nó tốn gấp đôi bộ nhớ cho file 10 MB.
  */
-export function assertNoForbiddenValues(workbook: ExcelJS.Workbook): void {
+export function stripForbiddenData(workbook: ExcelJS.Workbook): string[] {
+  const warnings: string[] = [];
+
   for (const worksheet of workbook.worksheets) {
-    let hit: { label: string; row: number; column: number } | undefined;
-    worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
-      if (hit) {
-        return;
+    // Header đã nói rõ cột đó là gì thì xoá cả cột, kể cả ô có giá trị không
+    // khớp mẫu ("liên hệ qua lớp trưởng" dưới header "Số điện thoại").
+    const forbiddenHeaders = new Map<number, string>();
+    worksheet.getRow(1).eachCell({ includeEmpty: false }, (cell, column) => {
+      const header = cell.text.trim();
+      if (header !== '' && FORBIDDEN_HEADER_PATTERN.test(header)) {
+        forbiddenHeaders.set(column, header);
       }
-      row.eachCell({ includeEmpty: false }, (cell, columnNumber) => {
-        if (hit) {
-          return;
-        }
+    });
+
+    const cleared = new Map<number, { label: string; cells: number }>();
+    worksheet.eachRow({ includeEmpty: false }, (row) => {
+      row.eachCell({ includeEmpty: false }, (cell, column) => {
         const text = cell.text.trim();
         if (text === '') {
           return;
         }
-        const matched = FORBIDDEN_VALUE_PATTERNS.find((candidate) =>
-          candidate.pattern.test(text),
-        );
-        if (matched) {
-          hit = {
-            label: matched.label,
-            row: rowNumber,
-            column: columnNumber,
-          };
+        const label = forbiddenHeaders.has(column)
+          ? 'dữ liệu cấm'
+          : FORBIDDEN_VALUE_PATTERNS.find((candidate) =>
+              candidate.pattern.test(text),
+            )?.label;
+        if (label === undefined) {
+          return;
+        }
+        cell.value = null;
+        const entry = cleared.get(column);
+        if (entry) {
+          entry.cells += 1;
+        } else {
+          cleared.set(column, { label, cells: 1 });
         }
       });
     });
-    if (hit) {
-      throw new BadRequestException(
-        `File bị từ chối: sheet "${worksheet.name}" dòng ${hit.row} cột ${hit.column} chứa ${hit.label} — ` +
-          'dữ liệu này bị cấm lưu trữ. Hãy xoá cột đó khỏi file rồi tải lên lại.',
+
+    // Thông báo nêu vị trí nhưng KHÔNG lặp lại giá trị PII.
+    const forbidden =
+      'dữ liệu này bị cấm lưu trữ nên không được đưa vào hệ thống.';
+    for (const [column, entry] of cleared) {
+      const header = forbiddenHeaders.get(column);
+      const where = `Sheet "${worksheet.name}" cột ${columnLetter(column)}`;
+      warnings.push(
+        header
+          ? `${where} ("${header}"): đã bỏ qua cả cột, ${entry.cells} ô — ${forbidden}`
+          : `${where}: đã bỏ qua ${entry.cells} ô chứa ${entry.label} — ${forbidden}`,
       );
     }
   }
+
+  return warnings;
 }
 
 /**

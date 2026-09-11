@@ -26,7 +26,7 @@ const COL_ASSIGNEES = 'Phân công giảng viên';
  * Header sheet này KHÔNG tin được (ô G header là "36" trong khi dữ liệu là họ
  * tên) nên ánh xạ theo vị trí cột đã kiểm chứng trên file thật.
  * CỐ Ý bỏ cột I (email): RULE 1 cấm lưu email. Đây là lớp chặn thứ hai sau
- * assertNoForbiddenValues.
+ * stripForbiddenData — tới đây ô email đã rỗng, parser vẫn không đọc tới.
  */
 const COL_USERNAME = 1;
 const COL_TYPE = 6;

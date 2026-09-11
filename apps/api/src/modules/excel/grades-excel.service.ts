@@ -11,13 +11,11 @@ import type { AuthUser } from '../../common/types/auth-user';
 import { isDeptScoped } from '../../common/utils/dept-scope';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
-  assertNoForbiddenColumns,
-  assertNoForbiddenValues,
   cellNumber,
   cellText,
   loadWorkbook,
-  readHeaderRow,
   resultFromLabel,
+  stripForbiddenData,
   workbookToFile,
   type RowError,
 } from './excel-utils';
@@ -58,9 +56,9 @@ export class GradesExcelService {
 
   async import(user: AuthUser, buffer: Buffer) {
     const workbook = await loadWorkbook(buffer);
-    assertNoForbiddenValues(workbook);
+    // RULE 1: xoá PII trước khi đọc bất kỳ ô nào.
+    const warnings = stripForbiddenData(workbook);
     const worksheet = workbook.worksheets[0];
-    assertNoForbiddenColumns(readHeaderRow(worksheet));
 
     const [sections, students] = await Promise.all([
       this.prisma.classSection.findMany({
@@ -161,7 +159,7 @@ export class GradesExcelService {
       metadata: { upserted, errorCount: errors.length },
     });
 
-    return { upserted, errors };
+    return { upserted, errors, warnings };
   }
 
   async export(

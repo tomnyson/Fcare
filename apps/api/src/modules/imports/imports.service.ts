@@ -8,7 +8,7 @@ import { AuditService } from '../../audit/audit.service';
 import type { AuthUser } from '../../common/types/auth-user';
 import { isDeptScoped } from '../../common/utils/dept-scope';
 import { PrismaService } from '../../prisma/prisma.service';
-import { assertNoForbiddenValues, loadWorkbook } from '../excel/excel-utils';
+import { loadWorkbook, stripForbiddenData } from '../excel/excel-utils';
 import { aliasKey, isAliasKnown } from './alias-match';
 import type {
   ImportCommitter,
@@ -77,11 +77,16 @@ export class ImportsService {
     const { parser } = this.require(kind);
     const workbook = await loadWorkbook(buffer);
 
-    // RULE 1 — chốt chặn đứng TRƯỚC parser: quét giá trị mọi ô, mọi sheet.
-    assertNoForbiddenValues(workbook);
+    // RULE 1 — chốt chặn đứng TRƯỚC parser: quét mọi ô của mọi sheet và xoá
+    // sạch phần PII. Parser chỉ nhìn thấy workbook đã sạch.
+    const piiWarnings = stripForbiddenData(workbook);
 
     const ctx: ImportContext = { term, user, prisma: this.prisma };
     const result = await parser.parse(workbook, ctx);
+
+    // Đặt trước cảnh báo của parser: người duyệt cần thấy ngay phần dữ liệu đã
+    // bị bỏ qua trước khi quyết định commit.
+    result.warnings.unshift(...piiWarnings);
 
     // Mã bộ môn/ngành có trong file nhưng chưa ánh xạ được → hiện ở bản xem
     // trước để admin gán trước khi commit (spec §8 rủi ro 3). Hai loại tách

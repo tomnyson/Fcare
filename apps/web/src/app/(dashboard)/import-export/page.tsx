@@ -27,6 +27,13 @@ function ImportResultView({ result }: { result: ImportResult | null }) {
           .join(', ')}
         {result.errors.length > 0 ? ` · ${result.errors.length} dòng lỗi` : ''}
       </p>
+      {result.warnings && result.warnings.length > 0 ? (
+        <ul className="mt-2 space-y-1 text-warning">
+          {result.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
       {result.errors.length > 0 ? (
         <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto text-danger">
           {result.errors.map((rowError) => (
@@ -113,7 +120,8 @@ export default function ImportExportPage() {
             </h3>
             <p className="mt-1 text-sm text-muted">
               Cột hợp lệ: MSSV · Họ tên · Ngày sinh · Giới tính · Mã ngành · Khóa · Lớp · Trạng
-              thái. File chứa cột CCCD/SĐT/email/địa chỉ sẽ bị <strong>từ chối toàn bộ</strong>.
+              thái. Ô chứa CCCD/SĐT/email/địa chỉ sẽ bị <strong>bỏ qua</strong>, phần còn lại vẫn
+              nhập bình thường.
             </p>
 
             <div className="mt-5 space-y-3">

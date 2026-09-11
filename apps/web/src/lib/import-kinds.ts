@@ -141,8 +141,8 @@ export function toggleImportKind(
 
 /**
  * Allowlist cột hiển thị ở bản xem trước, theo TỪNG loại import — thay vì đổ
- * nguyên `Object.entries(payload)` ra bảng. Payload đã được `assertNoForbiddenValues`
- * chặn CCCD/SĐT/email/địa chỉ từ lúc upload (RULE 1), nhưng allowlist này là lớp
+ * nguyên `Object.entries(payload)` ra bảng. Payload đã sạch vì `stripForbiddenData`
+ * xoá CCCD/SĐT/email/địa chỉ ngay lúc upload (RULE 1), nhưng allowlist này là lớp
  * phòng thủ thứ hai ở UI: nếu parser ở apps/api sau này thêm field mới, cột đó sẽ
  * KHÔNG tự động hiện ra cho tới khi được thêm vào đây một cách tường minh.
  * Khớp đúng field các parser thật đang emit (apps/api/src/modules/imports/parsers/*).

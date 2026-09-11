@@ -10,8 +10,9 @@ export const ARTIFACT_DIR = path.resolve(__dirname, '..', '.artifacts');
 
 /**
  * File nguồn THẬT của trường, còn nguyên cột email ở sheet "T.Kê".
- * Chỉ dùng cho test RULE 1 (phải bị từ chối toàn bộ) — mọi luồng import
- * thành công đều phải dùng bản đã xoá PII bên dưới.
+ * Chỉ dùng cho test RULE 1 (ô PII phải bị bỏ qua trước khi parser đọc) — mọi
+ * luồng import khác đều dùng bản đã xoá PII bên dưới, để khi test đỏ thì biết
+ * ngay là lỗi import chứ không phải lỗi lọc PII.
  */
 export const ASSIGNMENT_FILE_RAW = path.join(DOCS_DIR, 'FPLTN-KH Phân công GV HK Summer 2026.xlsx');
 
@@ -146,7 +147,7 @@ export async function buildExcelFixtures(): Promise<void> {
   const removed = stripForbiddenValues(clean);
   if (removed === 0) {
     throw new Error(
-      'File phân công GV không còn ô PII nào — test từ chối PII sẽ mất ý nghĩa. Kiểm tra lại file nguồn.',
+      'File phân công GV không còn ô PII nào — test lọc PII sẽ mất ý nghĩa. Kiểm tra lại file nguồn.',
     );
   }
   await clean.xlsx.writeFile(ASSIGNMENT_FILE_CLEAN);

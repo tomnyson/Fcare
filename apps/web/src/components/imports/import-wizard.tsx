@@ -310,8 +310,8 @@ export function ImportWizard({ resumeBatchId, onResumeHandled }: ImportWizardPro
           </div>
 
           <p className="text-sm text-muted">
-            File chứa cột hoặc giá trị CCCD/SĐT/email/địa chỉ sẽ bị <strong>từ chối toàn bộ</strong>
-            . Hãy xoá các cột đó trước khi tải lên.
+            Ô chứa CCCD/SĐT/email/địa chỉ sẽ bị <strong>bỏ qua</strong>, không ghi vào hệ thống.
+            Bản xem trước liệt kê rõ đã bỏ những ô nào.
           </p>
 
           <Button

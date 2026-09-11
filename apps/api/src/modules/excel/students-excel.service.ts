@@ -10,11 +10,9 @@ import type { AuthUser } from '../../common/types/auth-user';
 import { deptFilter, isDeptScoped } from '../../common/utils/dept-scope';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
-  assertNoForbiddenColumns,
-  assertNoForbiddenValues,
   cellText,
   loadWorkbook,
-  readHeaderRow,
+  stripForbiddenData,
   workbookToFile,
   type RowError,
 } from './excel-utils';
@@ -69,9 +67,9 @@ export class StudentsExcelService {
 
   async import(user: AuthUser, buffer: Buffer) {
     const workbook = await loadWorkbook(buffer);
-    assertNoForbiddenValues(workbook);
+    // RULE 1: xoá PII trước khi đọc bất kỳ ô nào.
+    const warnings = stripForbiddenData(workbook);
     const worksheet = workbook.worksheets[0];
-    assertNoForbiddenColumns(readHeaderRow(worksheet));
 
     const majors = await this.prisma.major.findMany();
     const majorByCode = new Map(
@@ -177,7 +175,7 @@ export class StudentsExcelService {
       metadata: { created, updated, errorCount: errors.length },
     });
 
-    return { created, updated, errors };
+    return { created, updated, errors, warnings };
   }
 
   async export(

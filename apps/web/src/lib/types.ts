@@ -432,6 +432,8 @@ export interface ImportResult {
   updated?: number;
   upserted?: number;
   errors: Array<{ row: number; message: string }>;
+  /** Ô PII đã bị xoá trước khi đọc file (RULE 1) — nêu vị trí, không nêu giá trị. */
+  warnings?: string[];
 }
 
 // --- Import wizard (staging import: upload → preview → commit) ---

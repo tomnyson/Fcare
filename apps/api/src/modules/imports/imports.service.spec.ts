@@ -144,17 +144,34 @@ describe('ImportsService', () => {
     service.register(ImportKind.CATALOG, parser, committer);
   });
 
-  it('quét PII trước khi parse — file có email bị từ chối, không tạo batch', async () => {
+  it('xoá PII TRƯỚC khi parse — parser không bao giờ nhìn thấy email', async () => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('T.Kê');
     worksheet.getRow(2).getCell(9).value = 'vandtb2@fe.edu.vn';
     const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
 
-    await expect(
-      service.upload(user, ImportKind.CATALOG, buffer, 'a.xlsx', 'SU26'),
-    ).rejects.toThrow(BadRequestException);
-    expect(parseMock).not.toHaveBeenCalled();
-    expect(prisma.importBatch.create).not.toHaveBeenCalled();
+    await service.upload(user, ImportKind.CATALOG, buffer, 'a.xlsx', 'SU26');
+
+    const [parsed] = parseMock.mock.calls[0] as [ExcelJS.Workbook];
+    expect(parsed.worksheets[0].getRow(2).getCell(9).text.trim()).toBe('');
+  });
+
+  it('báo cho người duyệt biết đã bỏ qua ô nào, đặt trước cảnh báo của parser', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('T.Kê');
+    worksheet.getRow(2).getCell(9).value = 'vandtb2@fe.edu.vn';
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+
+    await service.upload(user, ImportKind.CATALOG, buffer, 'a.xlsx', 'SU26');
+
+    const [createArgs] = prisma.importBatch.create.mock.calls[0] as [
+      CreateBatchArgs,
+    ];
+    const warnings = createArgs.data.summary.warnings as string[];
+    expect(warnings[0]).toContain('cột I');
+    expect(warnings[0]).toContain('email');
+    expect(warnings[0]).not.toContain('vandtb2');
+    expect(warnings).toContain('một cảnh báo');
   });
 
   it('upload tạo batch PENDING và lưu mọi dòng, kể cả dòng lỗi', async () => {
