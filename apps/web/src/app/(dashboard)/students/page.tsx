@@ -4,7 +4,7 @@ import { Badge, Button } from '@fcare/ui-kit';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { DataTable, Td } from '../../../components/ui/data-table';
 import {
   FilterBar,
@@ -26,6 +26,7 @@ import {
   parseStudentFilters,
 } from '../../../lib/student-filters';
 import type { Paginated, Student, StudentFilterOptions } from '../../../lib/types';
+import { useCurrentTerm } from '../../../lib/use-current-term';
 
 const PAGE_SIZE = 20;
 
@@ -43,6 +44,8 @@ function StudentsPageContent() {
   const params = useSearchParams();
   const queryClient = useQueryClient();
   const { data: me } = useMe();
+  const { data: currentTerm } = useCurrentTerm();
+  const hasInitializedTermRef = useRef(false);
   const canAssignMajor = me?.user.roles.some((role) => STUDENT_WRITE_ROLES.includes(role)) ?? false;
 
   // URL là nguồn sự thật của bộ lọc: gửi link cho đồng nghiệp là gửi đúng bộ lọc.
@@ -54,6 +57,13 @@ function StudentsPageContent() {
   const [search, setSearch] = useState(submittedSearch);
   const [selected, setSelected] = useState<readonly string[]>([]);
   const [majorId, setMajorId] = useState('');
+
+  useEffect(() => {
+    if (!hasInitializedTermRef.current && !params.has('term') && currentTerm?.code) {
+      hasInitializedTermRef.current = true;
+      setFilters({ term: currentTerm.code });
+    }
+  }, [currentTerm?.code, params]);
 
   // Back/forward đổi query param `search` trên URL mà không đi qua ô input —
   // đồng bộ lại state để ô tìm kiếm không giữ giá trị cũ.

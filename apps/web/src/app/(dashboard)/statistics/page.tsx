@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, useEffect, useRef } from 'react';
 import {
   FilterBar,
   FilterField,
@@ -29,6 +29,7 @@ import type {
   StudentFilterOptions,
   SubjectStatistics,
 } from '../../../lib/types';
+import { useCurrentTerm } from '../../../lib/use-current-term';
 
 // Dùng chung queryKey với /students và /alerts nên danh mục kỳ chỉ tải một lần.
 const FILTER_OPTIONS_STALE_MS = 5 * 60_000;
@@ -38,6 +39,15 @@ function StatisticsPageContent() {
   const pathname = usePathname();
   const params = useSearchParams();
   const { tab, term } = parseStatisticsView(params);
+  const { data: currentTerm } = useCurrentTerm();
+  const hasInitializedTermRef = useRef(false);
+
+  useEffect(() => {
+    if (!hasInitializedTermRef.current && !params.has('term') && currentTerm?.code) {
+      hasInitializedTermRef.current = true;
+      setView({ term: currentTerm.code });
+    }
+  }, [currentTerm?.code, params]);
 
   function setView(patch: { tab?: StatisticsTabKey; term?: string | null }) {
     const next = new URLSearchParams(params.toString());

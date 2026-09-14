@@ -4,7 +4,7 @@ import { Badge, Button } from '@fcare/ui-kit';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useState, type FormEvent } from 'react';
+import { Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
 import { DataTable, Td } from '../../../components/ui/data-table';
 import { FormError, Label, Select, Textarea } from '../../../components/ui/form';
 import {
@@ -32,6 +32,7 @@ import {
   parseAlertFilters,
 } from '../../../lib/alert-filters';
 import type { Alert, Paginated, StudentFilterOptions } from '../../../lib/types';
+import { useCurrentTerm } from '../../../lib/use-current-term';
 
 const RESOLVER_ROLES = ['ADMIN', 'HEAD_OF_DEPT', 'TRAINING_OFFICER', 'SA_HEAD'];
 
@@ -48,6 +49,8 @@ function AlertsPageContent() {
   const pathname = usePathname();
   const params = useSearchParams();
   const { data: me } = useMe();
+  const { data: currentTerm } = useCurrentTerm();
+  const hasInitializedTermRef = useRef(false);
   const [resolving, setResolving] = useState<Alert | null>(null);
   const [error, setError] = useState('');
 
@@ -55,6 +58,13 @@ function AlertsPageContent() {
   const filters = parseAlertFilters(params);
   const submittedSearch = filters.search;
   const [search, setSearch] = useState(submittedSearch);
+
+  useEffect(() => {
+    if (!hasInitializedTermRef.current && !params.has('term') && currentTerm?.code) {
+      hasInitializedTermRef.current = true;
+      setFilters({ term: currentTerm.code });
+    }
+  }, [currentTerm?.code, params]);
 
   // Back/forward đổi `search` trên URL mà không đi qua ô input.
   useEffect(() => {

@@ -5,12 +5,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../../lib/api';
 import type { AuthUser, ClassSection, Enrollment, Evaluation } from '../../lib/types';
+import { useCurrentTerm } from '../../lib/use-current-term';
 import { Modal } from '../ui/modal';
 import { EvaluationForm } from './evaluation-form';
 import { EvaluationList } from './evaluation-list';
 import { RiskScorePanel } from './risk-score-panel';
-import { StudentAnalysisPanel } from './student-analysis-panel';
 import { uniqueTermsFromEnrollments } from './student-analysis-helpers';
+import { StudentAnalysisPanel } from './student-analysis-panel';
 
 /**
  * Tab nhận xét: ghép ba khối độc lập — điểm DRS gộp, phân tích AI theo học kỳ,
@@ -21,6 +22,7 @@ export function EvaluationsTab({ studentId, user }: { studentId: string; user: A
   const [open, setOpen] = useState(false);
   const [selectedTerm, setSelectedTerm] = useState('');
   const [postSaveTerm, setPostSaveTerm] = useState('');
+  const { data: currentTerm } = useCurrentTerm();
 
   const { data: evaluations, isLoading: evaluationsLoading } = useQuery({
     queryKey: ['evaluations', studentId],
@@ -35,9 +37,13 @@ export function EvaluationsTab({ studentId, user }: { studentId: string; user: A
 
   useEffect(() => {
     if (!selectedTerm && terms.length > 0) {
-      setSelectedTerm(terms[0] ?? '');
+      if (currentTerm?.code && terms.includes(currentTerm.code)) {
+        setSelectedTerm(currentTerm.code);
+      } else {
+        setSelectedTerm(terms[0] ?? '');
+      }
     }
-  }, [selectedTerm, terms]);
+  }, [selectedTerm, terms, currentTerm?.code]);
 
   // Giảng viên chỉ nhận xét lớp mình đứng lớp; vai quản lý thấy mọi lớp của kỳ.
   const seesAllSections = user.roles.some((role) =>
