@@ -87,6 +87,21 @@ export interface ClassSection {
   _count?: { enrollments: number };
 }
 
+export type TermSeason = 'SPRING' | 'SUMMER' | 'FALL';
+
+export interface Term {
+  id: string;
+  code: string;
+  name: string;
+  season: TermSeason;
+  year: number;
+  startDate: string;
+  endDate: string;
+  isCurrentOverride: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface DepartmentAlias {
   id: string;
   alias: string;

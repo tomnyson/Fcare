@@ -12,6 +12,7 @@ import {
   IconStatistics,
   IconStudents,
   IconSubjects,
+  IconTerms,
   IconTransfer,
   type NavIcon,
 } from './nav-icons';
@@ -55,6 +56,7 @@ const TRAINING_ICONS: Record<MasterDataTabKey, NavIcon | undefined> = {
   majors: IconMajors,
   subjects: IconSubjects,
   'class-sections': IconSections,
+  terms: IconTerms,
   'department-aliases': undefined,
   'major-aliases': undefined,
   'class-major-rules': undefined,
@@ -83,6 +85,7 @@ function trainingSection(): NavSection {
           tab('departments'),
           tab('majors'),
           tab('subjects'),
+          tab('terms'),
           {
             kind: 'group',
             id: 'class-sections',

@@ -11,6 +11,7 @@ export const MASTER_DATA_TABS = [
     singular: 'lớp học phần',
     path: '/class-sections',
   },
+  { key: 'terms', label: 'Học kỳ', singular: 'học kỳ', path: '/terms' },
   {
     key: 'department-aliases',
     label: 'Ánh xạ bộ môn',

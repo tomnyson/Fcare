@@ -109,6 +109,14 @@ export const IconSections: NavIcon = (props) => (
   </Icon>
 );
 
+/** Học kỳ — cuốn lịch. */
+export const IconTerms: NavIcon = (props) => (
+  <Icon {...props}>
+    <rect x="3" y="4" width="18" height="17" rx="2" />
+    <path d="M16 2v4M8 2v4M3 10h18" />
+  </Icon>
+);
+
 /** Import / Export — hai mũi tên ngược chiều. */
 export const IconTransfer: NavIcon = (props) => (
   <Icon {...props}>
