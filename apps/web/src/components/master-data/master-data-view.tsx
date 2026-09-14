@@ -20,9 +20,16 @@ import type {
   Major,
   StaffMember,
   Subject,
+  Term,
+  TermSeason,
 } from '../../lib/types';
+import {
+  formatDateForInput,
+  generateTermPreset,
+  seasonBadgeInfo,
+} from './term-preset-helpers';
 
-type Entity = Department | Major | Subject | ClassSection;
+type Entity = Department | Major | Subject | ClassSection | Term;
 
 const MANAGER_ROLES = ['ADMIN', 'TRAINING_OFFICER'];
 
@@ -38,9 +45,14 @@ const DELETE_HINTS: Partial<Record<MasterDataTabKey, string>> = {
   majors: 'Chỉ xóa được khi ngành không còn sinh viên theo học.',
   subjects: 'Chỉ xóa được khi môn học không còn lớp học phần.',
   'class-sections': 'Chỉ xóa được khi lớp chưa có sinh viên ghi danh.',
+  terms: 'Chỉ xóa được khi học kỳ chưa có lớp học phần nào liên kết.',
 };
 
 function entityLabel(tab: MasterDataTabKey, entity: Entity): string {
+  if (tab === 'terms') {
+    const term = entity as Term;
+    return `${term.code} — ${term.name}`;
+  }
   const name = 'name' in entity ? entity.name : (entity as ClassSection).term;
   return `${entity.code} — ${name}`;
 }
@@ -76,6 +88,16 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
     queryFn: () => apiFetch<ClassSection[]>('/class-sections'),
     enabled: tab === 'class-sections',
   });
+  const terms = useQuery({
+    queryKey: ['terms'],
+    queryFn: () => apiFetch<Term[]>('/terms'),
+    enabled: tab === 'terms' || tab === 'class-sections',
+  });
+  const currentTerm = useQuery({
+    queryKey: ['terms', 'current'],
+    queryFn: () => apiFetch<Term | null>('/terms/current'),
+    enabled: tab === 'terms' || tab === 'class-sections',
+  });
   const isAdmin = me?.user.roles.includes('ADMIN') ?? false;
   const lecturers = useQuery({
     queryKey: ['admin-staff-lecturers'],
@@ -85,11 +107,50 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
 
   const canManage = me?.user.roles.some((role) => MANAGER_ROLES.includes(role)) ?? false;
 
+  const [termSeason, setTermSeason] = useState<TermSeason>('SPRING');
+  const [termYear, setTermYear] = useState<number>(() => new Date().getFullYear());
+  const [termCode, setTermCode] = useState('');
+  const [termName, setTermName] = useState('');
+  const [termStart, setTermStart] = useState('');
+  const [termEnd, setTermEnd] = useState('');
+  const [termOverride, setTermOverride] = useState(false);
+
+  function applyPreset(season: TermSeason, year: number) {
+    const p = generateTermPreset(year, season);
+    setTermSeason(season);
+    setTermYear(year);
+    setTermCode(p.code);
+    setTermName(p.name);
+    setTermStart(p.startDate);
+    setTermEnd(p.endDate);
+  }
+
   function closeForm() {
     setCreating(false);
     setEditing(null);
     setFormError('');
+    setTermCode('');
+    setTermName('');
+    setTermStart('');
+    setTermEnd('');
+    setTermOverride(false);
   }
+
+  const setCurrentMutation = useMutation({
+    mutationFn: ({ id, isCurrent }: { id: string; isCurrent: boolean }) =>
+      apiFetch(`/terms/${id}/set-current`, {
+        method: 'POST',
+        body: JSON.stringify({ isCurrent }),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['terms'] });
+      await queryClient.invalidateQueries({ queryKey: ['terms', 'current'] });
+    },
+    onError: (err) =>
+      setFormError(
+        err instanceof ApiError ? err.message : 'Không thể cập nhật kỳ hiện tại.',
+      ),
+  });
 
   const saveMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
@@ -143,6 +204,15 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
         lecturerId: form.get('lecturerId'),
         term: form.get('term'),
       },
+      terms: {
+        code: termCode || form.get('code'),
+        name: termName || form.get('name'),
+        season: termSeason,
+        year: Number(termYear),
+        startDate: new Date(`${termStart || form.get('startDate')}T00:00:00.000Z`).toISOString(),
+        endDate: new Date(`${termEnd || form.get('endDate')}T23:59:59.999Z`).toISOString(),
+        isCurrentOverride: termOverride,
+      },
     };
     saveMutation.mutate(payloads[tab] ?? {});
   }
@@ -151,14 +221,39 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
     if (!canManage) {
       return null;
     }
+    const isTerm = tab === 'terms';
+    const term = isTerm ? (entity as Term) : null;
+    const isCurrentlyActive = term && (term.isCurrentOverride || currentTerm.data?.id === term.id);
+
     return (
       <Td className="w-px whitespace-nowrap text-right">
-        <div className="flex justify-end gap-1.5">
+        <div className="flex items-center justify-end gap-1.5">
+          {isTerm && term && !isCurrentlyActive ? (
+            <button
+              type="button"
+              disabled={setCurrentMutation.isPending}
+              onClick={() => setCurrentMutation.mutate({ id: term.id, isCurrent: true })}
+              className="rounded-md border border-success/40 bg-success/10 px-2 py-1 text-xs font-semibold text-success transition-colors hover:bg-success/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-success"
+              title="Đặt làm kỳ hiện tại"
+            >
+              Đặt kỳ này
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => {
               setFormError('');
               setEditing(entity);
+              if (tab === 'terms') {
+                const t = entity as Term;
+                setTermCode(t.code);
+                setTermName(t.name);
+                setTermSeason(t.season);
+                setTermYear(t.year);
+                setTermStart(formatDateForInput(t.startDate));
+                setTermEnd(formatDateForInput(t.endDate));
+                setTermOverride(t.isCurrentOverride);
+              }
             }}
             className="rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-fpt-blue transition-colors duration-[var(--duration-fast)] hover:border-fpt-blue hover:bg-fpt-orange-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fpt-orange"
           >
@@ -209,6 +304,9 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
               onClick={() => {
                 setFormError('');
                 setCreating(true);
+                if (tab === 'terms') {
+                  applyPreset('SPRING', new Date().getFullYear());
+                }
               }}
             >
               + Thêm {config.singular}
@@ -341,6 +439,53 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
         </>
       ) : null}
 
+      {tab === 'terms' ? (
+        <>
+          {errorBanner(terms)}
+          <DataTable
+            headers={['Mã kỳ', 'Tên học kỳ', 'Mùa & Năm', 'Thời gian', 'Trạng thái', ...actionHeader]}
+            isLoading={terms.isLoading}
+            skeletonRows={6}
+            isEmpty={!terms.isLoading && !terms.isError && (terms.data?.length ?? 0) === 0}
+            emptyMessage="Chưa có học kỳ nào — bấm “+ Thêm học kỳ” để tạo danh mục đầu tiên."
+          >
+            {(terms.data ?? []).map((term) => {
+              const badge = seasonBadgeInfo(term.season);
+              const isCurrent = currentTerm.data?.id === term.id;
+              const startStr = new Date(term.startDate).toLocaleDateString('vi-VN');
+              const endStr = new Date(term.endDate).toLocaleDateString('vi-VN');
+
+              return (
+                <tr key={term.id} className="transition-colors hover:bg-fpt-orange-50/40">
+                  <Td className="font-semibold text-ink">{term.code}</Td>
+                  <Td>{term.name}</Td>
+                  <Td>
+                    <span className="inline-flex items-center gap-1 text-xs">
+                      <span>{badge.icon}</span>
+                      <span>{badge.label} • {term.year}</span>
+                    </span>
+                  </Td>
+                  <Td className="text-xs text-muted tabular-nums">
+                    {startStr} – {endStr}
+                  </Td>
+                  <Td>
+                    {isCurrent ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2.5 py-0.5 text-xs font-semibold text-success">
+                        <span>●</span>
+                        Kỳ hiện tại{term.isCurrentOverride ? ' (Chỉ định)' : ''}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted">—</span>
+                    )}
+                  </Td>
+                  {rowActions(term)}
+                </tr>
+              );
+            })}
+          </DataTable>
+        </>
+      ) : null}
+
       <Modal
         title={editing ? `Sửa ${config.singular}` : `Thêm ${config.singular}`}
         open={formOpen}
@@ -349,12 +494,14 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
         <form key={editing?.id ?? 'create'} onSubmit={onFormSubmit} className="space-y-4">
           <FormError>{formError}</FormError>
 
-          <div>
-            <Label htmlFor="code">Mã</Label>
-            <Input id="code" name="code" required defaultValue={editing?.code ?? ''} />
-          </div>
+          {tab !== 'class-sections' && tab !== 'terms' ? (
+            <div>
+              <Label htmlFor="code">Mã</Label>
+              <Input id="code" name="code" required defaultValue={editing?.code ?? ''} />
+            </div>
+          ) : null}
 
-          {tab !== 'class-sections' ? (
+          {tab !== 'class-sections' && tab !== 'terms' ? (
             <div>
               <Label htmlFor="name">Tên</Label>
               <Input
@@ -447,13 +594,135 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
               </div>
               <div>
                 <Label htmlFor="term">Học kỳ</Label>
-                <Input
+                <Select
                   id="term"
                   name="term"
-                  placeholder="vd: SU25"
                   required
-                  defaultValue={editingClassSection?.term ?? ''}
+                  defaultValue={
+                    editingClassSection?.term ?? currentTerm.data?.code ?? ''
+                  }
+                >
+                  <option value="" disabled>
+                    Chọn học kỳ…
+                  </option>
+                  {(terms.data ?? []).map((t) => (
+                    <option key={t.id} value={t.code}>
+                      {t.code} — {t.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </>
+          ) : null}
+
+          {tab === 'terms' ? (
+            <>
+              {!editing ? (
+                <div className="rounded-lg border border-border bg-fpt-orange-50/50 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-ink">Gợi ý nhanh theo mùa</span>
+                    <select
+                      value={termYear}
+                      onChange={(e) => {
+                        const y = Number(e.target.value);
+                        setTermYear(y);
+                        applyPreset(termSeason, y);
+                      }}
+                      className="rounded border border-border bg-white px-2 py-0.5 text-xs font-medium text-ink"
+                    >
+                      {[2024, 2025, 2026, 2027, 2028].map((y) => (
+                        <option key={y} value={y}>
+                          Năm {y}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['SPRING', 'SUMMER', 'FALL'] as const).map((s) => {
+                      const badge = seasonBadgeInfo(s);
+                      const isSelected = termSeason === s;
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => applyPreset(s, termYear)}
+                          className={`flex items-center justify-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition-all ${
+                            isSelected
+                              ? 'border-fpt-orange bg-white text-fpt-orange shadow-sm'
+                              : 'border-border bg-white/70 text-muted hover:border-border hover:bg-white hover:text-ink'
+                          }`}
+                        >
+                          <span>{badge.icon}</span>
+                          <span>{badge.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="code">Mã kỳ (viết hoa, không dấu cách)</Label>
+                  <Input
+                    id="code"
+                    name="code"
+                    required
+                    value={termCode}
+                    onChange={(e) => setTermCode(e.target.value.toUpperCase())}
+                    placeholder="vd: SP25"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="name">Tên kỳ học</Label>
+                  <Input
+                    id="name"
+                    name="name"
+                    required
+                    value={termName}
+                    onChange={(e) => setTermName(e.target.value)}
+                    placeholder="vd: Spring 2025"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="startDate">Ngày bắt đầu kỳ</Label>
+                  <Input
+                    id="startDate"
+                    name="startDate"
+                    type="date"
+                    required
+                    value={termStart}
+                    onChange={(e) => setTermStart(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="endDate">Ngày kết thúc kỳ</Label>
+                  <Input
+                    id="endDate"
+                    name="endDate"
+                    type="date"
+                    required
+                    value={termEnd}
+                    onChange={(e) => setTermEnd(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="isCurrentOverride"
+                  name="isCurrentOverride"
+                  checked={termOverride}
+                  onChange={(e) => setTermOverride(e.target.checked)}
+                  className="h-4 w-4 rounded border-border text-fpt-orange focus:ring-fpt-orange"
                 />
+                <Label htmlFor="isCurrentOverride" className="!mb-0 cursor-pointer text-xs font-medium text-ink">
+                  Đặt làm kỳ hiện tại (bật cờ ưu tiên hiển thị)
+                </Label>
               </div>
             </>
           ) : null}
