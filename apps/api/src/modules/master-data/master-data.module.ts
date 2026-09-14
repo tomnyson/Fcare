@@ -10,6 +10,7 @@ import {
   MajorAliasesController,
   MajorsController,
   SubjectsController,
+  TermsController,
 } from './master-data.controller';
 import {
   ClassMajorRulesService,
@@ -17,6 +18,7 @@ import {
   MajorAliasesService,
 } from './mappings.service';
 import { SubjectsService } from './subjects.service';
+import { TermsService } from './terms.service';
 
 @Module({
   controllers: [
@@ -27,6 +29,7 @@ import { SubjectsService } from './subjects.service';
     DepartmentAliasesController,
     MajorAliasesController,
     ClassMajorRulesController,
+    TermsController,
   ],
   providers: [
     DepartmentsService,
@@ -36,6 +39,7 @@ import { SubjectsService } from './subjects.service';
     DepartmentAliasesService,
     MajorAliasesService,
     ClassMajorRulesService,
+    TermsService,
   ],
   exports: [
     DepartmentsService,
@@ -45,6 +49,7 @@ import { SubjectsService } from './subjects.service';
     DepartmentAliasesService,
     MajorAliasesService,
     ClassMajorRulesService,
+    TermsService,
   ],
 })
 export class MasterDataModule {}

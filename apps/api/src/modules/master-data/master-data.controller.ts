@@ -40,6 +40,12 @@ import {
   MajorAliasesService,
 } from './mappings.service';
 import { SubjectsService } from './subjects.service';
+import {
+  CreateTermDto,
+  SetCurrentTermDto,
+  UpdateTermDto,
+} from './dto/term.dto';
+import { TermsService } from './terms.service';
 
 const canRead = (ability: AppAbility) => ability.can('read', 'MasterData');
 const canManage = (ability: AppAbility) => ability.can('update', 'MasterData');
@@ -288,5 +294,59 @@ export class MajorAliasesController {
   @CheckPolicies(canManage)
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(id);
+  }
+}
+
+@ApiTags('master-data')
+@Controller('terms')
+export class TermsController {
+  constructor(private readonly service: TermsService) {}
+
+  @Get()
+  @CheckPolicies(canRead)
+  findAll() {
+    return this.service.findAll();
+  }
+
+  @Get('current')
+  @CheckPolicies(canRead)
+  getCurrent() {
+    return this.service.getCurrentTerm();
+  }
+
+  @Get(':id')
+  @CheckPolicies(canRead)
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.findOne(id);
+  }
+
+  @Post()
+  @CheckPolicies(canManage)
+  create(@Body() dto: CreateTermDto) {
+    return this.service.create(dto);
+  }
+
+  @Patch(':id')
+  @CheckPolicies(canManage)
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTermDto,
+  ) {
+    return this.service.update(id, dto);
+  }
+
+  @Post(':id/set-current')
+  @CheckPolicies(canManage)
+  setCurrent(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetCurrentTermDto,
+  ) {
+    return this.service.setCurrent(id, dto.isCurrent);
+  }
+
+  @Delete(':id')
+  @CheckPolicies(canManage)
+  remove(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.delete(id);
   }
 }
