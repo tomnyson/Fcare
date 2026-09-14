@@ -5,7 +5,7 @@
  * LƯU Ý BẢO MẬT: tuyệt đối không seed CCCD/SĐT/email/địa chỉ — các trường này
  * không tồn tại trong schema theo tài liệu nghiệp vụ.
  */
-import { AlertStatus, CareChannel, EnrollmentResult, EvaluationCriterion, PrismaClient, StudentStatus } from '@prisma/client';
+import { AlertStatus, CareChannel, EnrollmentResult, EvaluationCriterion, PrismaClient, StudentStatus, TermSeason } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import {
   CLASS_MAJOR_RULES,
@@ -370,8 +370,75 @@ async function main(): Promise<void> {
     });
   }
 
+  // ===== Danh mục Học kỳ =====
+  const defaultTerms = [
+    {
+      code: 'SP25',
+      name: 'Spring 2025',
+      season: TermSeason.SPRING,
+      year: 2025,
+      startDate: new Date('2025-01-01T00:00:00.000Z'),
+      endDate: new Date('2025-04-30T23:59:59.999Z'),
+      isCurrentOverride: false,
+    },
+    {
+      code: 'SU25',
+      name: 'Summer 2025',
+      season: TermSeason.SUMMER,
+      year: 2025,
+      startDate: new Date('2025-05-01T00:00:00.000Z'),
+      endDate: new Date('2025-08-31T23:59:59.999Z'),
+      isCurrentOverride: true,
+    },
+    {
+      code: 'FA25',
+      name: 'Fall 2025',
+      season: TermSeason.FALL,
+      year: 2025,
+      startDate: new Date('2025-09-01T00:00:00.000Z'),
+      endDate: new Date('2025-12-31T23:59:59.999Z'),
+      isCurrentOverride: false,
+    },
+    {
+      code: 'SP26',
+      name: 'Spring 2026',
+      season: TermSeason.SPRING,
+      year: 2026,
+      startDate: new Date('2026-01-01T00:00:00.000Z'),
+      endDate: new Date('2026-04-30T23:59:59.999Z'),
+      isCurrentOverride: false,
+    },
+    {
+      code: 'SU26',
+      name: 'Summer 2026',
+      season: TermSeason.SUMMER,
+      year: 2026,
+      startDate: new Date('2026-05-01T00:00:00.000Z'),
+      endDate: new Date('2026-08-31T23:59:59.999Z'),
+      isCurrentOverride: false,
+    },
+    {
+      code: 'FA26',
+      name: 'Fall 2026',
+      season: TermSeason.FALL,
+      year: 2026,
+      startDate: new Date('2026-09-01T00:00:00.000Z'),
+      endDate: new Date('2026-12-31T23:59:59.999Z'),
+      isCurrentOverride: false,
+    },
+  ];
+
+  for (const term of defaultTerms) {
+    await prisma.term.upsert({
+      where: { code: term.code },
+      update: {},
+      create: term,
+    });
+  }
+
   const counts = {
     roles: await prisma.role.count(),
+    terms: await prisma.term.count(),
     departments: await prisma.department.count(),
     staff: await prisma.staff.count(),
     students: await prisma.student.count(),

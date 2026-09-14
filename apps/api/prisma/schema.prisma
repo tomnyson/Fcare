@@ -643,3 +643,27 @@ model DiscussionRead {
   @@id([studentId, staffId])
   @@map("discussion_reads")
 }
+
+// ===== Danh mục Học kỳ =====
+
+enum TermSeason {
+  SPRING
+  SUMMER
+  FALL
+}
+
+model Term {
+  id                String      @id @default(uuid())
+  code              String      @unique // vd: "SP25", "SU25", "FA25"
+  name              String      // vd: "Spring 2025"
+  season            TermSeason
+  year              Int         // vd: 2025
+  startDate         DateTime
+  endDate           DateTime
+  isCurrentOverride Boolean     @default(false)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([startDate, endDate])
+  @@map("terms")
+}
