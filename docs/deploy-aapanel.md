@@ -128,10 +128,36 @@ location / {
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection 'upgrade';
+    # KHÔNG để Nginx cache HTML của Next.js. Trang tĩnh (/login, /) trả
+    # `Cache-Control: s-maxage=31536000` + `Vary: Accept-Encoding`; bật cache
+    # (nút "Cache" trong Reverse proxy của aaPanel, hoặc proxy_cache cache_one)
+    # là Nginx giữ HTML của build CŨ theo từng biến thể Accept-Encoding suốt
+    # 1 năm → sau mỗi lần deploy, Chrome vẫn nhận trang cũ trỏ tới chunk JS đã
+    # không còn (Google login "lúc có lúc không" chính là lỗi này).
+    proxy_cache off;
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
 }
 ```
 
 Lưu → aaPanel tự `nginx -t && reload`.
+
+**Nếu site được tạo bằng Reverse proxy của aaPanel:** vào Website → site →
+Reverse proxy → tắt **Cache**. Nếu trước đó đã bật, xoá cache đang giữ rồi
+reload, nếu không HTML cũ vẫn được trả tới khi hết hạn:
+
+```bash
+nginx -T 2>/dev/null | grep -n 'proxy_cache_path\|proxy_cache '   # tìm thư mục cache
+rm -rf /www/server/nginx/proxy_cache_dir/*                          # đường dẫn mặc định của aaPanel
+nginx -s reload
+```
+
+Kiểm tra sau khi sửa — hai lệnh phải trả cùng một `etag`:
+
+```bash
+curl -sI https://<domain>/login | grep -i etag
+curl -sI -H 'Accept-Encoding: gzip, deflate, br, zstd' https://<domain>/login | grep -i etag
+```
 
 Cân nhắc chặn `/api/docs` (Swagger) khỏi Internet nếu không cần cho nghiệm thu:
 
@@ -264,15 +290,25 @@ BatchMode=yes`. Trong lúc còn dùng mật khẩu: đặt mật khẩu dài, b�
 không whitelist IP được. Bật **Required reviewers** cho environment `production`
 nếu muốn duyệt tay trước khi lên bản chính thức.
 
-**Backup**: aaPanel → Cron → Shell Script chạy hằng ngày, giữ 14 bản và đẩy về
-remote storage:
+**Backup**: `infra/docker/backup.sh` dump Postgres (`-Fc`, khôi phục bằng
+`pg_restore` như mục 5), đọc user/db từ `.env.production`, ghi file tạm rồi mới
+đổi tên, `chmod 600`, giữ 14 ngày. aaPanel → Cron → **Shell Script**, chạy hằng
+ngày lúc 02:00 (trước giờ deploy), nội dung:
 
 ```bash
-cd /www/wwwroot/fcare/infra/docker
-docker compose --env-file .env.production -f docker-compose.prod.yml exec -T postgres \
-  pg_dump -U fcare -Fc fcare > /www/backup/fcare-$(date +\%F).dump
-find /www/backup -name 'fcare-*.dump' -mtime +14 -delete
+cd /www/wwwroot/fcare/infra/docker && ./backup.sh
 ```
+
+Chạy tay lần đầu để chắc cron có quyền docker và thư mục ghi được:
+
+```bash
+cd /www/wwwroot/fcare/infra/docker && ./backup.sh && ls -l /www/backup
+```
+
+Đổi thư mục hoặc số ngày giữ: `./backup.sh --dir=/mnt/backup --keep-days=30`
+(hoặc đặt `FCARE_BACKUP_DIR`, `FCARE_BACKUP_KEEP_DAYS` trong cron). Bản dump chứa
+dữ liệu sinh viên thật — đẩy về remote storage bằng cron riêng, đừng để duy nhất
+trên máy chủ.
 
 **Log & giám sát**
 
