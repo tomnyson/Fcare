@@ -1,7 +1,7 @@
 # --- Build stage ---
 # openssl là bắt buộc: query engine của Prisma 6 link động vào libssl, thiếu nó
 # thì container start được nhưng mọi truy vấn đều chết.
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 RUN apk add --no-cache openssl
 RUN corepack enable
 WORKDIR /repo
@@ -34,7 +34,7 @@ WORKDIR /repo/apps/api
 CMD ["pnpm", "exec", "prisma", "migrate", "deploy"]
 
 # --- Runtime stage ---
-FROM node:20-alpine AS runtime
+FROM node:22-alpine AS runtime
 RUN apk add --no-cache openssl postgresql-client
 ENV NODE_ENV=production
 WORKDIR /app

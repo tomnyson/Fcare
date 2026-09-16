@@ -19,7 +19,7 @@ docs/             # Tài liệu yêu cầu nghiệp vụ
 
 ## Yêu cầu
 
-- Node >= 20, pnpm >= 10
+- Node >= 22 (openai SDK v7 yêu cầu), pnpm >= 10
 - Docker (cho Postgres/Redis khi chạy local)
 
 ## Chạy dev
