@@ -71,6 +71,26 @@ export class StudentsExcelService {
     const warnings = stripForbiddenData(workbook);
     const worksheet = workbook.worksheets[0];
 
+    // Đọc header row để map đúng cột, bất kể file có thêm cột "Ngành"/"Bộ môn"
+    // hay thứ tự cột khác. So sánh chuẩn hoá: lowercase + gộp khoảng trắng.
+    const colIndex = new Map<string, number>();
+    worksheet.getRow(1).eachCell({ includeEmpty: false }, (cell, col) => {
+      const normalized = cell.text.trim().replace(/\s+/g, ' ').toLowerCase();
+      if (!colIndex.has(normalized)) {
+        colIndex.set(normalized, col);
+      }
+    });
+
+    const COL_MSSV = colIndex.get('mssv') ?? 1;
+    const COL_FULLNAME =
+      colIndex.get('họ tên') ?? colIndex.get('họ và tên') ?? 2;
+    const COL_DOB = colIndex.get('ngày sinh') ?? 3;
+    const COL_GENDER = colIndex.get('giới tính') ?? 4;
+    const COL_MAJOR_CODE = colIndex.get('mã ngành') ?? 5;
+    const COL_COHORT = colIndex.get('khóa') ?? colIndex.get('khoá') ?? 6;
+    const COL_CLASS = colIndex.get('lớp') ?? 7;
+    const COL_STATUS = colIndex.get('trạng thái') ?? 8;
+
     const majors = await this.prisma.major.findMany();
     const majorByCode = new Map(
       majors.map((major) => [major.code.toLowerCase(), major]),
@@ -82,18 +102,18 @@ export class StudentsExcelService {
 
     for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
       const row = worksheet.getRow(rowNumber);
-      const studentCode = cellText(row, 1);
+      const studentCode = cellText(row, COL_MSSV);
       if (studentCode === '') {
         continue; // bỏ qua dòng trống
       }
 
-      const fullName = cellText(row, 2);
-      const dateOfBirthText = cellText(row, 3);
-      const gender = cellText(row, 4);
-      const majorCode = cellText(row, 5);
-      const cohort = cellText(row, 6);
-      const classCode = cellText(row, 7);
-      const statusText = cellText(row, 8);
+      const fullName = cellText(row, COL_FULLNAME);
+      const dateOfBirthText = cellText(row, COL_DOB);
+      const gender = cellText(row, COL_GENDER);
+      const majorCode = cellText(row, COL_MAJOR_CODE);
+      const cohort = cellText(row, COL_COHORT);
+      const classCode = cellText(row, COL_CLASS);
+      const statusText = cellText(row, COL_STATUS);
 
       if (
         fullName === '' ||
