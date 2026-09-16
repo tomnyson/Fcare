@@ -3,8 +3,10 @@ import { NotificationDispatchService } from '../alerts/notification-dispatch.ser
 import { NotificationEventsService } from '../alerts/notification-events.service';
 import { NotificationsController } from '../alerts/notifications.controller';
 import { NotificationsService } from '../alerts/notifications.service';
+import { EmailModule } from '../email/email.module';
 
 @Module({
+  imports: [EmailModule],
   controllers: [NotificationsController],
   providers: [
     NotificationDispatchService,

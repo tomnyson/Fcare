@@ -23,6 +23,7 @@ describe('parseAlertFilters', () => {
           majorId: 'mj-1',
           lecturerId: 'gv-1',
           sectionId: 'cs-1',
+          source: 'AUTO_ATTENDANCE',
         }),
       ),
     ).toEqual({
@@ -34,6 +35,7 @@ describe('parseAlertFilters', () => {
       majorId: 'mj-1',
       lecturerId: 'gv-1',
       sectionId: 'cs-1',
+      source: 'AUTO_ATTENDANCE',
     });
   });
 
@@ -47,6 +49,7 @@ describe('parseAlertFilters', () => {
       majorId: '',
       lecturerId: '',
       sectionId: '',
+      source: '',
     });
   });
 });
@@ -62,6 +65,22 @@ describe('buildAlertListQuery', () => {
     expect(query.get('sectionId')).toBe('cs-1');
     expect(query.has('status')).toBe(false);
     expect(query.has('term')).toBe(false);
+    expect(query.has('source')).toBe(false);
+  });
+
+  it('gửi nguồn cảnh báo để lọc riêng cảnh báo điểm danh tự động', () => {
+    const query = buildAlertListQuery(
+      parseAlertFilters(params({ source: 'AUTO_ATTENDANCE' })),
+      50,
+    );
+    expect(query.get('source')).toBe('AUTO_ATTENDANCE');
+  });
+
+  it('chỉ gửi page khi > 1 — trang đầu giữ URL API gọn như trước', () => {
+    const filters = parseAlertFilters(params({}));
+    expect(buildAlertListQuery(filters, 20).has('page')).toBe(false);
+    expect(buildAlertListQuery(filters, 20, 1).has('page')).toBe(false);
+    expect(buildAlertListQuery(filters, 20, 3).get('page')).toBe('3');
   });
 
   it('cắt khoảng trắng của ô tìm kiếm', () => {
@@ -81,6 +100,7 @@ describe('activeAlertFilterCount', () => {
         parseAlertFilters(params({ level: '4', term: 'SU25', search: '  ' })),
       ),
     ).toBe(2);
+    expect(activeAlertFilterCount(parseAlertFilters(params({ source: 'MANUAL' })))).toBe(1);
   });
 });
 
@@ -94,6 +114,7 @@ describe('clearAlertFiltersPatch', () => {
       'majorId',
       'search',
       'sectionId',
+      'source',
       'status',
       'term',
     ]);

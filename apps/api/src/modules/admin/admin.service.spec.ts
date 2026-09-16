@@ -61,6 +61,85 @@ describe('AdminService — danh sách nhân viên trả kèm loại GV', () => {
   });
 });
 
+describe('AdminService.bulkAssignEmails', () => {
+  it('cập nhật email công vụ và ghi audit', async () => {
+    const update = jest.fn().mockResolvedValue({ id: 'staff-1' });
+    const findMany = jest
+      .fn()
+      .mockResolvedValue([{ id: 'staff-1', staffCode: 'GV001' }]);
+    const prisma = {
+      staff: { findMany, update },
+      $transaction: jest.fn((input: unknown) =>
+        typeof input === 'function'
+          ? (input as any)(prisma)
+          : Promise.all(input as Promise<unknown>[]),
+      ),
+    } as unknown as PrismaService;
+    const service = new AdminService(prisma, audit);
+    await expect(
+      service.bulkAssignEmails('admin-1', {
+        mappings: [{ staffCode: 'GV001', email: 'gv001@fpt.edu.vn' }],
+      }),
+    ).resolves.toEqual({
+      updated: 1,
+      newlyAssigned: 1,
+      overridden: 0,
+      skipped: 0,
+    });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'staff-1' },
+      data: { email: 'gv001@fpt.edu.vn' },
+    });
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'ADMIN_BULK_ASSIGN_STAFF_EMAIL' }),
+    );
+  });
+
+  it('từ chối email ngoài miền FPT', async () => {
+    const prisma = {
+      staff: { findMany: jest.fn() },
+    } as unknown as PrismaService;
+    await expect(
+      new AdminService(prisma, audit).bulkAssignEmails('admin-1', {
+        mappings: [{ staffCode: 'GV001', email: 'outside@example.com' }],
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('khớp mã nhân viên không phân biệt hoa thường và chuẩn hóa email về chữ thường', async () => {
+    const update = jest.fn().mockResolvedValue({ id: 'staff-1' });
+    const findMany = jest
+      .fn()
+      .mockResolvedValue([{ id: 'staff-1', staffCode: 'VANDTB2' }]);
+    const prisma = {
+      staff: { findMany, update },
+      $transaction: jest.fn((input: unknown) =>
+        typeof input === 'function'
+          ? (input as any)(prisma)
+          : Promise.all(input as Promise<unknown>[]),
+      ),
+    } as unknown as PrismaService;
+    const service = new AdminService(prisma, audit);
+
+    // Input có mã chữ thường vandtb2, email có hoa Dieuvtc@FE.EDU.VN
+    await expect(
+      service.bulkAssignEmails('admin-1', {
+        mappings: [{ staffCode: 'vandtb2', email: 'VanDTB2@FE.EDU.VN' }],
+      }),
+    ).resolves.toEqual({
+      updated: 1,
+      newlyAssigned: 1,
+      overridden: 0,
+      skipped: 0,
+    });
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'staff-1' },
+      data: { email: 'vandtb2@fe.edu.vn' },
+    });
+  });
+});
+
 describe('AdminService.update — gán vai trò', () => {
   beforeEach(() => jest.clearAllMocks());
 
@@ -135,5 +214,166 @@ describe('AdminService.update — gán vai trò', () => {
     });
 
     expect(staffUpdate).toHaveBeenCalled();
+  });
+});
+
+describe('AdminService — xuất và tạo file Excel template email', () => {
+  it('tạo template buffer với cấu trúc manv và email', async () => {
+    const prisma = {} as unknown as PrismaService;
+    const service = new AdminService(prisma, audit);
+    const buffer = await service.getEmailTemplateBuffer();
+    expect(buffer).toBeInstanceOf(Buffer);
+    expect(buffer.length).toBeGreaterThan(0);
+  });
+
+  it('xuất danh sách email nhân viên ra buffer Excel', async () => {
+    const prisma = {
+      staff: {
+        findMany: jest.fn().mockResolvedValue([
+          { staffCode: 'VANDTB2', email: 'vandtb2@fe.edu.vn' },
+          { staffCode: 'HIEUNT249', email: 'hieunt249@fe.edu.vn' },
+        ]),
+      },
+    } as unknown as PrismaService;
+    const service = new AdminService(prisma, audit);
+    const buffer = await service.exportEmailsBuffer();
+    expect(buffer).toBeInstanceOf(Buffer);
+    expect(buffer.length).toBeGreaterThan(0);
+  });
+});
+
+describe('AdminService — bulkAssignEmails và overrideExisting', () => {
+  it('cho phép ghi đè email nếu overrideExisting = true', async () => {
+    const staffUpdate = jest.fn().mockResolvedValue({});
+    const staffUpdateMany = jest.fn().mockResolvedValue({ count: 0 });
+    const deleteOAuth = jest.fn().mockResolvedValue({ count: 1 });
+    const prisma = {
+      staff: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { id: 's1', staffCode: 'VANDTB2', email: 'old@fe.edu.vn' },
+            { id: 's2', staffCode: 'HIEUNT249', email: null },
+          ])
+          .mockResolvedValueOnce([]), // otherStaffWithSameEmail
+        update: staffUpdate,
+        updateMany: staffUpdateMany,
+      },
+      staffOAuthIdentity: {
+        deleteMany: deleteOAuth,
+      },
+      $transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
+        cb(prisma),
+      ),
+    } as unknown as PrismaService;
+
+    const service = new AdminService(prisma, audit);
+    const result = await service.bulkAssignEmails('admin-1', {
+      mappings: [
+        { staffCode: 'VANDTB2', email: 'vandtb2@fe.edu.vn' },
+        { staffCode: 'HIEUNT249', email: 'hieunt249@fe.edu.vn' },
+      ],
+      overrideExisting: true,
+    });
+
+    expect(result).toEqual({
+      updated: 2,
+      newlyAssigned: 1,
+      overridden: 1,
+      skipped: 0,
+    });
+    expect(staffUpdate).toHaveBeenCalledTimes(2);
+    // Khi email cũ đổi sang email mới, OAuth identity cũ được xóa
+    expect(deleteOAuth).toHaveBeenCalledWith({
+      where: { staffId: 's1', provider: 'google' },
+    });
+  });
+
+  it('bỏ qua nhân viên đã có email nếu overrideExisting = false', async () => {
+    const staffUpdate = jest.fn().mockResolvedValue({});
+    const staffUpdateMany = jest.fn().mockResolvedValue({ count: 0 });
+    const deleteOAuth = jest.fn().mockResolvedValue({ count: 0 });
+    const prisma = {
+      staff: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { id: 's1', staffCode: 'VANDTB2', email: 'old@fe.edu.vn' },
+            { id: 's2', staffCode: 'HIEUNT249', email: null },
+          ])
+          .mockResolvedValueOnce([]),
+        update: staffUpdate,
+        updateMany: staffUpdateMany,
+      },
+      staffOAuthIdentity: {
+        deleteMany: deleteOAuth,
+      },
+      $transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
+        cb(prisma),
+      ),
+    } as unknown as PrismaService;
+
+    const service = new AdminService(prisma, audit);
+    const result = await service.bulkAssignEmails('admin-1', {
+      mappings: [
+        { staffCode: 'VANDTB2', email: 'vandtb2@fe.edu.vn' },
+        { staffCode: 'HIEUNT249', email: 'hieunt249@fe.edu.vn' },
+      ],
+      overrideExisting: false,
+    });
+
+    expect(result).toEqual({
+      updated: 1,
+      newlyAssigned: 1,
+      overridden: 0,
+      skipped: 1,
+    });
+    // Chỉ cập nhật s2 (chưa có email)
+    expect(staffUpdate).toHaveBeenCalledTimes(1);
+    expect(staffUpdate).toHaveBeenCalledWith({
+      where: { id: 's2' },
+      data: { email: 'hieunt249@fe.edu.vn' },
+    });
+    expect(deleteOAuth).not.toHaveBeenCalled();
+  });
+
+  it('ghi đè toàn bộ nhân viên đã có email khi overrideExisting = true (re-import)', async () => {
+    const staffUpdate = jest.fn().mockResolvedValue({});
+    const prisma = {
+      staff: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([
+            { id: 's1', staffCode: 'VANDTB2', email: 'vandtb2@fe.edu.vn' },
+            { id: 's2', staffCode: 'HIEUNT249', email: 'hieunt249@fe.edu.vn' },
+          ])
+          .mockResolvedValueOnce([]),
+        update: staffUpdate,
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      staffOAuthIdentity: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      $transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
+        cb(prisma),
+      ),
+    } as unknown as PrismaService;
+
+    const service = new AdminService(prisma, audit);
+    const result = await service.bulkAssignEmails('admin-1', {
+      mappings: [
+        { staffCode: 'VANDTB2', email: 'vandtb2@fe.edu.vn' },
+        { staffCode: 'HIEUNT249', email: 'hieunt249@fe.edu.vn' },
+      ],
+      overrideExisting: true,
+    });
+
+    expect(result).toEqual({
+      updated: 2,
+      newlyAssigned: 0,
+      overridden: 2,
+      skipped: 0,
+    });
+    expect(staffUpdate).toHaveBeenCalledTimes(2);
   });
 });

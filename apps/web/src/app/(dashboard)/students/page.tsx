@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { DataTable, Td } from '../../../components/ui/data-table';
+import { Pagination } from '../../../components/ui/pagination';
 import {
   FilterBar,
   FilterChip,
@@ -20,13 +21,15 @@ import { PageHeader } from '../../../components/ui/page-header';
 import { ApiError, apiFetch } from '../../../lib/api';
 import { useMe } from '../../../lib/hooks';
 import { formatDate, STUDENT_STATUS_LABELS, STUDENT_STATUS_TONES } from '../../../lib/labels';
+import { QuickEvaluationModal } from '../../../components/students/quick-evaluation-modal';
 import {
   buildStudentListQuery,
   clearFiltersPatch,
   parseStudentFilters,
 } from '../../../lib/student-filters';
-import type { Paginated, Student, StudentFilterOptions } from '../../../lib/types';
+import type { Evaluation, Paginated, Student, StudentFilterOptions } from '../../../lib/types';
 import { useCurrentTerm } from '../../../lib/use-current-term';
+import { pageCount, parsePageParam } from '../../../lib/pagination';
 
 const PAGE_SIZE = 20;
 
@@ -37,6 +40,7 @@ const FILTER_OPTIONS_STALE_MS = 5 * 60_000;
 // Gán ngành hàng loạt cần `update Student` — ADMIN, HEAD_OF_DEPT,
 // TRAINING_OFFICER (xem apps/api/src/casl/ability.factory.ts).
 const STUDENT_WRITE_ROLES = ['ADMIN', 'HEAD_OF_DEPT', 'TRAINING_OFFICER'];
+const EVALUATION_ROLES = ['LECTURER', 'HEAD_OF_DEPT', 'ADMIN'];
 
 function StudentsPageContent() {
   const router = useRouter();
@@ -47,16 +51,29 @@ function StudentsPageContent() {
   const { data: currentTerm } = useCurrentTerm();
   const hasInitializedTermRef = useRef(false);
   const canAssignMajor = me?.user.roles.some((role) => STUDENT_WRITE_ROLES.includes(role)) ?? false;
+  const canEvaluate = me?.user.roles.some((role) => EVALUATION_ROLES.includes(role)) ?? false;
 
   // URL là nguồn sự thật của bộ lọc: gửi link cho đồng nghiệp là gửi đúng bộ lọc.
   const filters = parseStudentFilters(params);
   const submittedSearch = filters.search;
   const missingMajor = filters.missingMajor;
-  const page = Math.max(1, Number(params.get('page') ?? '1') || 1);
+  const page = parsePageParam(params.get('page'));
 
   const [search, setSearch] = useState(submittedSearch);
   const [selected, setSelected] = useState<readonly string[]>([]);
   const [majorId, setMajorId] = useState('');
+  const [evaluatingStudent, setEvaluatingStudent] = useState<Student | null>(null);
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
+
+  // Khi đang xem một lớp học phần cụ thể, tải danh sách nhận xét của lớp để nhận diện sinh viên đã có nhận xét
+  const sectionEvaluations = useQuery({
+    queryKey: ['evaluations', { classSectionId: filters.sectionId, term: filters.term }],
+    queryFn: () =>
+      apiFetch<Evaluation[]>(
+        `/evaluations?classSectionId=${filters.sectionId}${filters.term ? `&term=${filters.term}` : ''}`,
+      ),
+    enabled: Boolean(filters.sectionId) && canEvaluate,
+  });
 
   useEffect(() => {
     if (!hasInitializedTermRef.current && !params.has('term') && currentTerm?.code) {
@@ -169,7 +186,7 @@ function StudentsPageContent() {
 
   const items = data?.items ?? [];
   const total = data?.meta.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = pageCount(total, PAGE_SIZE);
   const showSelectColumn = missingMajor && canAssignMajor;
   const allSelected = items.length > 0 && selected.length === items.length;
 
@@ -433,6 +450,7 @@ function StudentsPageContent() {
           'Ngày sinh',
           'Trạng thái',
           'Cảnh báo mở',
+          ...(canEvaluate ? ['Thao tác'] : []),
         ]}
         isLoading={isLoading}
         isRefreshing={isFetching}
@@ -473,11 +491,42 @@ function StudentsPageContent() {
             </Td>
             <Td>
               {(student._count?.alerts ?? 0) > 0 ? (
-                <Badge tone="danger">{student._count?.alerts}</Badge>
+                <Badge tone="danger" pulse={true}>
+                  {student._count?.alerts}
+                </Badge>
               ) : (
                 <span className="text-muted">0</span>
               )}
             </Td>
+            {canEvaluate ? (
+              <Td>
+                {(() => {
+                  const existingEval = (sectionEvaluations.data ?? []).find(
+                    (ev) =>
+                      (ev.studentId === student.id || ev.student?.id === student.id) &&
+                      (me?.user.roles.includes('ADMIN') ||
+                        me?.user.roles.includes('HEAD_OF_DEPT') ||
+                        ev.lecturer?.id === me?.user.id),
+                  );
+
+                  return (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className={`h-8 px-2.5 text-xs font-semibold transition-colors ${
+                        existingEval
+                          ? 'border border-emerald-500/30 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                          : 'border border-fpt-orange/40 bg-fpt-orange-50 text-fpt-orange-700 hover:bg-fpt-orange-100'
+                      }`}
+                      onClick={() => setEvaluatingStudent(student)}
+                      title={existingEval ? 'Chỉnh sửa nhận xét' : 'Thêm nhận xét cho sinh viên'}
+                    >
+                      {existingEval ? '✓ Sửa nhận xét' : '+ Nhận xét'}
+                    </Button>
+                  );
+                })()}
+              </Td>
+            ) : null}
           </tr>
         ))}
       </DataTable>
@@ -493,27 +542,32 @@ function StudentsPageContent() {
         </Button>
       ) : null}
 
-      <nav aria-label="Phân trang" className="mt-4 flex items-center justify-between text-sm">
-        <p className="text-muted">{isLoading ? 'Đang tải…' : `Trang ${page}/${totalPages}`}</p>
-        <div className="flex gap-2">
-          <Button
-            variant="ghost"
-            type="button"
-            disabled={isLoading || page <= 1}
-            onClick={() => setFilters({ page: String(page - 1) })}
-          >
-            ← Trước
-          </Button>
-          <Button
-            variant="ghost"
-            type="button"
-            disabled={isLoading || page >= totalPages}
-            onClick={() => setFilters({ page: String(page + 1) })}
-          >
-            Sau →
-          </Button>
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        limit={PAGE_SIZE}
+        isLoading={isLoading}
+        onPageChange={(next) => setFilters({ page: String(next) })}
+      />
+
+      {savedNotice ? (
+        <div className="fixed bottom-6 right-6 z-50 rounded-md bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg transition-opacity animate-in fade-in duration-300">
+          {savedNotice}
         </div>
-      </nav>
+      ) : null}
+
+      <QuickEvaluationModal
+        student={evaluatingStudent}
+        term={filters.term || currentTerm?.code || ''}
+        sectionId={filters.sectionId || undefined}
+        open={Boolean(evaluatingStudent)}
+        onClose={() => setEvaluatingStudent(null)}
+        onSaved={(std) => {
+          setSavedNotice(`Đã lưu nhận xét cho sinh viên ${std.fullName} (${std.studentCode})`);
+          setTimeout(() => setSavedNotice(null), 4000);
+        }}
+      />
     </>
   );
 }

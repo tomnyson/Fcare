@@ -16,6 +16,7 @@ import type { AuthUser } from '../../common/types/auth-user';
 import { ACCESS_TOKEN_TTL_MS, AuthService } from './auth.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
+import { GoogleLinkDto, GoogleTokenDto } from './dto/google-link.dto';
 import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from './jwt.strategy';
 
 const REFRESH_COOKIE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -39,6 +40,53 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     const session = await this.authService.login(dto.staffCode, dto.password);
+    this.setAuthCookies(response, session.accessToken, session.refreshToken);
+    return {
+      user: session.user,
+      requiresConsent: true,
+      mustChangePassword: session.user.mustChangePassword,
+    };
+  }
+
+  @Public()
+  @Post('google/verify')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Xác thực Google ID token và đăng nhập hoặc tạo yêu cầu liên kết',
+  })
+  async googleVerify(
+    @Body() dto: GoogleTokenDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.authService.googleCallback(dto.idToken);
+    if (result.session) {
+      this.setAuthCookies(
+        response,
+        result.session.accessToken,
+        result.session.refreshToken,
+      );
+      return {
+        user: result.session.user,
+        requiresConsent: true,
+        mustChangePassword: result.session.user.mustChangePassword,
+      };
+    }
+    return { requiresLinking: true, challenge: result.challenge };
+  }
+
+  @Public()
+  @Post('google/link')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Liên kết Google với tài khoản nhân viên hiện có' })
+  async googleLink(
+    @Body() dto: GoogleLinkDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const session = await this.authService.linkGoogle(
+      dto.challenge,
+      dto.staffCode,
+      dto.password,
+    );
     this.setAuthCookies(response, session.accessToken, session.refreshToken);
     return {
       user: session.user,

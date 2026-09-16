@@ -432,4 +432,39 @@ describe('RosterCommitter', () => {
     expect(tx.enrollment.create).toHaveBeenCalledTimes(2);
     expect(result).toEqual({ created: 2, updated: 0, skipped: 0 });
   });
+
+  it('tự động tạo môn học và lớp học phần nếu chưa có trong hệ thống', async () => {
+    const tx = txMock();
+    tx.subject.findMany.mockResolvedValue([]);
+    tx.classSection.findMany.mockResolvedValue([]);
+    (tx as any).department = {
+      findMany: jest
+        .fn()
+        .mockResolvedValue([{ id: 'dept-cntt', code: 'CNTT' }]),
+    };
+    (tx as any).subject.create = jest.fn().mockResolvedValue({
+      id: 'sub-created',
+      code: 'SOA210',
+      departmentId: 'dept-udpm',
+    });
+    (tx as any).classSection.create = jest.fn().mockResolvedValue({
+      id: 'sec-created',
+      code: 'SA21301-SOA210',
+      subjectId: 'sub-created',
+      subject: { id: 'sub-created', departmentId: 'dept-udpm' },
+    });
+
+    const result = await committer.commit(
+      rowsOf({
+        subjectCode: 'SOA210',
+        sectionCode: 'SA21301-SOA210',
+      }),
+      tx as unknown as PrismaTx,
+      ctx,
+    );
+
+    expect(result).toEqual({ created: 1, updated: 0, skipped: 0 });
+    expect((tx as any).subject.create).toHaveBeenCalled();
+    expect((tx as any).classSection.create).toHaveBeenCalled();
+  });
 });

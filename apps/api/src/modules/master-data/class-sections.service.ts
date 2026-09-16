@@ -7,7 +7,7 @@ import {
 import { AlertStatus } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
 import type { AuthUser } from '../../common/types/auth-user';
-import { studentScope } from '../../common/utils/dept-scope';
+import { sectionScope, studentScope } from '../../common/utils/dept-scope';
 import { isPrismaError } from '../../common/utils/prisma-error';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -24,13 +24,42 @@ export class ClassSectionsService {
     private readonly audit: AuditService,
   ) {}
 
-  findAll(query: ListClassSectionsQuery) {
-    return this.prisma.classSection.findMany({
-      where: {
-        term: query.term,
-        // unassigned thắng lecturerId: hai bộ lọc loại trừ nhau về nghĩa.
-        lecturerId: query.unassigned ? null : query.lecturerId,
-      },
+  async findAll(
+    userOrQuery?: AuthUser | ListClassSectionsQuery,
+    maybeQuery?: ListClassSectionsQuery,
+  ) {
+    const user =
+      userOrQuery && 'roles' in userOrQuery ? userOrQuery : undefined;
+    const query =
+      (user ? maybeQuery : (userOrQuery as ListClassSectionsQuery)) ?? {};
+
+    const scope = user ? sectionScope(user) : {};
+
+    const where = user
+      ? {
+          AND: [
+            scope,
+            {
+              ...(query.term ? { term: query.term } : {}),
+              ...(query.unassigned
+                ? { lecturerId: null }
+                : query.lecturerId
+                  ? { lecturerId: query.lecturerId }
+                  : {}),
+            },
+          ],
+        }
+      : {
+          ...(query.term ? { term: query.term } : {}),
+          ...(query.unassigned
+            ? { lecturerId: null }
+            : query.lecturerId
+              ? { lecturerId: query.lecturerId }
+              : {}),
+        };
+
+    const sections = await this.prisma.classSection.findMany({
+      where,
       orderBy: [{ term: 'desc' }, { code: 'asc' }],
       include: {
         subject: true,
@@ -38,6 +67,38 @@ export class ClassSectionsService {
         _count: { select: { enrollments: true } },
       },
     });
+
+    if (sections.length === 0) {
+      return [];
+    }
+
+    const sectionIds = sections.map((s) => s.id);
+    const enrollmentsWithAlerts = await this.prisma.enrollment.findMany({
+      where: {
+        classSectionId: { in: sectionIds },
+        student: {
+          alerts: {
+            some: {
+              status: { in: [AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED] },
+            },
+          },
+        },
+      },
+      select: { classSectionId: true },
+    });
+
+    const alertCountBySectionId = new Map<string, number>();
+    for (const e of enrollmentsWithAlerts) {
+      alertCountBySectionId.set(
+        e.classSectionId,
+        (alertCountBySectionId.get(e.classSectionId) ?? 0) + 1,
+      );
+    }
+
+    return sections.map((section) => ({
+      ...section,
+      openAlertCount: alertCountBySectionId.get(section.id) ?? 0,
+    }));
   }
 
   async create(dto: CreateClassSectionDto) {

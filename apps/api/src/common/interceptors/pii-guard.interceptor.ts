@@ -13,11 +13,16 @@ import { map } from 'rxjs/operators';
  * kể cả khi dữ liệu lọt qua từ import hoặc code mới.
  */
 const BANNED_KEY_PATTERN =
-  /(cccd|cmnd|citizen|national[_-]?id|phone|mobile|email|address)/i;
+  /(cccd|cmnd|citizen|national[_-]?id|phone|mobile|address)/i;
 
-export function stripPii<T>(value: T): T {
+export function stripPii<T>(
+  value: T,
+  options: { allowStaffEmail?: boolean } = {},
+): T {
   if (Array.isArray(value)) {
-    return (value as unknown[]).map((item) => stripPii(item)) as unknown as T;
+    return (value as unknown[]).map((item) =>
+      stripPii(item, options),
+    ) as unknown as T;
   }
   if (
     value !== null &&
@@ -28,10 +33,13 @@ export function stripPii<T>(value: T): T {
     for (const [key, nested] of Object.entries(
       value as Record<string, unknown>,
     )) {
-      if (BANNED_KEY_PATTERN.test(key)) {
+      if (
+        BANNED_KEY_PATTERN.test(key) ||
+        (key === 'email' && !options.allowStaffEmail)
+      ) {
         continue;
       }
-      result[key] = stripPii(nested);
+      result[key] = stripPii(nested, options);
     }
     return result as T;
   }
@@ -40,10 +48,24 @@ export function stripPii<T>(value: T): T {
 
 @Injectable()
 export class PiiGuardInterceptor implements NestInterceptor {
-  intercept(
-    _context: ExecutionContext,
-    next: CallHandler,
-  ): Observable<unknown> {
-    return next.handle().pipe(map((data: unknown) => stripPii(data)));
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const request = context.switchToHttp().getRequest<{
+      route?: { path?: string };
+      baseUrl?: string;
+      path?: string;
+      originalUrl?: string;
+      url?: string;
+    }>();
+    const reqPath =
+      request.originalUrl ??
+      request.path ??
+      request.url ??
+      request.route?.path ??
+      '';
+    const allowStaffEmail =
+      reqPath.includes('/admin/staff') || reqPath.includes('/auth/me');
+    return next
+      .handle()
+      .pipe(map((data: unknown) => stripPii(data, { allowStaffEmail })));
   }
 }

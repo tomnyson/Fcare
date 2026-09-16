@@ -17,6 +17,7 @@ interface MockHandles {
   findMany: jest.Mock;
   findUnique: jest.Mock;
   enrollmentUpdate: jest.Mock;
+  enrollmentFindMany: jest.Mock;
   transaction: jest.Mock;
   alertGroupBy: jest.Mock;
 }
@@ -25,11 +26,12 @@ function makePrisma(): MockHandles {
   const findMany = jest.fn().mockResolvedValue([]);
   const findUnique = jest.fn();
   const enrollmentUpdate = jest.fn().mockResolvedValue({});
+  const enrollmentFindMany = jest.fn().mockResolvedValue([]);
   const transaction = jest.fn().mockResolvedValue([]);
   const alertGroupBy = jest.fn().mockResolvedValue([]);
   const prisma = {
     classSection: { findMany, findUnique },
-    enrollment: { update: enrollmentUpdate },
+    enrollment: { update: enrollmentUpdate, findMany: enrollmentFindMany },
     alert: { groupBy: alertGroupBy },
     $transaction: transaction,
   } as unknown as PrismaService;
@@ -38,6 +40,7 @@ function makePrisma(): MockHandles {
     findMany,
     findUnique,
     enrollmentUpdate,
+    enrollmentFindMany,
     transaction,
     alertGroupBy,
   };
@@ -407,5 +410,49 @@ describe('ClassSectionsService — bảng điểm lớp', () => {
         to: { totalScore: 8, result: EnrollmentResult.PASS },
       },
     ]);
+  });
+});
+
+describe('ClassSectionsService — phạm vi lớp học phần & cảnh báo', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('giảng viên chỉ thấy lớp học phần do chính mình dạy (RULE 2)', async () => {
+    const { prisma, findMany } = makePrisma();
+    const lecturerUser = {
+      id: 'gv-1',
+      roles: ['LECTURER'],
+      departmentId: 'dept-1',
+    } as AuthUser;
+    await new ClassSectionsService(prisma, audit).findAll(lecturerUser, {
+      term: 'SU25',
+    });
+    const [args] = findMany.mock.calls[0];
+    expect(args.where.AND).toBeDefined();
+    expect(args.where.AND).toEqual(
+      expect.arrayContaining([
+        { AND: [{ lecturerId: 'gv-1' }] },
+        expect.objectContaining({ term: 'SU25' }),
+      ]),
+    );
+  });
+
+  it('gắn openAlertCount vào từng lớp học phần', async () => {
+    const { prisma, findMany, enrollmentFindMany } = makePrisma();
+    findMany.mockResolvedValueOnce([
+      { id: 'cs-1', code: 'PRF192-SE1901-SU25' },
+      { id: 'cs-2', code: 'PRN211-SE1901-SU25' },
+    ]);
+    enrollmentFindMany.mockResolvedValueOnce([
+      { classSectionId: 'cs-1' },
+      { classSectionId: 'cs-1' },
+      { classSectionId: 'cs-2' },
+    ]);
+
+    const result = await new ClassSectionsService(prisma, audit).findAll(
+      {},
+      {},
+    );
+    expect(result[0].openAlertCount).toBe(2);
+    expect(result[1].openAlertCount).toBe(1);
   });
 });

@@ -85,6 +85,15 @@ services:
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-}
+      # Mail: ADMIN cấu hình SMTP thật tại /admin/mail; SMTP_* chỉ là fallback khi DB chưa có.
+      SMTP_HOST: ${SMTP_HOST:-localhost}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-FCare — Chăm sóc & Giám sát Học vụ}
+      SMTP_FROM: ${SMTP_FROM:-fcare-noreply@fpt.edu.vn}
+      # Bắt buộc để lưu mật khẩu SMTP (AES-256-GCM). Đổi khoá = phải nhập lại mật khẩu ở /admin/mail.
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-}
     ports:
       - '127.0.0.1:3001:3001'
     depends_on:

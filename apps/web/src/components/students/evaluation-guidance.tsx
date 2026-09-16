@@ -41,7 +41,7 @@ function ActionList({ title, actions }: { title: string; actions: readonly strin
 
 export function SuggestedLevelBadge({ level }: { level: number }) {
   return (
-    <Badge tone={ALERT_LEVEL_TONES[level] ?? 'info'}>
+    <Badge tone={ALERT_LEVEL_TONES[level] ?? 'info'} pulse={level >= 3}>
       Đề xuất mức {level} — {ALERT_LEVEL_LABELS[level] ?? level}
     </Badge>
   );

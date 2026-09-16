@@ -34,3 +34,38 @@ body {
   background: var(--color-fpt-orange);
   color: #fff;
 }
+
+@keyframes badge-danger-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(213, 57, 60, 0.45);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.03);
+    box-shadow: 0 0 0 6px rgba(213, 57, 60, 0);
+  }
+}
+
+@keyframes badge-warning-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(232, 161, 15, 0.45);
+  }
+  50% {
+    opacity: 0.88;
+    transform: scale(1.02);
+    box-shadow: 0 0 0 5px rgba(232, 161, 15, 0);
+  }
+}
+
+.badge-pulse-danger {
+  animation: badge-danger-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.badge-pulse-warning {
+  animation: badge-warning-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+

@@ -51,8 +51,39 @@ export class RosterCommitter implements ImportCommitter {
       select: { id: true, code: true, departmentId: true },
     });
     const deptIdBySubject = new Map(
-      subjects.map((s) => [s.code, s.departmentId]),
+      subjects.map((s) => [s.code.toUpperCase(), s.departmentId]),
     );
+    const subjectIdByCode = new Map(
+      subjects.map((s) => [s.code.toUpperCase(), s.id]),
+    );
+
+    let defaultDepartmentId: string | null = null;
+    let deptByPrefix: Map<string, string> | null = null;
+
+    const getDepartmentForSubject = async (
+      subjectCode: string,
+      fallbackDeptId: string | null,
+    ): Promise<string | null> => {
+      if (fallbackDeptId) return fallbackDeptId;
+      if (!tx.department?.findMany) return null;
+      if (!deptByPrefix) {
+        const [allDepartments, allSubjects] = await Promise.all([
+          tx.department.findMany({ select: { id: true, code: true } }),
+          tx.subject.findMany({ select: { code: true, departmentId: true } }),
+        ]);
+        defaultDepartmentId = allDepartments[0]?.id ?? null;
+        deptByPrefix = new Map<string, string>();
+        for (const s of allSubjects) {
+          const match = s.code.match(/^[A-Za-z]+/);
+          if (match && !deptByPrefix.has(match[0].toUpperCase())) {
+            deptByPrefix.set(match[0].toUpperCase(), s.departmentId);
+          }
+        }
+      }
+      const prefixMatch = subjectCode.match(/^[A-Za-z]+/);
+      const prefix = prefixMatch ? prefixMatch[0].toUpperCase() : '';
+      return deptByPrefix.get(prefix) ?? defaultDepartmentId;
+    };
 
     // Mã ngành trong file ("CHNA") thường không phải mã ngành trong DB — phải
     // đi qua bảng ánh xạ. Nhưng file cũng có khi ghi thẳng mã thật ("LTAI"),
@@ -92,9 +123,14 @@ export class RosterCommitter implements ImportCommitter {
         code: { in: payloads.map((p) => p.sectionCode) },
         term: ctx.term,
       },
-      select: { id: true, code: true },
+      select: {
+        id: true,
+        code: true,
+        subjectId: true,
+        subject: { select: { id: true, departmentId: true } },
+      },
     });
-    const sectionIdByCode = new Map(sections.map((s) => [s.code, s.id]));
+    const sectionByCode = new Map(sections.map((s) => [s.code, s]));
 
     const students = await tx.student.findMany({
       where: { studentCode: { in: payloads.map((p) => p.studentCode) } },
@@ -124,17 +160,65 @@ export class RosterCommitter implements ImportCommitter {
     let skipped = 0;
 
     for (const payload of payloads) {
-      const classSectionId = sectionIdByCode.get(payload.sectionCode);
-      const subjectDeptId = deptIdBySubject.get(payload.subjectCode);
+      const subKey = payload.subjectCode.trim().toUpperCase();
+      const major = payload.majorAlias
+        ? (matchAlias(majorByAlias, payload.majorAlias) ?? null)
+        : null;
+
+      const section = sectionByCode.get(payload.sectionCode);
+      let classSectionId = section?.id;
+      let subjectDeptId =
+        deptIdBySubject.get(subKey) ?? section?.subject?.departmentId;
+      let subjectId = subjectIdByCode.get(subKey) ?? section?.subjectId;
+
+      // Nếu môn học chưa có trong danh mục, tự động tạo nếu có thể
+      if (!subjectDeptId && tx.subject?.create) {
+        const deptId = await getDepartmentForSubject(
+          subKey,
+          major?.departmentId ?? null,
+        );
+        if (deptId) {
+          const createdSubject = await tx.subject.create({
+            data: {
+              code: subKey,
+              name: subKey,
+              credits: 3,
+              departmentId: deptId,
+            },
+            select: { id: true, code: true, departmentId: true },
+          });
+          subjectId = createdSubject.id;
+          subjectDeptId = createdSubject.departmentId;
+          subjectIdByCode.set(subKey, subjectId);
+          deptIdBySubject.set(subKey, subjectDeptId);
+        }
+      }
+
+      // Nếu lớp học phần chưa có trong kỳ này, tự động tạo nếu có subject
+      if (!classSectionId && subjectId && tx.classSection?.create) {
+        const createdSection = await tx.classSection.create({
+          data: {
+            code: payload.sectionCode,
+            term: ctx.term,
+            subjectId,
+          },
+          select: {
+            id: true,
+            code: true,
+            subjectId: true,
+            subject: { select: { id: true, departmentId: true } },
+          },
+        });
+        classSectionId = createdSection.id;
+        sectionByCode.set(payload.sectionCode, createdSection);
+      }
+
       // Chưa có lớp học phần hoặc môn chưa có trong danh mục → bỏ qua.
       if (!classSectionId || !subjectDeptId) {
         skipped += 1;
         continue;
       }
 
-      const major = payload.majorAlias
-        ? (matchAlias(majorByAlias, payload.majorAlias) ?? null)
-        : null;
       const studentId = await this.syncStudent(
         tx,
         studentByCode,

@@ -1,30 +1,53 @@
 'use client';
 
 import { type RiskScoreBreakdown } from '@fcare/shared-types';
-import { Badge, Button } from '@fcare/ui-kit';
+import { Button } from '@fcare/ui-kit';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useState, type FormEvent } from 'react';
 import { apiFetch, ApiError } from '../../lib/api';
-import {
-  ALERT_LEVEL_LABELS,
-  ALERT_LEVEL_TONES,
-  ALERT_STATUS_LABELS,
-  formatDateTime,
-} from '../../lib/labels';
+import { ALERT_LEVEL_LABELS } from '../../lib/labels';
 import type { Alert, AuthUser, Evaluation, Paginated } from '../../lib/types';
 import { FormError, Label, Select, Textarea } from '../ui/form';
 import { Modal } from '../ui/modal';
+import { AlertCard } from './alert-card';
+import { CareLogFormModal } from './care-log-form-modal';
+
+/** Nội dung gợi ý khi ghi nhật ký từ một cảnh báo điểm danh của hồ sơ. */
+function careContentFor(alert: Alert): string {
+  const code = alert.classSection?.code;
+  const section = code ? ` lớp ${code}` : '';
+  return alert.absentSessions === null
+    ? `Trao đổi với sinh viên về tình hình chuyên cần${section}.`
+    : `Trao đổi với sinh viên sau khi vắng ${alert.absentSessions} buổi${section}.`;
+}
+
+function canCareFor(alert: Alert | undefined): alert is Alert {
+  return Boolean(alert && alert.source === 'AUTO_ATTENDANCE' && alert.status !== 'RESOLVED');
+}
 
 export function AlertsTab({ studentId, user }: { studentId: string; user: AuthUser }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
   const [level, setLevel] = useState('1');
+  // Link từ dashboard/thông báo: `?alertId=` → mở sẵn form nhật ký cho cảnh báo đó.
+  const focusAlertId = useSearchParams().get('alertId');
+  const [careAlert, setCareAlert] = useState<Alert | null>(null);
+  const [focusHandled, setFocusHandled] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['alerts', { studentId }],
     queryFn: () => apiFetch<Paginated<Alert>>(`/alerts?studentId=${studentId}&limit=50`),
   });
+
+  useEffect(() => {
+    if (focusHandled || !focusAlertId || !data) return;
+    setFocusHandled(true);
+    const target = data.items.find((item) => item.id === focusAlertId);
+    if (canCareFor(target)) setCareAlert(target);
+    document.getElementById(`alert-${focusAlertId}`)?.scrollIntoView({ block: 'center' });
+  }, [focusHandled, focusAlertId, data]);
 
   // Dùng chung cache với tab Nhận xét — chỉ để gợi ý độ khẩn theo học kỳ của
   // bản nhận xét mới nhất (danh sách đã sắp createdAt giảm dần ở API).
@@ -97,37 +120,26 @@ export function AlertsTab({ studentId, user }: { studentId: string; user: AuthUs
       ) : (
         <ol className="space-y-4">
           {(data?.items ?? []).map((alert) => (
-            <li
+            <AlertCard
               key={alert.id}
-              className={`rounded-[var(--radius-card)] border border-border border-l-4 bg-white p-5 shadow-[var(--shadow-card)] ${
-                alert.level >= 4 ? 'border-l-danger' : alert.level >= 2 ? 'border-l-warning' : 'border-l-fpt-blue'
-              }`}
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={ALERT_LEVEL_TONES[alert.level] ?? 'info'}>
-                  Mức {alert.level} — {ALERT_LEVEL_LABELS[alert.level] ?? alert.level}
-                </Badge>
-                <Badge tone={alert.status === 'RESOLVED' ? 'success' : 'neutral'}>
-                  {ALERT_STATUS_LABELS[alert.status]}
-                </Badge>
-                <span className="ml-auto text-xs text-muted">{formatDateTime(alert.createdAt)}</span>
-              </div>
-              <p className="mt-3 text-sm text-ink">{alert.reason}</p>
-              <p className="mt-2 text-xs text-muted">
-                Người phát: {alert.raisedBy?.fullName ?? '—'}
-                {alert.resolvedBy
-                  ? ` · Xử lý bởi ${alert.resolvedBy.fullName} lúc ${formatDateTime(alert.resolvedAt)}`
-                  : ''}
-              </p>
-              {alert.resolutionNote ? (
-                <p className="mt-1 text-sm text-muted">
-                  <strong className="text-success">Kết quả xử lý:</strong> {alert.resolutionNote}
-                </p>
-              ) : null}
-            </li>
+              alert={alert}
+              highlighted={alert.id === focusAlertId}
+              onCare={setCareAlert}
+            />
           ))}
         </ol>
       )}
+
+      {careAlert ? (
+        <CareLogFormModal
+          key={careAlert.id}
+          studentId={studentId}
+          alertId={careAlert.id}
+          defaultContent={careContentFor(careAlert)}
+          open
+          onClose={() => setCareAlert(null)}
+        />
+      ) : null}
 
       <Modal title="Phát cảnh báo sinh viên" open={open} onClose={() => setOpen(false)}>
         <form onSubmit={onSubmit} className="space-y-4">

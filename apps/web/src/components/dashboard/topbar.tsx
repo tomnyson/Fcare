@@ -81,7 +81,9 @@ export function Topbar({ user }: { user: AuthUser }) {
             type="button"
             onClick={() => setOpen((value) => !value)}
             aria-label={`Thông báo (${unreadCount} chưa đọc)`}
-            className="relative rounded-md border border-border p-2 text-lg leading-none transition-colors hover:bg-fpt-orange-50"
+            className={`relative rounded-md border border-border p-2 text-lg leading-none transition-colors hover:bg-fpt-orange-50 ${
+              unreadCount > 0 ? 'motion-safe:animate-pulse motion-reduce:animate-none' : ''
+            }`}
           >
             🔔
             {unreadCount > 0 ? (

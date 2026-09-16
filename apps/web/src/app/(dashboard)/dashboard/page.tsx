@@ -3,6 +3,7 @@
 import { Badge } from '@fcare/ui-kit';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
+import { AttendanceCarePanel } from '../../../components/dashboard/attendance-care-panel';
 import { DataTable, Td } from '../../../components/ui/data-table';
 import { PageHeader } from '../../../components/ui/page-header';
 import { Skeleton } from '../../../components/ui/skeleton';
@@ -38,6 +39,8 @@ export default function DashboardPage() {
         title="Tổng quan"
         description="Bức tranh học vụ trong phạm vi bạn được phép truy cập."
       />
+
+      <AttendanceCarePanel />
 
       <section aria-label="Chỉ số chính" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard

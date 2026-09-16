@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ImportKind, ImportStatus, Prisma } from '@prisma/client';
@@ -8,8 +9,13 @@ import { AuditService } from '../../audit/audit.service';
 import type { AuthUser } from '../../common/types/auth-user';
 import { isDeptScoped } from '../../common/utils/dept-scope';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  AttendanceReviewService,
+  type AttendanceReviewResult,
+} from '../attendance-alerts/attendance-review.service';
 import { loadWorkbook, stripForbiddenData } from '../excel/excel-utils';
 import { aliasKey, isAliasKnown } from './alias-match';
+import type { ListImportRowsQuery, ListImportsQuery } from './dto/import.dto';
 import type {
   ImportCommitter,
   ImportContext,
@@ -22,13 +28,20 @@ interface Registration {
   committer: ImportCommitter;
 }
 
+/** Số lô/trang mặc định của lịch sử import. */
+const LIST_PAGE_SIZE = 20;
+/** Số dòng staging/trang mặc định khi xem trước một lô. */
+const PREVIEW_ROWS_PAGE_SIZE = 50;
+
 @Injectable()
 export class ImportsService {
+  private readonly logger = new Logger(ImportsService.name);
   private readonly registry = new Map<ImportKind, Registration>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly attendanceReview: AttendanceReviewService,
   ) {}
 
   /** Mỗi loại file đăng ký một cặp parser + committer (gọi trong module). */
@@ -106,6 +119,7 @@ export class ImportsService {
       () => this.loadMajorKeys(),
       true,
     );
+    const unmappedSubjects = await this.findUnmappedSubjects(result.rows);
 
     const errorCount = result.rows.filter((row) => row.error).length;
 
@@ -123,6 +137,7 @@ export class ImportsService {
           warnings: result.warnings,
           unmappedAliases: result.unmappedAliases,
           unmappedMajorAliases,
+          unmappedSubjects,
         },
       },
     });
@@ -150,19 +165,43 @@ export class ImportsService {
     return this.preview(user, batch.id);
   }
 
-  async preview(user: AuthUser, batchId: string) {
+  /**
+   * Xem trước một lô: thông tin lô + MỘT TRANG dòng staging. File điểm danh
+   * thật có ~3000 dòng nên không nạp hết `rows` qua include — web lật trang
+   * (hoặc lọc `onlyErrors`) và gọi lại endpoint này.
+   */
+  async preview(
+    user: AuthUser,
+    batchId: string,
+    query: ListImportRowsQuery = {},
+  ) {
     const batch = await this.prisma.importBatch.findUnique({
       where: { id: batchId },
-      include: {
-        rows: { orderBy: [{ sheet: 'asc' }, { rowIndex: 'asc' }] },
-        // RULE 1: chỉ họ tên — tuyệt đối không select email/SĐT/CCCD/địa chỉ.
-        uploadedBy: { select: { fullName: true } },
-      },
+      // RULE 1: chỉ họ tên — tuyệt đối không select email/SĐT/CCCD/địa chỉ.
+      include: { uploadedBy: { select: { fullName: true } } },
     });
     if (!batch) {
       throw new NotFoundException('Không tìm thấy lượt import.');
     }
     this.requireOwnBatch(user, batch);
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? PREVIEW_ROWS_PAGE_SIZE;
+    const where: Prisma.ImportRowWhereInput = {
+      batchId,
+      ...(query.onlyErrors ? { error: { not: null } } : {}),
+    };
+    const [rows, total] = await Promise.all([
+      this.prisma.importRow.findMany({
+        where,
+        orderBy: [{ sheet: 'asc' }, { rowIndex: 'asc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+        select: { sheet: true, rowIndex: true, payload: true, error: true },
+      }),
+      this.prisma.importRow.count({ where }),
+    ]);
+
     return {
       id: batch.id,
       kind: batch.kind,
@@ -173,12 +212,7 @@ export class ImportsService {
       createdAt: batch.createdAt,
       committedAt: batch.committedAt,
       uploadedByName: batch.uploadedBy?.fullName ?? null,
-      rows: batch.rows.map((row) => ({
-        sheet: row.sheet,
-        rowIndex: row.rowIndex,
-        payload: row.payload,
-        error: row.error,
-      })),
+      rows: { items: rows, meta: { total, page, limit } },
     };
   }
 
@@ -249,21 +283,68 @@ export class ImportsService {
       metadata: { kind: batch.kind, ...result },
     });
 
-    return result;
+    if (batch.kind !== ImportKind.GRADE_ATTENDANCE) {
+      return result;
+    }
+    return {
+      ...result,
+      attendanceReview: await this.reviewAttendanceAfterCommit(user, batch),
+    };
+  }
+
+  /**
+   * FLOW 2 bước 2: điểm danh vừa vào DB → rà soát vắng 2/3 buổi. Chạy SAU
+   * transaction import (dữ liệu đã chắc chắn commit) và không được làm hỏng
+   * lượt import nếu lỗi — Đào tạo có thể chạy lại tay qua
+   * `POST /attendance-alerts/review`.
+   */
+  private async reviewAttendanceAfterCommit(
+    user: AuthUser,
+    batch: { id: string; term: string },
+  ): Promise<AttendanceReviewResult | null> {
+    try {
+      return await this.attendanceReview.reviewTerm(batch.term, {
+        batchId: batch.id,
+        actorId: user.id,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'lỗi không xác định';
+      this.logger.error(
+        `Rà soát điểm danh sau import ${batch.id} thất bại: ${message}`,
+      );
+      await this.auditService.log({
+        staffId: user.id,
+        action: 'ATTENDANCE_REVIEW_FAILED',
+        entity: 'ImportBatch',
+        entityId: batch.id,
+        metadata: { term: batch.term, message },
+      });
+      return null;
+    }
   }
 
   // ImportBatch không có departmentId nên deptFilter không áp được (RULE 2):
   // lọc theo người đã upload thay vì bộ môn — người dùng bị scope chỉ thấy
   // lượt import của chính mình, vai trò không bị scope thấy tất cả.
-  async list(user: AuthUser) {
-    const batches = await this.prisma.importBatch.findMany({
-      where: isDeptScoped(user) ? { uploadedById: user.id } : undefined,
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-      // RULE 1: chỉ họ tên — tuyệt đối không select email/SĐT/CCCD/địa chỉ.
-      include: { uploadedBy: { select: { fullName: true } } },
-    });
-    return batches.map((batch) => ({
+  async list(user: AuthUser, query: ListImportsQuery = {}) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? LIST_PAGE_SIZE;
+    const where: Prisma.ImportBatchWhereInput | undefined = isDeptScoped(user)
+      ? { uploadedById: user.id }
+      : undefined;
+    const [batches, total] = await Promise.all([
+      this.prisma.importBatch.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        // RULE 1: chỉ họ tên — tuyệt đối không select email/SĐT/CCCD/địa chỉ.
+        include: { uploadedBy: { select: { fullName: true } } },
+      }),
+      this.prisma.importBatch.count({ where }),
+    ]);
+    const items = batches.map((batch) => ({
       id: batch.id,
       kind: batch.kind,
       status: batch.status,
@@ -274,6 +355,7 @@ export class ImportsService {
       committedAt: batch.committedAt,
       uploadedByName: batch.uploadedBy?.fullName ?? null,
     }));
+    return { items, meta: { total, page, limit } };
   }
 
   /**
@@ -366,5 +448,61 @@ export class ImportsService {
     return Array.from(fileAliases).filter(
       (alias) => !isAliasKnown(knownKeys, alias, allowBaseMatch),
     );
+  }
+
+  /**
+   * Phát hiện các mã môn học trong file chưa tồn tại trong bảng Subject
+   * (và không khớp với mã chuyển đổi altSubjectCode nào đã có).
+   */
+  private async findUnmappedSubjects(rows: ParsedRow[]): Promise<string[]> {
+    if (!this.prisma.subject?.findMany) {
+      return [];
+    }
+    const subjectCodes = new Set<string>();
+    const altCodes = new Set<string>();
+    for (const row of rows) {
+      const code = row.payload['subjectCode'];
+      if (typeof code === 'string' && code.trim() !== '') {
+        subjectCodes.add(code.trim().toUpperCase());
+      }
+      const alt = row.payload['altSubjectCode'];
+      if (typeof alt === 'string' && alt.trim() !== '') {
+        altCodes.add(alt.trim().toUpperCase());
+      }
+    }
+    if (subjectCodes.size === 0) {
+      return [];
+    }
+
+    const allCandidateCodes = Array.from(
+      new Set([...subjectCodes, ...altCodes]),
+    );
+    const existing = await this.prisma.subject.findMany({
+      where: { code: { in: allCandidateCodes } },
+      select: { code: true },
+    });
+    const existingSet = new Set(existing.map((s) => s.code.toUpperCase()));
+
+    const missing: string[] = [];
+    for (const row of rows) {
+      const code = row.payload['subjectCode'];
+      if (typeof code !== 'string' || code.trim() === '') continue;
+      const upper = code.trim().toUpperCase();
+      const alt = row.payload['altSubjectCode'];
+      const altUpper =
+        typeof alt === 'string' && alt.trim() !== ''
+          ? alt.trim().toUpperCase()
+          : null;
+
+      if (
+        !existingSet.has(upper) &&
+        (!altUpper || !existingSet.has(altUpper))
+      ) {
+        if (!missing.includes(upper)) {
+          missing.push(upper);
+        }
+      }
+    }
+    return missing;
   }
 }

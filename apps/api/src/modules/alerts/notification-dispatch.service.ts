@@ -1,20 +1,27 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import type { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationEventsService } from './notification-events.service';
+import { EmailService } from '../email/email.service';
 
 export const ALERT_ESCALATION_QUEUE = 'alert-escalation';
 export const DELIVER_NOTIFICATIONS_JOB = 'deliver-notifications';
+
+/** Enqueue phải fail nhanh khi Redis không phản hồi để còn fallback đồng bộ. */
+export const ENQUEUE_TIMEOUT_MS = 1_500;
 
 export interface EscalationJobData {
   alertId: string;
   recipientIds: string[];
   title: string;
   body: string;
+  /** Link mở thẳng chỗ cần chăm sóc (cảnh báo điểm danh tự động). */
+  targetUrl?: string;
 }
 
 export type NotificationSource =
-  | { kind: 'alert'; alertId: string }
+  | { kind: 'alert'; alertId: string; targetUrl?: string }
   | {
       kind: 'analysis';
       analysisVersionId: string;
@@ -47,7 +54,41 @@ export class NotificationDispatchService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: NotificationEventsService,
+    @Optional() private readonly emailService?: EmailService,
   ) {}
+
+  /**
+   * Ưu tiên đưa vào queue BullMQ (retry 3 lần, backoff lũy tiến).
+   * Redis lỗi/treo → fallback gửi đồng bộ để cảnh báo không bao giờ mất thông
+   * báo; unique (alertId, recipientId) đảm bảo không trùng nếu cả hai đường
+   * cùng chạy. Dùng chung cho cảnh báo thủ công lẫn cảnh báo điểm danh tự động.
+   */
+  async enqueueOrDeliver(
+    queue: Queue<EscalationJobData>,
+    data: EscalationJobData,
+  ): Promise<void> {
+    try {
+      await Promise.race([
+        queue.add(DELIVER_NOTIFICATIONS_JOB, data, {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 2_000 },
+          removeOnComplete: 1_000,
+          removeOnFail: 5_000,
+        }),
+        new Promise((_, reject) =>
+          setTimeout(
+            () => reject(new Error('Enqueue quá thời gian chờ Redis.')),
+            ENQUEUE_TIMEOUT_MS,
+          ),
+        ),
+      ]);
+    } catch (error) {
+      this.logger.warn(
+        `Không enqueue được escalation (${error instanceof Error ? error.message : 'lỗi không xác định'}) — chuyển gửi đồng bộ.`,
+      );
+      await this.deliver(data);
+    }
+  }
 
   async deliver(
     data: EscalationJobData | NotificationDeliveryData,
@@ -92,7 +133,33 @@ export class NotificationDispatchService {
     }
 
     this.logger.log(this.describeDelivery(normalized, notifications.length));
+
+    if (this.emailService) {
+      this.dispatchEmail(normalized).catch((err) =>
+        this.logger.warn(
+          `Lỗi gửi email thông báo: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        ),
+      );
+    }
+
     return notifications.length;
+  }
+
+  private async dispatchEmail(
+    normalized: NotificationDeliveryData,
+  ): Promise<void> {
+    if (!this.emailService) return;
+    if (normalized.source.kind === 'alert') {
+      await this.emailService.sendAlertEmail(
+        normalized.source.alertId,
+        normalized.recipientIds,
+      );
+    } else if (normalized.source.kind === 'discussion') {
+      await this.emailService.sendDiscussionEmail(
+        normalized.source.discussionMessageId,
+        normalized.recipientIds,
+      );
+    }
   }
 
   private normalize(
@@ -105,7 +172,11 @@ export class NotificationDispatchService {
       recipientIds: data.recipientIds,
       title: data.title,
       body: data.body,
-      source: { kind: 'alert', alertId: data.alertId },
+      source: {
+        kind: 'alert',
+        alertId: data.alertId,
+        targetUrl: data.targetUrl,
+      },
     };
   }
 
@@ -121,6 +192,7 @@ export class NotificationDispatchService {
     };
     if (data.source.kind === 'alert') {
       row.alertId = data.source.alertId;
+      row.targetUrl = data.source.targetUrl ?? null;
       return row;
     }
     if (data.source.kind === 'discussion') {

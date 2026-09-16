@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, TermSeason } from '@prisma/client';
 import type { PrismaService } from '../../prisma/prisma.service';
 import { TermsService } from './terms.service';
@@ -68,10 +72,18 @@ describe('TermsService', () => {
     it('ưu tiên 2: nếu không có override, trả về kỳ có startDate <= now <= endDate', async () => {
       findFirst
         .mockResolvedValueOnce(null) // no override
-        .mockResolvedValueOnce({ id: 't2', code: 'SP25', isCurrentOverride: false }); // date match
+        .mockResolvedValueOnce({
+          id: 't2',
+          code: 'SP25',
+          isCurrentOverride: false,
+        }); // date match
 
       const result = await service.getCurrentTerm();
-      expect(result).toEqual({ id: 't2', code: 'SP25', isCurrentOverride: false });
+      expect(result).toEqual({
+        id: 't2',
+        code: 'SP25',
+        isCurrentOverride: false,
+      });
     });
 
     it('ưu tiên 3: nếu đang nghỉ giữa kỳ, trả về kỳ sắp tới gần nhất', async () => {
@@ -124,11 +136,17 @@ describe('TermsService', () => {
 
     it('chặn trùng mã kỳ (P2002)', async () => {
       create.mockRejectedValue(prismaError('P2002'));
-      await expect(service.create(validDto)).rejects.toBeInstanceOf(ConflictException);
+      await expect(service.create(validDto)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
     });
 
     it('nếu bật isCurrentOverride, chạy qua transaction để reset cờ các kỳ khác', async () => {
-      const createdTerm = { id: 'new-id', ...validDto, isCurrentOverride: true };
+      const createdTerm = {
+        id: 'new-id',
+        ...validDto,
+        isCurrentOverride: true,
+      };
       transaction.mockImplementation(async (callback) => {
         const txPrisma = {
           term: {
@@ -139,7 +157,10 @@ describe('TermsService', () => {
         return callback(txPrisma);
       });
 
-      const result = await service.create({ ...validDto, isCurrentOverride: true });
+      const result = await service.create({
+        ...validDto,
+        isCurrentOverride: true,
+      });
       expect(result).toEqual(createdTerm);
       expect(transaction).toHaveBeenCalled();
     });
@@ -152,7 +173,9 @@ describe('TermsService', () => {
         const txPrisma = {
           term: {
             updateMany: jest.fn(),
-            update: jest.fn().mockResolvedValue({ id: 't1', isCurrentOverride: true }),
+            update: jest
+              .fn()
+              .mockResolvedValue({ id: 't1', isCurrentOverride: true }),
           },
         };
         return callback(txPrisma);
@@ -176,7 +199,9 @@ describe('TermsService', () => {
       findUnique.mockResolvedValue({ id: 't1', code: 'SP25' });
       countClassSections.mockResolvedValue(5);
 
-      await expect(service.delete('t1')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.delete('t1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
       expect(del).not.toHaveBeenCalled();
     });
 
@@ -191,7 +216,9 @@ describe('TermsService', () => {
 
     it('kỳ không tồn tại ném NotFoundException', async () => {
       findUnique.mockResolvedValue(null);
-      await expect(service.delete('none')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.delete('none')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 });

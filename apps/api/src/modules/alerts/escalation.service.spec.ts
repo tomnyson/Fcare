@@ -88,4 +88,9 @@ describe('EscalationService — ma trận báo tin theo độ khẩn', () => {
     );
     expect(recipients).not.toContain('gv-chi');
   });
+
+  it('cảnh báo do hệ thống phát (không có raisedById) → không loại ai', async () => {
+    const recipients = await makeService().computeRecipientIds('sv-1', 2);
+    expect(recipients.sort()).toEqual(['ctsv-lan', 'gv-binh', 'gv-chi']);
+  });
 });

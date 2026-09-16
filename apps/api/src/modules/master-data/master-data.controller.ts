@@ -153,8 +153,11 @@ export class ClassSectionsController {
 
   @Get()
   @CheckPolicies(canRead)
-  findAll(@Query() query: ListClassSectionsQuery) {
-    return this.service.findAll(query);
+  findAll(
+    @CurrentUser() user: AuthUser,
+    @Query() query: ListClassSectionsQuery,
+  ) {
+    return this.service.findAll(user, query);
   }
 
   @Post()
@@ -328,10 +331,7 @@ export class TermsController {
 
   @Patch(':id')
   @CheckPolicies(canManage)
-  update(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateTermDto,
-  ) {
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateTermDto) {
     return this.service.update(id, dto);
   }
 

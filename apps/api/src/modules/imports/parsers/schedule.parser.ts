@@ -204,6 +204,11 @@ export class ScheduleParser implements ImportParser {
         'Mã môn',
         'Lớp',
         'Phân công giảng viên',
+        'Giảng viên',
+        'Mã NV',
+        'manv',
+        'Mã GV',
+        'Lecturer',
         'Block',
         // File thật đặt tên cột này là "Block triển khai", không phải
         // "Block" — thấy khi verify Bước 10. Nhận cả hai để không phụ
@@ -215,10 +220,18 @@ export class ScheduleParser implements ImportParser {
         'Thời gian bắt đầu',
         'Số lượng sinh viên',
         'Số giờ',
+        'Tên môn',
       ]);
       requireHeaders(headers, ['Mã môn', 'Lớp'], BL_SHEET);
       const at = (name: string) => headers.get(name.toLowerCase());
       const blockColumn = at('block') ?? at('block triển khai');
+      const lecturerColumn =
+        at('phân công giảng viên') ??
+        at('giảng viên') ??
+        at('mã nv') ??
+        at('manv') ??
+        at('mã gv') ??
+        at('lecturer');
 
       for (
         let rowIndex = BL_HEADER_ROW + 1;
@@ -234,9 +247,7 @@ export class ScheduleParser implements ImportParser {
         }
         const block = roundOrNull(optionalNumber(row, blockColumn));
         const key = mergeKey(subjectCode, classCode, block);
-        const lecturerName = realLecturer(
-          optionalText(row, at('phân công giảng viên')),
-        );
+        const lecturerName = realLecturer(optionalText(row, lecturerColumn));
         const existing = merged.get(key);
 
         if (existing) {

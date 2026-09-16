@@ -16,7 +16,7 @@ export function useMe() {
 }
 
 /** SSE (use-notification-stream) là kênh chính; polling thưa làm lưới an toàn. */
-const POLL_INTERVAL_MS = 120_000;
+export const POLL_INTERVAL_MS = 120_000;
 
 const NOTIFICATIONS_LIST_KEY = ['notifications', 'list'];
 

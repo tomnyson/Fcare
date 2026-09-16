@@ -1,4 +1,12 @@
-import { createHash, randomBytes } from 'node:crypto';
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto';
+import { OAuth2Client } from 'google-auth-library';
+import { ConfigService } from '@nestjs/config';
+import { getGoogleOAuthConfig } from './auth.config';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import type { Prisma } from '@prisma/client';
@@ -27,6 +35,55 @@ export interface AuthSession {
 }
 
 const INVALID_CREDENTIALS_MESSAGE = 'Mã nhân viên hoặc mật khẩu không đúng.';
+const GOOGLE_PROVIDER = 'google';
+const GOOGLE_LINK_TTL_MS = 10 * 60 * 1000;
+
+export interface GoogleLinkChallenge {
+  challenge: string;
+  expiresAt: number;
+}
+
+export interface GoogleOAuthResult {
+  session?: AuthSession;
+  challenge?: GoogleLinkChallenge;
+}
+
+function signChallenge(
+  subject: string,
+  secret: string,
+  expiresAt: number,
+): string {
+  const payload = `${subject}.${expiresAt}`;
+  const digest = createHmac('sha256', secret)
+    .update(payload)
+    .digest('base64url');
+  return `${payload}.${digest}`;
+}
+
+function verifyChallenge(challenge: string, secret: string): string {
+  const [subject, expiryText, signature] = challenge.split('.');
+  const expiresAt = Number(expiryText);
+  if (
+    !subject ||
+    !signature ||
+    !Number.isSafeInteger(expiresAt) ||
+    expiresAt < Date.now()
+  ) {
+    throw new UnauthorizedException('Liên kết Google đã hết hạn.');
+  }
+  const expected = createHmac('sha256', secret)
+    .update(`${subject}.${expiresAt}`)
+    .digest('base64url');
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (
+    actualBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(actualBuffer, expectedBuffer)
+  ) {
+    throw new UnauthorizedException('Yêu cầu liên kết không hợp lệ.');
+  }
+  return subject;
+}
 
 @Injectable()
 export class AuthService {
@@ -34,6 +91,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly auditService: AuditService,
+    private readonly config: ConfigService,
   ) {}
 
   async login(staffCode: string, password: string): Promise<AuthSession> {
@@ -62,6 +120,140 @@ export class AuthService {
       entityId: staff.id,
     });
 
+    return { user, accessToken, refreshToken };
+  }
+
+  async googleCallback(idToken: string): Promise<GoogleOAuthResult> {
+    const oauth = getGoogleOAuthConfig(this.config);
+    if (!oauth) {
+      throw new UnauthorizedException('Đăng nhập Google chưa được cấu hình.');
+    }
+    const ticket = await new OAuth2Client(oauth.clientId).verifyIdToken({
+      idToken,
+      audience: oauth.clientId,
+    });
+    const payload = ticket.getPayload();
+    const googleEmail = payload?.email?.toLowerCase().trim() ?? '';
+    const isAllowedGoogleDomain =
+      googleEmail.endsWith('@fpt.edu.vn') || googleEmail.endsWith('@fe.edu.vn');
+    if (
+      !payload?.sub ||
+      payload.iss !== 'https://accounts.google.com' ||
+      !payload.email_verified ||
+      !isAllowedGoogleDomain
+    ) {
+      throw new UnauthorizedException(
+        'Tài khoản Google phải thuộc miền @fpt.edu.vn hoặc @fe.edu.vn.',
+      );
+    }
+    const identity = await this.prisma.staffOAuthIdentity.findUnique({
+      where: {
+        provider_subject: { provider: GOOGLE_PROVIDER, subject: payload.sub },
+      },
+      include: { staff: { ...staffWithRoles } },
+    });
+    if (identity?.staff.isActive) {
+      const user = this.toAuthUser(identity.staff, { consented: false });
+      return {
+        session: await this.createSession(
+          identity.staff,
+          user,
+          'AUTH_GOOGLE_LOGIN',
+        ),
+      };
+    }
+
+    const staffByEmail = await this.prisma.staff.findFirst({
+      where: {
+        email: { equals: googleEmail, mode: 'insensitive' },
+        isActive: true,
+      },
+      ...staffWithRoles,
+    });
+    if (staffByEmail) {
+      await this.prisma.staffOAuthIdentity.upsert({
+        where: {
+          staffId_provider: {
+            staffId: staffByEmail.id,
+            provider: GOOGLE_PROVIDER,
+          },
+        },
+        create: {
+          provider: GOOGLE_PROVIDER,
+          subject: payload.sub,
+          staffId: staffByEmail.id,
+        },
+        update: {
+          subject: payload.sub,
+        },
+      });
+      await this.auditService.log({
+        staffId: staffByEmail.id,
+        action: 'AUTH_GOOGLE_LINK',
+        entity: 'Staff',
+        entityId: staffByEmail.id,
+      });
+      const user = this.toAuthUser(staffByEmail, { consented: false });
+      return {
+        session: await this.createSession(
+          staffByEmail,
+          user,
+          'AUTH_GOOGLE_LOGIN',
+        ),
+      };
+    }
+    const secret =
+      this.config.get<string>('JWT_ACCESS_SECRET') ??
+      'dev-access-secret-change-me';
+    const expiresAt = Date.now() + GOOGLE_LINK_TTL_MS;
+    return {
+      challenge: {
+        challenge: signChallenge(payload.sub, secret, expiresAt),
+        expiresAt,
+      },
+    };
+  }
+
+  async linkGoogle(
+    challenge: string,
+    staffCode: string,
+    password: string,
+  ): Promise<AuthSession> {
+    const secret =
+      this.config.get<string>('JWT_ACCESS_SECRET') ??
+      'dev-access-secret-change-me';
+    const subject = verifyChallenge(challenge, secret);
+    const session = await this.login(staffCode, password);
+    const staff = await this.requireStaff(session.user.id);
+    await this.prisma.staffOAuthIdentity.upsert({
+      where: {
+        staffId_provider: { staffId: staff.id, provider: GOOGLE_PROVIDER },
+      },
+      create: { provider: GOOGLE_PROVIDER, subject, staffId: staff.id },
+      update: { subject },
+    });
+    await this.auditService.log({
+      staffId: staff.id,
+      action: 'AUTH_GOOGLE_LINK',
+      entity: 'Staff',
+      entityId: staff.id,
+    });
+    return session;
+  }
+
+  private async createSession(
+    staff: StaffWithRoles,
+    user: AuthUser,
+    action: string,
+  ): Promise<AuthSession> {
+    const refreshToken = await this.issueRefreshToken(staff.id, null);
+    const accessToken = this.signAccessToken(user);
+    await this.auditService.log({
+      staffId: staff.id,
+      action,
+      entity: 'Staff',
+      entityId: staff.id,
+    });
     return { user, accessToken, refreshToken };
   }
 

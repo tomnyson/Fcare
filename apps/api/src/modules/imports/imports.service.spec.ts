@@ -99,11 +99,14 @@ function makePrismaMock() {
         .fn()
         .mockResolvedValue({ ...batch, status: ImportStatus.COMMITTED }),
       findMany: jest.fn().mockResolvedValue([batch]),
+      count: jest.fn().mockResolvedValue(1),
       delete: jest.fn().mockResolvedValue(batch),
     },
     importRow: {
       createMany: jest.fn().mockResolvedValue({ count: 2 }),
       deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
+      findMany: jest.fn().mockResolvedValue(batch.rows),
+      count: jest.fn().mockResolvedValue(batch.rows.length),
     },
     departmentAlias: { findMany: jest.fn().mockResolvedValue([]) },
     majorAlias: { findMany: jest.fn().mockResolvedValue([]) },
@@ -118,6 +121,7 @@ function makePrismaMock() {
 describe('ImportsService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let audit: { log: jest.Mock };
+  let attendanceReview: { reviewTerm: jest.Mock };
   let parseMock: jest.Mock;
   let parser: ImportParser;
   let commitMock: jest.Mock;
@@ -140,8 +144,22 @@ describe('ImportsService', () => {
       .fn()
       .mockResolvedValue({ created: 1, updated: 0, skipped: 0 });
     committer = { commit: commitMock };
-    service = new ImportsService(prisma as never, audit as never);
+    attendanceReview = {
+      reviewTerm: jest.fn().mockResolvedValue({
+        created: 1,
+        upgraded: 0,
+        unchanged: 0,
+        notified: 2,
+      }),
+    };
+    service = new ImportsService(
+      prisma as never,
+      audit as never,
+      attendanceReview as never,
+    );
     service.register(ImportKind.CATALOG, parser, committer);
+    service.register(ImportKind.SECTION_LIST, parser, committer);
+    service.register(ImportKind.GRADE_ATTENDANCE, parser, committer);
   });
 
   it('xoá PII TRƯỚC khi parse — parser không bao giờ nhìn thấy email', async () => {
@@ -249,6 +267,49 @@ describe('ImportsService', () => {
     );
   });
 
+  it('phát hiện các mã môn học chưa có trong hệ thống và đưa vào unmappedSubjects', async () => {
+    Object.assign(prisma, {
+      subject: {
+        findMany: jest.fn().mockResolvedValue([{ code: 'SOA204' }]),
+      },
+    });
+    parseMock.mockResolvedValue({
+      rows: [
+        {
+          sheet: 'S',
+          rowIndex: 2,
+          payload: { subjectCode: 'SOA2042', altSubjectCode: 'SOA204' },
+        },
+        {
+          sheet: 'S',
+          rowIndex: 3,
+          payload: { subjectCode: 'SOA210' },
+        },
+      ],
+      warnings: [],
+      unmappedAliases: [],
+    });
+    const buffer = await workbookBuffer(['Mã môn']);
+    await service.upload(
+      user,
+      ImportKind.SECTION_LIST,
+      buffer,
+      'a.xlsx',
+      'FA26',
+    );
+
+    const [createArgs] = prisma.importBatch.create.mock.calls[0] as [
+      CreateBatchArgs,
+    ];
+    expect(createArgs.data.summary).toEqual(
+      expect.objectContaining({
+        // SOA2042 khớp altSubjectCode SOA204 đã có nên không bị coi là thiếu.
+        // SOA210 chưa có trong DB nên đưa vào unmappedSubjects.
+        unmappedSubjects: ['SOA210'],
+      }),
+    );
+  });
+
   it('commit chỉ đưa dòng KHÔNG lỗi xuống committer', async () => {
     await service.commit(user, 'batch-1');
     const [rows] = commitMock.mock.calls[0] as [ParsedRow[]];
@@ -266,6 +327,52 @@ describe('ImportsService', () => {
         entityId: 'batch-1',
       }),
     );
+  });
+
+  it('commit điểm danh → rà soát cảnh báo tự động SAU transaction, trả kết quả kèm', async () => {
+    prisma.importBatch.findUnique.mockResolvedValue({
+      ...(await prisma.importBatch.findUnique()),
+      kind: ImportKind.GRADE_ATTENDANCE,
+    });
+    const result = await service.commit(user, 'batch-1');
+    expect(attendanceReview.reviewTerm).toHaveBeenCalledWith('SU26', {
+      batchId: 'batch-1',
+      actorId: user.id,
+    });
+    expect(result).toEqual({
+      created: 1,
+      updated: 0,
+      skipped: 0,
+      attendanceReview: { created: 1, upgraded: 0, unchanged: 0, notified: 2 },
+    });
+    // Rà soát chạy sau khi batch đã COMMITTED — không nằm trong transaction import.
+    const txOrder = (prisma.$transaction as jest.Mock).mock
+      .invocationCallOrder[0];
+    const reviewOrder = attendanceReview.reviewTerm.mock.invocationCallOrder[0];
+    expect(reviewOrder).toBeGreaterThan(txOrder);
+  });
+
+  it('commit loại file khác → không rà soát điểm danh', async () => {
+    const result = await service.commit(user, 'batch-1');
+    expect(attendanceReview.reviewTerm).not.toHaveBeenCalled();
+    expect(result).not.toHaveProperty('attendanceReview');
+  });
+
+  it('rà soát lỗi → import vẫn thành công, ghi audit ATTENDANCE_REVIEW_FAILED', async () => {
+    prisma.importBatch.findUnique.mockResolvedValue({
+      ...(await prisma.importBatch.findUnique()),
+      kind: ImportKind.GRADE_ATTENDANCE,
+    });
+    attendanceReview.reviewTerm.mockRejectedValue(new Error('Redis chết'));
+    const result = await service.commit(user, 'batch-1');
+    expect(result).toMatchObject({ created: 1, attendanceReview: null });
+    expect(audit.log).toHaveBeenCalledWith({
+      staffId: user.id,
+      action: 'ATTENDANCE_REVIEW_FAILED',
+      entity: 'ImportBatch',
+      entityId: 'batch-1',
+      metadata: { term: 'SU26', message: 'Redis chết' },
+    });
   });
 
   it('từ chối commit lần hai trên cùng batch', async () => {
@@ -436,7 +543,9 @@ describe('ImportsService', () => {
   describe('item 2 — list()/preview() trả tên người upload', () => {
     it('list: trả uploadedByName đọc từ quan hệ uploadedBy', async () => {
       const result = await service.list(user);
-      expect(result[0]).toMatchObject({ uploadedByName: 'Nguyễn Văn A' });
+      expect(result.items[0]).toMatchObject({
+        uploadedByName: 'Nguyễn Văn A',
+      });
     });
 
     it('preview: trả uploadedByName đọc từ quan hệ uploadedBy', async () => {
@@ -459,7 +568,7 @@ describe('ImportsService', () => {
         },
       ]);
       const result = await service.list(user);
-      expect(result[0]).toMatchObject({ uploadedByName: null });
+      expect(result.items[0]).toMatchObject({ uploadedByName: null });
     });
 
     it('RULE 1: select của quan hệ uploadedBy trong list() CHỈ chứa fullName', async () => {
@@ -477,6 +586,69 @@ describe('ImportsService', () => {
       >;
       const [args] = calls[calls.length - 1];
       expect(args.include?.uploadedBy?.select).toEqual({ fullName: true });
+    });
+  });
+  describe('phân trang — lịch sử và dòng staging không trả hết một lượt', () => {
+    it('list: mặc định trang 1, 20 lô/trang và trả meta.total', async () => {
+      prisma.importBatch.count.mockResolvedValue(143);
+      const result = await service.list(user);
+      expect(prisma.importBatch.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 0, take: 20 }),
+      );
+      expect(result.meta).toEqual({ total: 143, page: 1, limit: 20 });
+    });
+
+    it('list: page/limit từ query → skip đúng và count dùng cùng where', async () => {
+      await service.list(scopedUser, { page: 3, limit: 10 });
+      expect(prisma.importBatch.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { uploadedById: 'staff-2' },
+          skip: 20,
+          take: 10,
+        }),
+      );
+      expect(prisma.importBatch.count).toHaveBeenCalledWith({
+        where: { uploadedById: 'staff-2' },
+      });
+    });
+
+    it('preview: KHÔNG include rows vào batch — dòng lấy riêng theo trang 50', async () => {
+      prisma.importRow.count.mockResolvedValue(2851);
+      const result = await service.preview(user, 'batch-1');
+      const [args] = prisma.importBatch.findUnique.mock.calls[0] as [
+        { include?: Record<string, unknown> },
+      ];
+      expect(args.include).not.toHaveProperty('rows');
+      expect(prisma.importRow.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { batchId: 'batch-1' },
+          skip: 0,
+          take: 50,
+          select: { sheet: true, rowIndex: true, payload: true, error: true },
+        }),
+      );
+      expect(result.rows.meta).toEqual({ total: 2851, page: 1, limit: 50 });
+      expect(result.rows.items.length).toBeGreaterThan(0);
+    });
+
+    it('preview: onlyErrors → where lọc error khác null, page 2 → skip = limit', async () => {
+      await service.preview(user, 'batch-1', {
+        page: 2,
+        limit: 25,
+        onlyErrors: true,
+      });
+      const where = { batchId: 'batch-1', error: { not: null } };
+      expect(prisma.importRow.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where, skip: 25, take: 25 }),
+      );
+      expect(prisma.importRow.count).toHaveBeenCalledWith({ where });
+    });
+
+    it('preview: người dùng bị scope → 404 TRƯỚC khi truy vấn dòng', async () => {
+      await expect(service.preview(scopedUser, 'batch-1')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.importRow.findMany).not.toHaveBeenCalled();
     });
   });
 });

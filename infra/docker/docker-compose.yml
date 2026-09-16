@@ -46,6 +46,8 @@ services:
       API_PORT: 3001
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
+      # Khoá mã hoá mật khẩu SMTP lưu DB (openssl rand -hex 32), đọc từ .env cạnh compose
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-}
     ports:
       - '3001:3001'
     depends_on:

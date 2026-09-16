@@ -25,7 +25,6 @@ import {
 import { EscalationService } from './escalation.service';
 import {
   ALERT_ESCALATION_QUEUE,
-  DELIVER_NOTIFICATIONS_JOB,
   NotificationDispatchService,
   type EscalationJobData,
 } from './notification-dispatch.service';
@@ -33,9 +32,6 @@ import {
 function levelLabel(level: number): string {
   return ALERT_LEVEL_LABELS[`L${level}` as AlertLevel] ?? `Mức ${level}`;
 }
-
-/** Enqueue phải fail nhanh khi Redis không phản hồi để còn fallback đồng bộ. */
-const ENQUEUE_TIMEOUT_MS = 1_500;
 
 @Injectable()
 export class AlertsService {
@@ -95,6 +91,7 @@ export class AlertsService {
     const where: Prisma.AlertWhereInput = {
       status: query.status,
       level: query.level,
+      source: query.source,
       studentId: query.studentId,
       student,
     };
@@ -115,8 +112,16 @@ export class AlertsService {
               department: { select: { code: true, name: true } },
             },
           },
+          // Cảnh báo tự động không có người tạo (raisedBy null) — web hiện "Hệ thống".
           raisedBy: { select: { id: true, staffCode: true, fullName: true } },
           resolvedBy: { select: { id: true, staffCode: true, fullName: true } },
+          classSection: {
+            select: {
+              id: true,
+              code: true,
+              subject: { select: { name: true } },
+            },
+          },
         },
       }),
       this.prisma.alert.count({ where }),
@@ -184,33 +189,8 @@ export class AlertsService {
     return { ...alert, notifiedCount: recipientIds.length };
   }
 
-  /**
-   * Ưu tiên đưa vào queue BullMQ (retry 3 lần, backoff lũy tiến).
-   * Redis lỗi/treo → fallback gửi đồng bộ để cảnh báo không bao giờ mất thông báo;
-   * unique (alertId, recipientId) đảm bảo không trùng nếu cả hai đường cùng chạy.
-   */
-  private async dispatchNotifications(data: EscalationJobData): Promise<void> {
-    try {
-      await Promise.race([
-        this.escalationQueue.add(DELIVER_NOTIFICATIONS_JOB, data, {
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 2_000 },
-          removeOnComplete: 1_000,
-          removeOnFail: 5_000,
-        }),
-        new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error('Enqueue quá thời gian chờ Redis.')),
-            ENQUEUE_TIMEOUT_MS,
-          ),
-        ),
-      ]);
-    } catch (error) {
-      this.logger.warn(
-        `Không enqueue được escalation (${error instanceof Error ? error.message : 'lỗi không xác định'}) — chuyển gửi đồng bộ.`,
-      );
-      await this.dispatchService.deliver(data);
-    }
+  private dispatchNotifications(data: EscalationJobData): Promise<void> {
+    return this.dispatchService.enqueueOrDeliver(this.escalationQueue, data);
   }
 
   async acknowledge(user: AuthUser, id: string) {

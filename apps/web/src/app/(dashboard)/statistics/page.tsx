@@ -29,6 +29,9 @@ import type {
   StudentFilterOptions,
   SubjectStatistics,
 } from '../../../lib/types';
+import { CareTable } from '../../../components/statistics/care-table';
+import { canViewCareStatistics } from '../../../lib/care-statistics';
+import { useMe } from '../../../lib/hooks';
 import { useCurrentTerm } from '../../../lib/use-current-term';
 
 // Dùng chung queryKey với /students và /alerts nên danh mục kỳ chỉ tải một lần.
@@ -39,6 +42,8 @@ function StatisticsPageContent() {
   const pathname = usePathname();
   const params = useSearchParams();
   const { tab, term } = parseStatisticsView(params);
+  const { data: me } = useMe();
+  const canViewCare = canViewCareStatistics(me?.user.roles ?? []);
   const { data: currentTerm } = useCurrentTerm();
   const hasInitializedTermRef = useRef(false);
 
@@ -71,6 +76,7 @@ function StatisticsPageContent() {
   // Một truy vấn duy nhất theo tab đang mở: đổi tab không tải lại ba bảng kia.
   const stats = useQuery({
     queryKey: ['statistics', tab, term],
+    enabled: tab !== 'care',
     queryFn: () =>
       apiFetch<
         ClassStatistics[] | DepartmentStatistics[] | SubjectStatistics[] | LecturerStatistics[]
@@ -94,7 +100,7 @@ function StatisticsPageContent() {
                 value={term}
                 onChange={(event) => setView({ term: event.target.value || null })}
               >
-                <option value="">Tất cả học kỳ</option>
+                <option value="">{tab === 'care' ? 'Chọn học kỳ' : 'Tất cả học kỳ'}</option>
                 {(options.data?.terms ?? []).map((item) => (
                   <option key={item} value={item}>
                     {item}
@@ -106,7 +112,7 @@ function StatisticsPageContent() {
           {options.isError ? (
             <FilterFooter>
               <p className="text-sm text-danger">
-                Không tải được danh mục học kỳ — bảng bên dưới đang hiển thị toàn bộ các kỳ.
+                {tab === 'care' ? 'Không tải được danh mục học kỳ.' : 'Không tải được danh mục học kỳ — bảng bên dưới đang hiển thị toàn bộ các kỳ.'}
               </p>
             </FilterFooter>
           ) : null}
@@ -118,7 +124,7 @@ function StatisticsPageContent() {
         aria-label="Chiều thống kê"
         className="mb-5 flex flex-wrap gap-1 border-b border-border"
       >
-        {STATISTICS_TABS.map((item) => (
+        {STATISTICS_TABS.filter((item) => item.key !== 'care' || canViewCare).map((item) => (
           <button
             key={item.key}
             type="button"
@@ -136,7 +142,9 @@ function StatisticsPageContent() {
         ))}
       </div>
 
-      {stats.isError ? (
+      {tab === 'care' ? (
+        canViewCare ? <CareTable key={term} term={term} /> : <FormError>Bạn không có quyền xem thống kê chăm sóc sinh viên.</FormError>
+      ) : stats.isError ? (
         <FormError>
           {stats.error instanceof ApiError
             ? stats.error.message

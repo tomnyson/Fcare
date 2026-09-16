@@ -67,11 +67,34 @@ describe('nav-tree — dựng cây theo vai trò', () => {
     expect(hrefs(system?.items ?? [])).toEqual(['/import-export']);
   });
 
+  it('ADMIN thấy "Cấu hình email" trong nhóm Hệ thống, role khác không thấy', () => {
+    const admin = buildNavSections(user(['ADMIN']));
+    const system = admin.find((section) => section.id === 'system');
+    expect(hrefs(system?.items ?? [])).toContain('/admin/mail');
+    const lecturer = buildNavSections(user(['LECTURER']));
+    expect(lecturer.flatMap((section) => hrefs(section.items))).not.toContain('/admin/mail');
+  });
+
+  it('ADMIN thấy "Sao lưu & Phục hồi" trong nhóm Hệ thống, role khác không thấy', () => {
+    const admin = buildNavSections(user(['ADMIN']));
+    const system = admin.find((section) => section.id === 'system');
+    expect(hrefs(system?.items ?? [])).toContain('/admin/backups');
+    const lecturer = buildNavSections(user(['LECTURER']));
+    expect(lecturer.flatMap((section) => hrefs(section.items))).not.toContain('/admin/backups');
+  });
+
   it('chỉ mục Cảnh báo mang chỉ số cảnh báo đang mở', () => {
     const main = buildNavSections(user(['LECTURER']))[0].items;
     const badged = main.filter((node) => node.kind === 'leaf' && node.badge === 'openAlerts');
     expect(badged).toHaveLength(1);
     expect(badged[0].kind === 'leaf' && badged[0].href).toBe('/alerts');
+  });
+
+  it('khu vực Chính chứa mục Lớp học dẫn đến /class-sections', () => {
+    const main = buildNavSections(user(['LECTURER']))[0].items;
+    const classLeaf = main.find((node) => node.kind === 'leaf' && node.href === '/class-sections');
+    expect(classLeaf).toBeDefined();
+    expect(classLeaf?.label).toBe('Lớp học');
   });
 });
 

@@ -8,6 +8,7 @@ import {
   CRITERION_LABELS,
   CRITERION_POINTS,
   EVALUATION_CRITERIA,
+  evaluationGuidance,
   SCORE_BANDS,
   scoreBand,
   type EvaluationCriterion,
@@ -20,6 +21,7 @@ import { apiFetch, ApiError } from '../../lib/api';
 import type { ClassSection, Evaluation } from '../../lib/types';
 import { FormError, Input, Label, Select, Textarea } from '../ui/form';
 import { EvaluationGuidancePanel } from './evaluation-guidance';
+import { EvaluationHandoffStep } from './evaluation-handoff-step';
 
 /**
  * Form nhập nhận xét theo tiêu chí DRS. Giảng viên chọn DẢI điểm (đúng ghi chú
@@ -141,6 +143,8 @@ interface EvaluationFormProps {
   ownEvaluations: Evaluation[];
   onSaved: (term: string) => void;
   onCancel: () => void;
+  /** ID lớp học phần chọn sẵn khi mở modal từ danh sách lớp. */
+  initialSectionId?: string;
 }
 
 export function EvaluationForm({
@@ -150,13 +154,34 @@ export function EvaluationForm({
   ownEvaluations,
   onSaved,
   onCancel,
+  initialSectionId,
 }: EvaluationFormProps) {
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
-  const [classSectionId, setClassSectionId] = useState('');
-  const [academicBand, setAcademicBand] = useState<ScoreBand>(DEFAULT_BAND);
-  const [attitudeBand, setAttitudeBand] = useState<ScoreBand>(DEFAULT_BAND);
-  const [criteria, setCriteria] = useState<ReadonlySet<EvaluationCriterion>>(new Set());
+
+  const defaultSectionId =
+    (initialSectionId && sections.some((s) => s.id === initialSectionId)
+      ? initialSectionId
+      : '') ||
+    (sections.length === 1 ? sections[0]?.id ?? '' : '');
+
+  const existingInitial = defaultSectionId
+    ? ownEvaluations.find((evaluation) => evaluation.classSectionId === defaultSectionId)
+    : undefined;
+
+  const [classSectionId, setClassSectionId] = useState(defaultSectionId);
+  const [academicBand, setAcademicBand] = useState<ScoreBand>(
+    existingInitial ? scoreBand(existingInitial.academicScore) : DEFAULT_BAND,
+  );
+  const [attitudeBand, setAttitudeBand] = useState<ScoreBand>(
+    existingInitial ? scoreBand(existingInitial.attitudeScore) : DEFAULT_BAND,
+  );
+  const [criteria, setCriteria] = useState<ReadonlySet<EvaluationCriterion>>(
+    new Set(existingInitial ? existingInitial.criteria.map((mark) => mark.criterion) : []),
+  );
+
+  const [handoffStep, setHandoffStep] = useState(false);
+  const [submittedNote, setSubmittedNote] = useState('');
 
   const academicScore = BAND_SCORE[academicBand];
   const attitudeScore = BAND_SCORE[attitudeBand];
@@ -181,7 +206,17 @@ export function EvaluationForm({
         queryClient.invalidateQueries({ queryKey: ['evaluations', studentId] }),
         queryClient.invalidateQueries({ queryKey: ['risk-score', studentId, term] }),
       ]);
-      onSaved(term);
+      const currentGuidance = evaluationGuidance({
+        academicScore,
+        attitudeScore,
+        criteria: [...criteria],
+      });
+      // Nếu đề xuất mức 3 (Nguy cơ cao) hoặc 4 (Khẩn cấp), chuyển sang bước tương tác tiếp theo
+      if (currentGuidance.suggestedLevel >= 3) {
+        setHandoffStep(true);
+      } else {
+        onSaved(term);
+      }
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Có lỗi xảy ra.'),
   });
@@ -217,6 +252,7 @@ export function EvaluationForm({
     const form = new FormData(event.currentTarget);
     const absent = String(form.get('absentSessions') ?? '').trim();
     const note = String(form.get('note') ?? '').trim();
+    setSubmittedNote(note);
     // PATCH chỉ nhận phần nội dung; sinh viên/lớp/học kỳ đã cố định ở bản cũ.
     saveMutation.mutate({
       ...(existing ? {} : { studentId, classSectionId, term }),
@@ -226,6 +262,28 @@ export function EvaluationForm({
       criteria: [...criteria],
       ...(note === '' ? {} : { note }),
     });
+  }
+
+  if (handoffStep) {
+    const currentGuidance = evaluationGuidance({
+      academicScore,
+      attitudeScore,
+      criteria: [...criteria],
+    });
+    return (
+      <EvaluationHandoffStep
+        studentId={studentId}
+        term={term}
+        suggestedLevel={currentGuidance.suggestedLevel}
+        criterionLabels={currentGuidance.criterionLabels}
+        note={submittedNote}
+        academicDescription={currentGuidance.academicDescription}
+        attitudeDescription={currentGuidance.attitudeDescription}
+        lecturerActions={currentGuidance.lecturerActions}
+        studentAffairsActions={currentGuidance.studentAffairsActions}
+        onComplete={() => onSaved(term)}
+      />
+    );
   }
 
   return (
@@ -283,7 +341,7 @@ export function EvaluationForm({
       <div className="max-w-56">
         <Label htmlFor="absentSessions">Số buổi đã vắng</Label>
         <Input
-          key={`absent-${existing?.id ?? 'moi'}`}
+          key={`absent-${classSectionId}-${existing?.id ?? 'moi'}`}
           id="absentSessions"
           name="absentSessions"
           type="number"
@@ -319,7 +377,7 @@ export function EvaluationForm({
       <div>
         <Label htmlFor="note">Nhận xét</Label>
         <Textarea
-          key={`note-${existing?.id ?? 'moi'}`}
+          key={`note-${classSectionId}-${existing?.id ?? 'moi'}`}
           id="note"
           name="note"
           placeholder="Mô tả tình huống cụ thể…"

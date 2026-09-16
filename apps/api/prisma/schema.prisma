@@ -92,6 +92,7 @@ model ClassSection {
   lecturer    Staff?       @relation(fields: [lecturerId], references: [id])
   enrollments Enrollment[]
   evaluations Evaluation[]
+  alerts      Alert[]
 
   @@unique([code, term])
   @@map("class_sections")
@@ -104,6 +105,7 @@ model Staff {
   id                 String   @id @default(uuid())
   staffCode          String   @unique // mã nhân viên — dùng để đăng nhập
   fullName           String
+  email              String?
   departmentId       String?
   passwordHash       String
   mustChangePassword Boolean  @default(false)
@@ -132,8 +134,48 @@ model Staff {
   importBatches                ImportBatch[]
   discussionMessages           DiscussionMessage[]
   discussionReads              DiscussionRead[]
+  oauthIdentities              StaffOAuthIdentity[]
+  mailSettingsUpdated          MailSetting[]                  @relation("MailSettingUpdatedBy")
 
   @@map("staff")
+}
+
+model StaffOAuthIdentity {
+  id        String   @id @default(uuid())
+  staffId   String
+  provider  String
+  subject   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, subject])
+  @@unique([staffId, provider])
+  @@map("staff_oauth_identities")
+}
+
+/// Cấu hình SMTP toàn hệ thống — đúng 1 dòng (`id = 'default'`).
+/// `passwordEncrypted` là ciphertext AES-256-GCM (xem common/utils/secret-cipher.ts),
+/// KHÔNG bao giờ trả ra API.
+model MailSetting {
+  id                String    @id @default("default")
+  host              String
+  port              Int       @default(587)
+  secure            Boolean   @default(false)
+  username          String?
+  passwordEncrypted String?   @map("password_encrypted")
+  fromName          String    @map("from_name")
+  fromEmail         String    @map("from_email")
+  enabled           Boolean   @default(true)
+  lastTestedAt      DateTime? @map("last_tested_at")
+  lastTestOk        Boolean?  @map("last_test_ok")
+  updatedById       String?   @map("updated_by_id")
+  updatedBy         Staff?    @relation("MailSettingUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@map("mail_settings")
 }
 
 model Role {
@@ -335,12 +377,17 @@ model CareLog {
   content    String
   outcome    String?
   nextAction String?
+  /// Nhật ký này là phản hồi cho cảnh báo nào (tuỳ chọn). Với cảnh báo điểm danh:
+  /// staff == classSection.lecturerId → tắt cảnh báo "liên tục" của GV đó.
+  alertId    String?
   createdAt  DateTime    @default(now())
 
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
   staff   Staff   @relation(fields: [staffId], references: [id])
+  alert   Alert?  @relation(fields: [alertId], references: [id], onDelete: SetNull)
 
   @@index([studentId, createdAt])
+  @@index([alertId])
   @@map("care_logs")
 }
 
@@ -350,14 +397,29 @@ enum AlertStatus {
   RESOLVED
 }
 
+/// Nguồn phát cảnh báo: người bấm gửi (MANUAL) hay hệ thống rà soát điểm danh
+/// sau import GRADE_ATTENDANCE (AUTO_ATTENDANCE — FLOW 2 module chăm sóc).
+enum AlertSource {
+  MANUAL
+  AUTO_ATTENDANCE
+}
+
 // Cảnh báo mức độ khẩn 1-4; mức 4 yêu cầu lý do >= 40 ký tự (validate tầng DTO)
 model Alert {
   id             String      @id @default(uuid())
   studentId      String
-  raisedById     String
+  /// null khi hệ thống tự phát (source = AUTO_ATTENDANCE) — UI hiện "Hệ thống".
+  raisedById     String?
   level          Int // 1..4
   reason         String
   status         AlertStatus @default(OPEN)
+  source         AlertSource @default(MANUAL)
+  /// Lớp học phần phát sinh cảnh báo điểm danh; GV đứng lớp này bị "đeo" cảnh báo
+  /// liên tục cho tới khi chính họ ghi CareLog gắn alertId (ownerCaredAt).
+  classSectionId String?
+  term           String?
+  absentSessions Int?
+  ownerCaredAt   DateTime?
   resolvedById   String?
   resolvedAt     DateTime?
   resolutionNote String?
@@ -365,13 +427,17 @@ model Alert {
   updatedAt      DateTime    @updatedAt
 
   student          Student                        @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  raisedBy         Staff                          @relation("AlertRaisedBy", fields: [raisedById], references: [id])
+  raisedBy         Staff?                         @relation("AlertRaisedBy", fields: [raisedById], references: [id])
   resolvedBy       Staff?                         @relation("AlertResolvedBy", fields: [resolvedById], references: [id])
+  classSection     ClassSection?                  @relation(fields: [classSectionId], references: [id], onDelete: SetNull)
   notifications    Notification[]
   analysisVersions StudentTermAnalysisVersion[]
+  careLogs         CareLog[]
 
   @@index([studentId, status])
   @@index([level, status])
+  @@index([source, status, classSectionId])
+  @@index([studentId, classSectionId, term])
   @@map("alerts")
 }
 

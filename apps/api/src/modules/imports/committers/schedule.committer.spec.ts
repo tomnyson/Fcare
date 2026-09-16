@@ -103,6 +103,35 @@ describe('ScheduleCommitter', () => {
     expect(createArgs.data.lecturerId).toBe('gv-1');
   });
 
+  it('khớp giảng viên theo staffCode (manv) không phân biệt hoa thường', async () => {
+    const tx = makeTx();
+    tx.staff.findMany.mockResolvedValue([
+      {
+        id: 'gv-son',
+        staffCode: 'SONLH32',
+        username: null,
+        fullName: 'Lê Hồng Sơn',
+      },
+    ]);
+
+    await committer.commit(
+      [
+        row({
+          subjectCode: 'ITA107',
+          classCode: 'AI21301',
+          lecturerName: 'sonlh32',
+          ...BASE,
+        }),
+      ],
+      tx,
+      ctx,
+    );
+    const [createArgs] = tx.classSection.create.mock.calls[0] as [
+      CreateSectionArgs,
+    ];
+    expect(createArgs.data.lecturerId).toBe('gv-son');
+  });
+
   it('tên giảng viên không khớp Staff nào → lecturerId null, KHÔNG tạo Staff mới', async () => {
     const tx = makeTx();
     const result = await committer.commit(

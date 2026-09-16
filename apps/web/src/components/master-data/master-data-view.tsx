@@ -8,6 +8,8 @@ import { DataTable, Td } from '../ui/data-table';
 import { FormError, Input, Label, Select } from '../ui/form';
 import { Modal } from '../ui/modal';
 import { PageHeader } from '../ui/page-header';
+import { useCatalogPaging } from './catalog-paging';
+import { ClassSectionsTable, SubjectsTable } from './catalog-tables';
 import { apiFetch, ApiError } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 import {
@@ -111,6 +113,23 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
   const [termYear, setTermYear] = useState<number>(() => new Date().getFullYear());
   const [termCode, setTermCode] = useState('');
   const [termName, setTermName] = useState('');
+
+  // Môn học/lớp học phần có vài trăm dòng — tìm nhanh + lật trang phía web.
+  const subjectPaging = useCatalogPaging(
+    subjects.data ?? [],
+    (subject, needle) =>
+      subject.code.toLowerCase().includes(needle) || subject.name.toLowerCase().includes(needle),
+    tab,
+  );
+  const sectionPaging = useCatalogPaging(
+    classSections.data ?? [],
+    (section, needle) =>
+      section.code.toLowerCase().includes(needle) ||
+      (section.subject?.name ?? '').toLowerCase().includes(needle) ||
+      (section.lecturer?.fullName ?? '').toLowerCase().includes(needle) ||
+      section.term.toLowerCase().includes(needle),
+    tab,
+  );
   const [termStart, setTermStart] = useState('');
   const [termEnd, setTermEnd] = useState('');
   const [termOverride, setTermOverride] = useState(false);
@@ -204,7 +223,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
         lecturerId: form.get('lecturerId'),
         term: form.get('term'),
       },
-      terms: {
+      terms: tab === 'terms' ? {
         code: termCode || form.get('code'),
         name: termName || form.get('name'),
         season: termSeason,
@@ -212,7 +231,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
         startDate: new Date(`${termStart || form.get('startDate')}T00:00:00.000Z`).toISOString(),
         endDate: new Date(`${termEnd || form.get('endDate')}T23:59:59.999Z`).toISOString(),
         isCurrentOverride: termOverride,
-      },
+      } : undefined,
     };
     saveMutation.mutate(payloads[tab] ?? {});
   }
@@ -380,63 +399,23 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
       ) : null}
 
       {tab === 'subjects' ? (
-        <>
-          {errorBanner(subjects)}
-          <DataTable
-          headers={['Mã môn', 'Tên môn học', 'Tín chỉ', 'Bộ môn', 'Lớp học phần', ...actionHeader]}
-          isLoading={subjects.isLoading}
-          skeletonRows={5}
-          isEmpty={!subjects.isLoading && !subjects.isError && (subjects.data?.length ?? 0) === 0}
-          emptyMessage="Chưa có môn học nào — bấm “+ Thêm môn học” để tạo danh mục đầu tiên."
-        >
-          {(subjects.data ?? []).map((subject) => (
-            <tr key={subject.id} className="transition-colors hover:bg-fpt-orange-50/40">
-              <Td className="font-semibold">{subject.code}</Td>
-              <Td>{subject.name}</Td>
-              <Td className="tabular-nums">{subject.credits}</Td>
-              <Td>{subject.department?.name ?? '—'}</Td>
-              <Td className="tabular-nums">{subject._count?.classSections ?? 0}</Td>
-              {rowActions(subject)}
-            </tr>
-          ))}
-          </DataTable>
-        </>
+        <SubjectsTable
+          query={subjects}
+          paging={subjectPaging}
+          actionHeader={actionHeader}
+          rowActions={rowActions}
+          errorBanner={errorBanner}
+        />
       ) : null}
 
       {tab === 'class-sections' ? (
-        <>
-          {errorBanner(classSections)}
-          <DataTable
-          headers={['Mã lớp', 'Môn', 'Giảng viên', 'Học kỳ', 'Sĩ số', 'Bảng điểm', ...actionHeader]}
-          isLoading={classSections.isLoading}
-          skeletonRows={6}
-          isEmpty={
-            !classSections.isLoading &&
-            !classSections.isError &&
-            (classSections.data?.length ?? 0) === 0
-          }
-          emptyMessage="Chưa có lớp học phần nào — bấm “+ Thêm lớp học phần” để tạo."
-        >
-          {(classSections.data ?? []).map((section) => (
-            <tr key={section.id} className="transition-colors hover:bg-fpt-orange-50/40">
-              <Td className="font-semibold">{section.code}</Td>
-              <Td>{section.subject?.name ?? '—'}</Td>
-              <Td>{section.lecturer?.fullName ?? '—'}</Td>
-              <Td>{section.term}</Td>
-              <Td className="tabular-nums">{section._count?.enrollments ?? 0}</Td>
-              <Td>
-                <Link
-                  href={`/class-sections/${section.id}/grades`}
-                  className="rounded-md px-3 py-2 text-sm font-semibold text-fpt-blue hover:underline"
-                >
-                  Bảng điểm
-                </Link>
-              </Td>
-              {rowActions(section)}
-            </tr>
-          ))}
-          </DataTable>
-        </>
+        <ClassSectionsTable
+          query={classSections}
+          paging={sectionPaging}
+          actionHeader={actionHeader}
+          rowActions={rowActions}
+          errorBanner={errorBanner}
+        />
       ) : null}
 
       {tab === 'terms' ? (

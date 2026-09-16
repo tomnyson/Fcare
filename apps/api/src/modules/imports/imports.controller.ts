@@ -7,6 +7,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -18,7 +19,11 @@ import type { AppAbility } from '../../casl/ability.factory';
 import { CheckPolicies } from '../../common/decorators/check-policies.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/auth-user';
-import { UploadImportDto } from './dto/import.dto';
+import {
+  ListImportRowsQuery,
+  ListImportsQuery,
+  UploadImportDto,
+} from './dto/import.dto';
 import { ImportsService } from './imports.service';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB — file phân công GV có 449 dòng danh mục.
@@ -65,8 +70,8 @@ export class ImportsController {
 
   @Get()
   @CheckPolicies((ability: AppAbility) => ability.can('import', 'Excel'))
-  list(@CurrentUser() user: AuthUser) {
-    return this.importsService.list(user);
+  list(@CurrentUser() user: AuthUser, @Query() query: ListImportsQuery) {
+    return this.importsService.list(user, query);
   }
 
   @Post(':kind/upload')
@@ -105,8 +110,9 @@ export class ImportsController {
   preview(
     @CurrentUser() user: AuthUser,
     @Param('batchId', ParseUUIDPipe) batchId: string,
+    @Query() query: ListImportRowsQuery,
   ) {
-    return this.importsService.preview(user, batchId);
+    return this.importsService.preview(user, batchId, query);
   }
 
   @Post(':batchId/commit')

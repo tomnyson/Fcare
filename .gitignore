@@ -54,3 +54,8 @@ apps/api/prisma/*.db
 
 # File khoá tạm của Excel/Word (~$Tên file.xlsx)
 ~$*.xls*
+
+# Database backups (keep directory structure with .gitkeep)
+storage/backups/*
+!storage/backups/.gitkeep
+

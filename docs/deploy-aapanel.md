@@ -56,7 +56,8 @@ docker buildx build --platform linux/amd64 -f infra/docker/Dockerfile.web \
 cd /www/wwwroot && git clone <repo> fcare && cd fcare/infra/docker
 cp env.production.sample .env.production
 openssl rand -base64 32   # chạy 2 lần cho JWT_ACCESS_SECRET và JWT_REFRESH_SECRET
-nano .env.production      # điền PUBLIC_WEB_ORIGIN, mật khẩu Postgres, JWT, DEEPSEEK_API_KEY
+openssl rand -hex 32      # SETTINGS_ENCRYPTION_KEY (mã hoá mật khẩu SMTP lưu DB)
+nano .env.production      # điền PUBLIC_WEB_ORIGIN, mật khẩu Postgres, JWT, DEEPSEEK_API_KEY, SETTINGS_ENCRYPTION_KEY
 chmod 600 .env.production
 ```
 
@@ -184,6 +185,7 @@ docker compose --env-file .env.production -f docker-compose.prod.yml \
 | Nội dung gửi | Chọn "Tôi tự soạn nội dung" | Có xem trước lịch sử chăm sóc gửi kèm |
 | SSE | Mở tab thông báo, để một máy khác gửi cảnh báo | Thông báo về trong vài giây |
 | Import Excel | Tài khoản TRAINING_OFFICER upload file thật | Chạy được; LECTURER bị chặn |
+| Email | ADMIN → Hệ thống → Cấu hình email → "Gửi mail thử" | Mail tới hộp thư `@fpt.edu.vn` đã nhập; thẻ trạng thái ghi lần thử gần nhất |
 
 Chạy E2E trỏ vào server thật (từ máy dev):
 
@@ -193,6 +195,19 @@ E2E_BASE_URL=https://fcare.example.com E2E_API_URL=https://fcare.example.com \
 ```
 
 ## 7. Vận hành
+
+**Cấu hình email (SMTP)**
+
+1. `SETTINGS_ENCRYPTION_KEY` (32 byte hex, sinh bằng `openssl rand -hex 32`) đặt
+   trong `.env.production` của API — **không** đưa vào git. Thiếu khoá thì API vẫn
+   chạy nhưng ADMIN không lưu được mật khẩu SMTP (lỗi `MAIL_ENCRYPTION_KEY_MISSING`).
+2. Sau khi deploy, ADMIN vào **Hệ thống → Cấu hình email** (`/admin/mail`), nhập
+   SMTP của trường (host, cổng, TLS, tài khoản, mật khẩu, người gửi), bấm
+   **Gửi mail thử** tới một hộp thư `@fpt.edu.vn` rồi mới **Lưu**. Cấu hình áp
+   dụng ngay, không cần restart. Chưa cấu hình → API dùng `SMTP_*` trong env.
+3. Đổi hoặc mất `SETTINGS_ENCRYPTION_KEY` = mọi mật khẩu SMTP đã lưu không giải mã
+   được; ADMIN phải nhập lại mật khẩu ở `/admin/mail`. Xoay khoá thì làm đúng thứ
+   tự: đổi env → restart API → nhập lại mật khẩu.
 
 **Cập nhật phiên bản**
 

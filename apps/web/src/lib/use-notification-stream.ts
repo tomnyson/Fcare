@@ -25,9 +25,18 @@ export function useNotificationStream(): void {
       void queryClient.invalidateQueries({ queryKey: ['notifications'] });
       // Thông báo của tin trao đổi → làm mới luồng đang mở, không cần biết luồng nào.
       try {
-        const payload = JSON.parse(event.data) as { discussionMessageId?: string | null };
+        const payload = JSON.parse(event.data) as {
+          discussionMessageId?: string | null;
+          alertId?: string | null;
+        };
         if (payload.discussionMessageId) {
           void queryClient.invalidateQueries({ queryKey: ['discussions'] });
+        }
+        // Thông báo gắn cảnh báo (kể cả cảnh báo điểm danh tự động) → làm mới
+        // bảng "cần chăm sóc" trên dashboard và badge sidebar mà không chờ polling.
+        if (payload.alertId) {
+          void queryClient.invalidateQueries({ queryKey: ['attendance-alerts'] });
+          void queryClient.invalidateQueries({ queryKey: ['statistics', 'overview'] });
         }
       } catch {
         // Payload lạ thì bỏ qua — invalidate thông báo ở trên đã chạy rồi.

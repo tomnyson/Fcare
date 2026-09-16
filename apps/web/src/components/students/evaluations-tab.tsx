@@ -18,9 +18,17 @@ import { StudentAnalysisPanel } from './student-analysis-panel';
  * và danh sách nhận xét của từng lớp học phần. Mọi logic nghiệp vụ nằm trong
  * các component con, ở đây chỉ điều phối học kỳ đang chọn.
  */
-export function EvaluationsTab({ studentId, user }: { studentId: string; user: AuthUser }) {
+export function EvaluationsTab({
+  studentId,
+  user,
+  initialTerm = '',
+}: {
+  studentId: string;
+  user: AuthUser;
+  initialTerm?: string;
+}) {
   const [open, setOpen] = useState(false);
-  const [selectedTerm, setSelectedTerm] = useState('');
+  const [selectedTerm, setSelectedTerm] = useState(initialTerm);
   const [postSaveTerm, setPostSaveTerm] = useState('');
   const { data: currentTerm } = useCurrentTerm();
 
@@ -36,7 +44,7 @@ export function EvaluationsTab({ studentId, user }: { studentId: string; user: A
   const terms = uniqueTermsFromEnrollments(enrollments ?? []);
 
   useEffect(() => {
-    if (!selectedTerm && terms.length > 0) {
+    if ((!selectedTerm || !terms.includes(selectedTerm)) && terms.length > 0) {
       if (currentTerm?.code && terms.includes(currentTerm.code)) {
         setSelectedTerm(currentTerm.code);
       } else {

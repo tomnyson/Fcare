@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AlertStatus } from '@prisma/client';
+import { AlertSource, AlertStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsEnum,
@@ -58,6 +58,14 @@ export class ListAlertsQuery {
   @Min(1)
   @Max(4)
   level?: number;
+
+  @ApiPropertyOptional({
+    enum: AlertSource,
+    description: 'Nguồn cảnh báo: thủ công hay rà soát điểm danh tự động',
+  })
+  @IsOptional()
+  @IsEnum(AlertSource)
+  source?: AlertSource;
 
   @ApiPropertyOptional()
   @IsOptional()

@@ -13,10 +13,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class EscalationService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * `raisedById` bỏ trống khi cảnh báo do hệ thống phát (rà soát điểm danh):
+   * không có ai để loại khỏi danh sách nhận.
+   */
   async computeRecipientIds(
     studentId: string,
     level: number,
-    raisedById: string,
+    raisedById?: string,
   ): Promise<string[]> {
     const recipients = new Set<string>();
 
@@ -56,7 +60,9 @@ export class EscalationService {
       ).forEach((id) => recipients.add(id));
     }
 
-    recipients.delete(raisedById); // người phát cảnh báo không cần tự nhận thông báo
+    if (raisedById) {
+      recipients.delete(raisedById); // người phát cảnh báo không cần tự nhận thông báo
+    }
     return [...recipients];
   }
 

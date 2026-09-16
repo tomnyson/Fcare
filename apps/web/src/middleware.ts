@@ -20,7 +20,9 @@ export const config = {
   matcher: [
     '/dashboard/:path*',
     '/students/:path*',
+    '/class-sections/:path*',
     '/alerts/:path*',
+    '/statistics/:path*',
     '/master-data/:path*',
     '/import-export/:path*',
     '/admin/:path*',

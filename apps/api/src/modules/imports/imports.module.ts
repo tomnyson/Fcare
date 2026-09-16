@@ -1,5 +1,6 @@
 import { Module, type OnModuleInit } from '@nestjs/common';
 import { ImportKind } from '@prisma/client';
+import { AttendanceAlertsModule } from '../attendance-alerts/attendance-alerts.module';
 import { CatalogCommitter } from './committers/catalog.committer';
 import { GradeAttendanceCommitter } from './committers/grade-attendance.committer';
 import { GradebookCommitter } from './committers/gradebook.committer';
@@ -18,6 +19,7 @@ import { ScheduleParser } from './parsers/schedule.parser';
 import { SectionListParser } from './parsers/section-list.parser';
 
 @Module({
+  imports: [AttendanceAlertsModule],
   controllers: [ImportsController],
   providers: [ImportsService],
   exports: [ImportsService],

@@ -19,8 +19,8 @@ import { ALERT_LEVEL_LABELS } from '../../lib/labels';
 const LEVEL_CLASSES: Record<number, string> = {
   1: 'border-success/30 bg-success/10 text-success',
   2: 'border-warning/40 bg-warning/10 text-warning',
-  3: 'border-fpt-orange/40 bg-fpt-orange-50 text-fpt-orange-600',
-  4: 'border-danger/30 bg-danger/10 text-danger',
+  3: 'border-fpt-orange/40 bg-fpt-orange-50 text-fpt-orange-600 animate-pulse ring-2 ring-fpt-orange/30 shadow-sm',
+  4: 'border-danger/30 bg-danger/10 text-danger animate-pulse ring-2 ring-danger/40 shadow-sm',
 };
 
 /** Nhãn + class badge cho một cấp độ khẩn. Class trỏ vào token màu, không mã hex. */

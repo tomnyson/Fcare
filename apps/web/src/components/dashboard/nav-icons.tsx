@@ -133,6 +133,23 @@ export const IconSettings: NavIcon = (props) => (
   </Icon>
 );
 
+/** Cấu hình email — phong bì. */
+export const IconMail: NavIcon = (props) => (
+  <Icon {...props}>
+    <rect x="3" y="5" width="18" height="14" rx="2.2" />
+    <path d="m3.8 7 7.3 5.4a1.5 1.5 0 0 0 1.8 0L20.2 7" />
+  </Icon>
+);
+
+/** Cơ sở dữ liệu / Sao lưu & phục hồi — các tầng đĩa dữ liệu. */
+export const IconDatabase: NavIcon = (props) => (
+  <Icon {...props}>
+    <ellipse cx="12" cy="5" rx="9" ry="3" />
+    <path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5" />
+    <path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3" />
+  </Icon>
+);
+
 /** Mũi tên gập/mở nhóm. */
 export const IconChevron: NavIcon = (props) => (
   <Icon {...props}>

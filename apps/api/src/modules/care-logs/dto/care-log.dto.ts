@@ -37,6 +37,14 @@ export class CreateCareLogDto {
   @IsString()
   @MaxLength(2000)
   nextAction?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Cảnh báo được chăm sóc (điểm danh tự động): GV đứng lớp ghi nhật ký gắn cảnh báo sẽ tắt hiện liên tục',
+  })
+  @IsOptional()
+  @IsUUID()
+  alertId?: string;
 }
 
 export class ListCareLogsQuery {

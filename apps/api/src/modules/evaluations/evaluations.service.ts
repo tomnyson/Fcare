@@ -35,6 +35,9 @@ export class EvaluationsService {
       where: {
         studentId: query.studentId,
         term: query.term,
+        ...(query.classSectionId
+          ? { classSectionId: query.classSectionId }
+          : {}),
         student: studentScope(user),
       },
       orderBy: { createdAt: 'desc' },

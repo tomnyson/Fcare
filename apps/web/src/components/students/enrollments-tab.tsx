@@ -2,6 +2,7 @@
 
 import { Badge } from '@fcare/ui-kit';
 import { useQuery } from '@tanstack/react-query';
+import Link from 'next/link';
 import { DataTable, Td } from '../ui/data-table';
 import { apiFetch } from '../../lib/api';
 import { ENROLLMENT_RESULT_LABELS } from '../../lib/labels';
@@ -21,7 +22,7 @@ export function EnrollmentsTab({ studentId }: { studentId: string }) {
 
   return (
     <DataTable
-      headers={['Lớp học phần', 'Môn', 'Học kỳ', 'Chuyên cần', 'Giữa kỳ', 'Cuối kỳ', 'Tổng kết', 'Cấm thi', 'Kết quả']}
+      headers={['Lớp học phần', 'Môn', 'Học kỳ', 'Chuyên cần', 'Giữa kỳ', 'Cuối kỳ', 'Tổng kết', 'Cấm thi', 'Kết quả', 'Nhận xét']}
       isLoading={isLoading}
       skeletonRows={5}
       isEmpty={!isLoading && (data?.length ?? 0) === 0}
@@ -41,6 +42,14 @@ export function EnrollmentsTab({ studentId }: { studentId: string }) {
             <Badge tone={RESULT_TONES[enrollment.result]}>
               {ENROLLMENT_RESULT_LABELS[enrollment.result]}
             </Badge>
+          </Td>
+          <Td>
+            <Link
+              href={`/students/${studentId}?tab=evaluations&term=${encodeURIComponent(enrollment.classSection?.term ?? '')}`}
+              className="rounded-md px-2 py-1 text-sm font-semibold text-fpt-blue hover:underline"
+            >
+              Nhận xét
+            </Link>
           </Td>
         </tr>
       ))}

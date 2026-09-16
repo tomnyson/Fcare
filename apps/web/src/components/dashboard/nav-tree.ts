@@ -3,7 +3,9 @@ import { canSeeExcelMenu } from '../../lib/nav-access';
 import type { AuthUser } from '../../lib/types';
 import {
   IconAlerts,
+  IconDatabase,
   IconDepartments,
+  IconMail,
   IconMajors,
   IconOverview,
   IconProgram,
@@ -112,6 +114,7 @@ export function buildNavSections(user: AuthUser): NavSection[] {
       items: [
         { kind: 'leaf', href: '/dashboard', label: 'Tổng quan', icon: IconOverview },
         { kind: 'leaf', href: '/students', label: 'Sinh viên', icon: IconStudents },
+        { kind: 'leaf', href: '/class-sections', label: 'Lớp học', icon: IconSections },
         { kind: 'leaf', href: '/alerts', label: 'Cảnh báo', icon: IconAlerts, badge: 'openAlerts' },
         { kind: 'leaf', href: '/statistics', label: 'Thống kê', icon: IconStatistics },
       ],
@@ -128,6 +131,8 @@ export function buildNavSections(user: AuthUser): NavSection[] {
   }
   if (user.roles.includes('ADMIN')) {
     system.push({ kind: 'leaf', href: '/admin/users', label: 'Người dùng', icon: IconSettings });
+    system.push({ kind: 'leaf', href: '/admin/mail', label: 'Cấu hình email', icon: IconMail });
+    system.push({ kind: 'leaf', href: '/admin/backups', label: 'Sao lưu & Phục hồi', icon: IconDatabase });
   }
   if (system.length > 0) {
     sections.push({ id: 'system', label: 'Hệ thống', items: system });

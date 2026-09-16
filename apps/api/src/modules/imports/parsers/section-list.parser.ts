@@ -19,7 +19,15 @@ const OPTIONAL = [
   'Ngày bắt đầu',
   'số lượng sinh viên',
   'Giảng viên',
+  'Phân công giảng viên',
+  'Mã NV',
+  'manv',
+  'Mã GV',
+  'Lecturer',
   'Tên phòng',
+  'Mã Chuyển đổi',
+  'Mã chuyển đổi',
+  'Tên môn',
 ] as const;
 
 const BLOCK = /block\s*(\d+)/i;
@@ -130,17 +138,32 @@ export class SectionListParser implements ImportParser {
         seenCodes.add(code);
       }
 
+      const lecturerCol =
+        at('giảng viên') ??
+        at('phân công giảng viên') ??
+        at('mã nv') ??
+        at('manv') ??
+        at('mã gv') ??
+        at('lecturer');
+
+      const altSubjectCode =
+        (textOrNull(row, at('mã chuyển đổi')) ?? '').trim().toUpperCase() ||
+        null;
+      const subjectName = textOrNull(row, at('tên môn'));
+
       const payload = {
         code,
         classCode,
         subjectCode,
+        altSubjectCode,
+        subjectName,
         block: parseBlock(textOrNull(row, at('block')) ?? ''),
         slot:
           slotNumber === null || slotNumber === 0 ? null : String(slotNumber),
         room: textOrNull(row, at('tên phòng')),
         capacity,
         startDate,
-        lecturerUsername: textOrNull(row, at('giảng viên')),
+        lecturerUsername: textOrNull(row, lecturerCol),
       };
 
       let error: string | undefined;

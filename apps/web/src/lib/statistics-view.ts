@@ -8,6 +8,7 @@ export const STATISTICS_TABS = [
   { key: 'departments', label: 'Bộ môn', endpoint: '/statistics/departments' },
   { key: 'subjects', label: 'Môn học', endpoint: '/statistics/subjects' },
   { key: 'lecturers', label: 'Giảng viên', endpoint: '/statistics/lecturers' },
+  { key: 'care', label: 'Chăm sóc sinh viên', endpoint: '/statistics/care' },
 ] as const;
 
 export type StatisticsTab = (typeof STATISTICS_TABS)[number];

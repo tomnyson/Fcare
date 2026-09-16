@@ -13,7 +13,7 @@ import {
   remainingKinds,
   type ImportRun,
 } from './import-run-status';
-import { FormError, FormSuccess, Input, Label } from '../ui/form';
+import { FormError, FormSuccess, Input, Label, Select } from '../ui/form';
 import { ApiError, apiFetch, apiUpload } from '../../lib/api';
 import {
   importKindLabel,
@@ -27,8 +27,11 @@ import type {
   ImportCommitResult,
   ImportDiscardResult,
 } from '../../lib/types';
-
-const TERM_PATTERN = /^[A-Z]{2}\d{2}$/;
+import { useCurrentTerm, useTerms } from '../../lib/use-current-term';
+import {
+  isTermValid,
+  resolveInitialTerm,
+} from './import-term-helpers';
 const STEP_LABELS = ['Chọn loại', 'Tải file', 'Xem trước', 'Xác nhận'];
 
 /** Query key đã bị các thao tác import commit chạm tới, liệt kê tường minh
@@ -78,8 +81,22 @@ interface ImportWizardProps {
 export function ImportWizard({ resumeBatchId, onResumeHandled }: ImportWizardProps) {
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
+  const { data: currentTerm } = useCurrentTerm();
+  const { data: terms = [] } = useTerms();
   const [selected, setSelected] = useState<ImportKindSlug[]>([]);
-  const [term, setTerm] = useState('SU26');
+  const [term, setTerm] = useState(() => resolveInitialTerm(currentTerm?.code, terms));
+  const [isCustomTerm, setIsCustomTerm] = useState(false);
+  const hasUserSelectedTermRef = useRef(false);
+
+  // Tự động nhận diện kỳ dựa vào semester hiện tại
+  useEffect(() => {
+    if (!hasUserSelectedTermRef.current) {
+      const nextTerm = resolveInitialTerm(currentTerm?.code, terms);
+      if (nextTerm) {
+        setTerm(nextTerm);
+      }
+    }
+  }, [currentTerm?.code, terms]);
   // Giữ File đã bắt đầu chạy (ngoài <input>) để upload lại cho loại kế tiếp.
   const sourceFileRef = useRef<File | null>(null);
   const [run, setRun] = useState<ImportRun>(EMPTY_RUN);
@@ -231,7 +248,7 @@ export function ImportWizard({ resumeBatchId, onResumeHandled }: ImportWizardPro
     upload.mutate({ slug: order[0], source });
   }
 
-  const termValid = TERM_PATTERN.test(term);
+  const termValid = isTermValid(term);
   const committed = isRunFinished(run);
   const currentStep = batch ? 2 : committed ? 3 : selected.length > 0 ? 1 : 0;
   const busy = upload.isPending || commit.isPending || discard.isPending;
@@ -283,14 +300,63 @@ export function ImportWizard({ resumeBatchId, onResumeHandled }: ImportWizardPro
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <Label htmlFor="import-term">2. Học kỳ</Label>
-              <Input
-                id="import-term"
-                value={term}
-                onChange={(event) => setTerm(event.target.value.toUpperCase())}
-                placeholder="SU26"
-                aria-invalid={!termValid}
-              />
+              <div className="flex items-center justify-between">
+                <Label htmlFor="import-term">2. Học kỳ</Label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCustomTerm(!isCustomTerm);
+                    hasUserSelectedTermRef.current = true;
+                  }}
+                  className="mb-1.5 text-xs text-fpt-orange hover:underline focus:outline-none"
+                >
+                  {isCustomTerm ? 'Chọn từ danh sách' : 'Nhập mã khác'}
+                </button>
+              </div>
+
+              {isCustomTerm ? (
+                <Input
+                  id="import-term"
+                  value={term}
+                  onChange={(event) => {
+                    hasUserSelectedTermRef.current = true;
+                    setTerm(event.target.value.toUpperCase());
+                  }}
+                  placeholder="SU26"
+                  autoFocus
+                  aria-invalid={!termValid}
+                />
+              ) : (
+                <Select
+                  id="import-term"
+                  value={term}
+                  onChange={(event) => {
+                    const val = event.target.value;
+                    hasUserSelectedTermRef.current = true;
+                    if (val === '__custom__') {
+                      setIsCustomTerm(true);
+                    } else {
+                      setTerm(val);
+                    }
+                  }}
+                  aria-invalid={!termValid}
+                >
+                  {terms.map((t) => (
+                    <option key={t.id} value={t.code}>
+                      {t.name} ({t.code})
+                      {t.code === currentTerm?.code ? ' — Kỳ hiện tại' : ''}
+                    </option>
+                  ))}
+                  {term && !terms.some((t) => t.code === term) ? (
+                    <option value={term}>
+                      {term}
+                      {term === currentTerm?.code ? ' — Kỳ hiện tại' : ''}
+                    </option>
+                  ) : null}
+                  <option value="__custom__">+ Nhập kỳ khác...</option>
+                </Select>
+              )}
+
               {!termValid ? (
                 <p className="mt-1 text-sm text-danger">
                   Học kỳ gồm 2 chữ cái và 2 chữ số, ví dụ SU26.

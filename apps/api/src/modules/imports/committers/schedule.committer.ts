@@ -42,36 +42,73 @@ export class ScheduleCommitter implements ImportCommitter {
     const subjectIdByCode = new Map(subjects.map((s) => [s.code, s.id]));
 
     // Bảng Staff là danh sách nhân sự của trường — nhỏ, nạp toàn bộ một lần
-    // rồi so khớp ở JS bằng `nameKey`. KHÔNG lọc bằng `where: { fullName: {
-    // in: ... } } }`: Postgres so khớp CHÍNH XÁC (phân biệt hoa/thường và
-    // khoảng trắng) nên tên chỉ khác hoa/thường sẽ không bao giờ lọt qua bộ
-    // lọc, làm nhánh chuẩn hoá `nameKey` phía dưới thành code chết.
+    // rồi so khớp ở JS bằng `nameKey` hoặc `staffCode` / `username`.
+    // Khớp không phân biệt hoa thường theo cột manv hoặc username.
     const staff = await tx.staff.findMany({
-      select: { id: true, fullName: true, username: true },
+      select: {
+        id: true,
+        staffCode: true,
+        fullName: true,
+        username: true,
+        departmentId: true,
+      },
     });
     const staffIdByNameKey = new Map(
       staff.map((s) => [nameKey(s.fullName), s.id]),
     );
-    // `Staff.username` là username nội bộ do importer T.Kê (Task 7) ghi từ
-    // chính họ file phân công này — KHÔNG phải email. Khớp theo username là
-    // khớp khoá chính xác, không phải suy đoán: cột "Phân công giảng viên"
-    // chủ yếu chứa username, họ tên chỉ là ngoại lệ hiếm.
-    const staffIdByUsername = new Map(
-      staff
-        .filter(
-          (s): s is typeof s & { username: string } => s.username !== null,
-        )
-        .map((s) => [s.username.toLowerCase(), s.id]),
-    );
+    const staffIdByCodeOrUser = new Map<string, string>();
+    const staffDeptMap = new Map<string, string>();
+    for (const s of staff) {
+      if (s.departmentId) {
+        staffDeptMap.set(s.id, s.departmentId);
+      }
+      if (s.staffCode) {
+        staffIdByCodeOrUser.set(s.staffCode.trim().toLowerCase(), s.id);
+      }
+      if (s.username) {
+        staffIdByCodeOrUser.set(s.username.trim().toLowerCase(), s.id);
+      }
+    }
 
-    /** Thử họ tên trước, rồi username. Trùng cả hai thì họ tên thắng. */
+    /** Thử họ tên trước, rồi staffCode / username. Trùng cả hai thì họ tên thắng. */
     function resolveLecturerId(rawName: string): string | null {
       const byName = staffIdByNameKey.get(nameKey(rawName));
       if (byName) {
         return byName;
       }
-      return staffIdByUsername.get(rawName.trim().toLowerCase()) ?? null;
+      return staffIdByCodeOrUser.get(rawName.trim().toLowerCase()) ?? null;
     }
+
+    let deptByPrefix: Map<string, string> | null = null;
+    let defaultDepartmentId: string | null = null;
+
+    const getDepartmentForSubject = async (
+      subjectCode: string,
+      lecturerId: string | null,
+    ): Promise<string | null> => {
+      if (!tx.department?.findMany) return null;
+      if (!deptByPrefix) {
+        const [allDepartments, allSubjects] = await Promise.all([
+          tx.department.findMany({ select: { id: true, code: true } }),
+          tx.subject.findMany({ select: { code: true, departmentId: true } }),
+        ]);
+        defaultDepartmentId = allDepartments[0]?.id ?? null;
+        deptByPrefix = new Map<string, string>();
+        for (const s of allSubjects) {
+          const match = s.code.match(/^[A-Za-z]+/);
+          if (match && !deptByPrefix.has(match[0].toUpperCase())) {
+            deptByPrefix.set(match[0].toUpperCase(), s.departmentId);
+          }
+        }
+      }
+      const prefixMatch = subjectCode.match(/^[A-Za-z]+/);
+      const prefix = prefixMatch ? prefixMatch[0].toUpperCase() : '';
+      return (
+        deptByPrefix.get(prefix) ??
+        (lecturerId ? (staffDeptMap.get(lecturerId) ?? null) : null) ??
+        defaultDepartmentId
+      );
+    };
 
     const codes = payloads.map((payload) => {
       const parsed = parseClassCode(payload.classCode);
@@ -96,7 +133,31 @@ export class ScheduleCommitter implements ImportCommitter {
     const processedCodes = new Set<string>();
 
     for (const payload of payloads) {
-      const subjectId = subjectIdByCode.get(payload.subjectCode);
+      const lecturerId = payload.lecturerName
+        ? resolveLecturerId(payload.lecturerName)
+        : null;
+
+      let subjectId = subjectIdByCode.get(payload.subjectCode);
+      if (!subjectId && tx.subject?.create) {
+        const deptId = await getDepartmentForSubject(
+          payload.subjectCode,
+          lecturerId,
+        );
+        if (deptId) {
+          const createdSubject = await tx.subject.create({
+            data: {
+              code: payload.subjectCode,
+              name: payload.subjectCode,
+              credits: 3,
+              departmentId: deptId,
+            },
+            select: { id: true, code: true },
+          });
+          subjectId = createdSubject.id;
+          subjectIdByCode.set(payload.subjectCode, subjectId);
+        }
+      }
+
       const parsed = parseClassCode(payload.classCode);
       // Môn chưa có trong danh mục → bỏ qua. Chạy importer danh mục trước.
       if (!subjectId || !parsed) {
@@ -110,12 +171,6 @@ export class ScheduleCommitter implements ImportCommitter {
         continue;
       }
       processedCodes.add(code);
-
-      // Tên không khớp Staff nào → để trống. KHÔNG tự tạo tài khoản giảng viên
-      // từ một chuỗi tên: đó là việc của importer T.Kê.
-      const lecturerId = payload.lecturerName
-        ? resolveLecturerId(payload.lecturerName)
-        : null;
 
       const data = {
         subjectId,

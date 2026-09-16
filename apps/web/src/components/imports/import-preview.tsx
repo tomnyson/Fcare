@@ -1,11 +1,15 @@
 'use client';
 
 import { Badge, Button } from '@fcare/ui-kit';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { QuickMappingModal } from './quick-mapping-modal';
 import { DataTable, Td } from '../ui/data-table';
+import { Pagination } from '../ui/pagination';
+import { apiFetch } from '../../lib/api';
 import { IMPORT_PAYLOAD_COLUMNS } from '../../lib/import-kinds';
 import { useMe } from '../../lib/hooks';
+import { pageCount } from '../../lib/pagination';
 import { canManageMasterData } from '../../lib/master-data-tabs';
 import {
   MAPPING_TARGETS,
@@ -13,9 +17,14 @@ import {
   remainingUnmapped,
   type MappingTargetKind,
 } from '../../lib/mapping-targets';
-import type { ImportBatchDetail } from '../../lib/types';
+import type { ImportBatchDetail, ImportRowView, Paginated } from '../../lib/types';
 
-const MAX_VISIBLE_ROWS = 50;
+/** Cùng cỡ trang mặc định của API — trang 1 dùng luôn dữ liệu upload trả về. */
+const PAGE_SIZE = 50;
+
+const CHECKBOX_CLASSES =
+  'h-4 w-4 shrink-0 rounded border-border accent-fpt-orange ' +
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fpt-orange';
 
 interface ImportPreviewProps {
   batch: ImportBatchDetail;
@@ -44,7 +53,27 @@ export function ImportPreview({
   /** Mã đã gán trong phiên này — Set mới mỗi lần thêm, không mutate tại chỗ. */
   const [mapped, setMapped] = useState<ReadonlySet<string>>(() => new Set<string>());
   const okCount = batch.summary.validRows;
-  const visible = batch.rows.slice(0, MAX_VISIBLE_ROWS);
+  const [page, setPage] = useState(1);
+  const [onlyErrors, setOnlyErrors] = useState(false);
+  // File thật ~3000 dòng: API chỉ trả từng trang. Trang 1 (không lọc) đã có
+  // sẵn trong `batch` từ lúc upload/nạp lại nên seed thẳng vào cache, các
+  // trang khác và chế độ "chỉ dòng lỗi" mới gọi GET preview.
+  const isSeedPage = page === 1 && !onlyErrors;
+  const rowsQuery = useQuery({
+    queryKey: ['imports', batch.id, 'rows', page, onlyErrors],
+    queryFn: async () => {
+      const search = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+      if (onlyErrors) search.set('onlyErrors', 'true');
+      const detail = await apiFetch<ImportBatchDetail>(`/imports/${batch.id}/preview?${search}`);
+      return detail.rows;
+    },
+    initialData: isSeedPage ? batch.rows : undefined,
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
+  });
+  const rows: Paginated<ImportRowView> = rowsQuery.data ?? { items: [], meta: { total: 0, page, limit: PAGE_SIZE } };
+  const visible = rows.items;
+  const rowsTotal = rows.meta.total;
   // Allowlist theo loại import — KHÔNG đổ nguyên Object.entries(payload) ra
   // bảng, tránh hiện field lạ nếu parser backend đổi mà UI chưa cập nhật.
   const columns = IMPORT_PAYLOAD_COLUMNS[batch.kind];
@@ -125,10 +154,28 @@ export function ImportPreview({
         />
       ) : null}
 
+      {batch.summary.errorCount > 0 ? (
+        <label className="flex min-h-11 w-fit items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            className={CHECKBOX_CLASSES}
+            checked={onlyErrors}
+            onChange={(e) => {
+              setOnlyErrors(e.target.checked);
+              setPage(1);
+            }}
+          />
+          Chỉ hiện {batch.summary.errorCount} dòng lỗi
+        </label>
+      ) : null}
+
       <DataTable
         headers={['Sheet', 'Dòng', ...columns.map((column) => column.label), 'Ghi chú']}
-        isEmpty={visible.length === 0}
-        emptyMessage="File không có dòng dữ liệu nào."
+        isLoading={rowsQuery.isPending}
+        isRefreshing={rowsQuery.isFetching && !rowsQuery.isPending}
+        skeletonRows={8}
+        isEmpty={!rowsQuery.isPending && visible.length === 0}
+        emptyMessage={onlyErrors ? 'Không có dòng lỗi nào.' : 'File không có dòng dữ liệu nào.'}
       >
         {visible.map((row) => (
           <tr
@@ -151,10 +198,18 @@ export function ImportPreview({
         ))}
       </DataTable>
 
-      {batch.rows.length > MAX_VISIBLE_ROWS ? (
+      <Pagination
+        label="Phân trang dòng xem trước"
+        page={page}
+        totalPages={pageCount(rowsTotal, PAGE_SIZE)}
+        total={rowsTotal}
+        limit={PAGE_SIZE}
+        isLoading={rowsQuery.isPending}
+        onPageChange={setPage}
+      />
+      {rowsTotal > PAGE_SIZE ? (
         <p className="text-sm text-muted">
-          Hiển thị {MAX_VISIBLE_ROWS}/{batch.rows.length} dòng đầu. Xác nhận sẽ ghi toàn bộ dòng hợp
-          lệ.
+          Bảng chỉ hiện {PAGE_SIZE} dòng mỗi trang. Xác nhận sẽ ghi toàn bộ dòng hợp lệ của file.
         </p>
       ) : null}
 

@@ -141,3 +141,25 @@ describe('EvaluationsService.create', () => {
     );
   });
 });
+
+describe('EvaluationsService.list', () => {
+  it('lọc theo classSectionId khi được cung cấp', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const prisma = makePrisma({
+      evaluation: { findMany },
+    });
+    const service = new EvaluationsService(prisma, makeAnalyses().service);
+    await service.list(lecturer, {
+      term: 'FA26',
+      classSectionId: 'sec-123',
+    });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          term: 'FA26',
+          classSectionId: 'sec-123',
+        }),
+      }),
+    );
+  });
+});

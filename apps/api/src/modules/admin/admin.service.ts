@@ -4,9 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import * as ExcelJS from 'exceljs';
 import type { RoleKey } from '@fcare/shared-types';
 import { AuditService } from '../../audit/audit.service';
 import { generateTempPassword } from '../../common/utils/temp-password';
+import { isAllowedStaffEmail } from '../../common/utils/staff-email';
 import { isPrismaError } from '../../common/utils/prisma-error';
 import { PrismaService } from '../../prisma/prisma.service';
 import { hashPassword } from '../auth/auth.service';
@@ -16,6 +18,7 @@ import {
   ListStaffQuery,
   UpdateStaffDto,
 } from './dto/staff.dto';
+import { BulkStaffEmailDto } from './dto/staff-email.dto';
 
 /**
  * Vai trò bị giới hạn theo bộ môn (`deptFilter`): thiếu bộ môn thì tài khoản
@@ -27,6 +30,7 @@ const staffSelect = {
   id: true,
   staffCode: true,
   fullName: true,
+  email: true,
   departmentId: true,
   mustChangePassword: true,
   isActive: true,
@@ -83,6 +87,7 @@ export class AdminService {
         data: {
           staffCode: dto.staffCode,
           fullName: dto.fullName,
+          email: dto.email,
           departmentId: dto.departmentId,
           passwordHash,
           mustChangePassword: true,
@@ -115,6 +120,7 @@ export class AdminService {
     const existing = await this.prisma.staff.findUnique({
       where: { id },
       select: {
+        email: true,
         departmentId: true,
         roles: { select: { role: { select: { key: true } } } },
       },
@@ -132,6 +138,36 @@ export class AdminService {
       dto.departmentId ?? existing.departmentId,
     );
 
+    let emailToUpdate: string | null | undefined = undefined;
+    if (dto.email !== undefined) {
+      const trimmed = dto.email.trim().toLowerCase();
+      if (!trimmed) {
+        emailToUpdate = null;
+      } else {
+        if (
+          !trimmed.endsWith('@fpt.edu.vn') &&
+          !trimmed.endsWith('@fe.edu.vn')
+        ) {
+          throw new BadRequestException(
+            'Email giảng viên phải thuộc miền @fpt.edu.vn hoặc @fe.edu.vn.',
+          );
+        }
+        emailToUpdate = trimmed;
+      }
+    }
+
+    let otherStaffWithSameEmail: { id: string; staffCode: string } | null =
+      null;
+    if (emailToUpdate && typeof this.prisma.staff?.findFirst === 'function') {
+      otherStaffWithSameEmail = await this.prisma.staff.findFirst({
+        where: {
+          email: { equals: emailToUpdate, mode: 'insensitive' },
+          id: { not: id },
+        },
+        select: { id: true, staffCode: true },
+      });
+    }
+
     const staff = await this.prisma.$transaction(async (tx) => {
       if (roleRecords) {
         await tx.staffRole.deleteMany({ where: { staffId: id } });
@@ -146,10 +182,27 @@ export class AdminService {
           data: { revokedAt: new Date() },
         });
       }
+      if (otherStaffWithSameEmail && tx.staff?.update) {
+        await tx.staff.update({
+          where: { id: otherStaffWithSameEmail.id },
+          data: { email: null },
+        });
+      }
+      if (
+        existing.email &&
+        existing.email.toLowerCase().trim() !== emailToUpdate
+      ) {
+        if (tx.staffOAuthIdentity?.deleteMany) {
+          await tx.staffOAuthIdentity.deleteMany({
+            where: { staffId: id, provider: 'google' },
+          });
+        }
+      }
       return tx.staff.update({
         where: { id },
         data: {
           fullName: dto.fullName,
+          email: emailToUpdate,
           departmentId: dto.departmentId,
           isActive: dto.isActive,
         },
@@ -217,6 +270,183 @@ export class AdminService {
    * Gán một bộ môn cho nhiều nhân viên cùng lúc — dọn hàng chờ sau import
    * giảng viên (file phân công không đủ dữ liệu để suy bộ môn cho mọi GV).
    */
+  async bulkAssignEmails(adminId: string, dto: BulkStaffEmailDto) {
+    const rawMappings = dto.mappings.map((mapping) => ({
+      staffCode: mapping.staffCode.trim(),
+      email: mapping.email.toLowerCase().trim(),
+    }));
+
+    // Deduplicate exact mappings (cùng mã NV gán cùng email)
+    const uniqueMap = new Map<string, string>();
+    for (const mapping of rawMappings) {
+      const key = mapping.staffCode.toLowerCase();
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, mapping.email);
+      } else if (uniqueMap.get(key) !== mapping.email) {
+        throw new BadRequestException(
+          `Mã nhân viên "${mapping.staffCode}" bị gán 2 email khác nhau trong cùng dữ liệu: ${uniqueMap.get(key)} và ${mapping.email}`,
+        );
+      }
+    }
+
+    const normalizedMappings = [...uniqueMap.entries()].map(
+      ([lowerCode, email]) => {
+        const original = rawMappings.find(
+          (m) => m.staffCode.toLowerCase() === lowerCode,
+        )!;
+        return { staffCode: original.staffCode, email };
+      },
+    );
+
+    const emails = normalizedMappings.map((m) => m.email);
+    const duplicateEmails = emails.filter(
+      (email, index) => emails.indexOf(email) !== index,
+    );
+    if (duplicateEmails.length > 0) {
+      throw new BadRequestException(
+        `File có email bị lặp cho nhiều nhân viên: ${[...new Set(duplicateEmails)].join(', ')}`,
+      );
+    }
+
+    if (emails.some((email) => !isAllowedStaffEmail(email))) {
+      throw new BadRequestException(
+        'Email giảng viên phải thuộc miền @fpt.edu.vn hoặc @fe.edu.vn.',
+      );
+    }
+
+    const overrideExisting = dto.overrideExisting !== false;
+
+    const rawCodes = normalizedMappings.map((m) => m.staffCode);
+    const staff = await this.prisma.staff.findMany({
+      where: {
+        OR: [
+          { staffCode: { in: rawCodes } },
+          { staffCode: { in: rawCodes.map((c) => c.toUpperCase()) } },
+          { staffCode: { in: rawCodes.map((c) => c.toLowerCase()) } },
+        ],
+      },
+      select: { id: true, staffCode: true, email: true },
+    });
+
+    const staffByLower = new Map(
+      staff.map((member) => [member.staffCode.toLowerCase(), member]),
+    );
+    const notFoundCodes = normalizedMappings
+      .filter((m) => !staffByLower.has(m.staffCode.toLowerCase()))
+      .map((m) => m.staffCode);
+    if (notFoundCodes.length > 0) {
+      throw new BadRequestException(
+        `Không tìm thấy mã nhân viên: ${notFoundCodes.join(', ')}`,
+      );
+    }
+
+    let newlyAssignedCount = 0;
+    let overriddenCount = 0;
+    let skippedCount = 0;
+
+    const toUpdate: Array<{
+      staffId: string;
+      staffCode: string;
+      newEmail: string;
+      oldEmail: string | null;
+    }> = [];
+
+    for (const mapping of normalizedMappings) {
+      const member = staffByLower.get(mapping.staffCode.toLowerCase())!;
+      const hasOldEmail = Boolean(member.email && member.email.trim());
+
+      if (hasOldEmail && !overrideExisting) {
+        skippedCount += 1;
+        continue;
+      }
+
+      if (hasOldEmail) {
+        overriddenCount += 1;
+      } else {
+        newlyAssignedCount += 1;
+      }
+
+      toUpdate.push({
+        staffId: member.id,
+        staffCode: member.staffCode,
+        newEmail: mapping.email,
+        oldEmail: member.email,
+      });
+    }
+
+    const newEmails = toUpdate.map((u) => u.newEmail);
+    const otherStaffWithSameEmail = await this.prisma.staff.findMany({
+      where: {
+        email: { in: newEmails, mode: 'insensitive' },
+        id: { notIn: toUpdate.map((u) => u.staffId) },
+      },
+      select: { id: true, staffCode: true, email: true },
+    });
+
+    const runInTx = async (tx: any) => {
+      if (otherStaffWithSameEmail.length > 0) {
+        if (tx.staff?.updateMany) {
+          await tx.staff.updateMany({
+            where: { id: { in: otherStaffWithSameEmail.map((s) => s.id) } },
+            data: { email: null },
+          });
+        }
+      }
+
+      for (const item of toUpdate) {
+        await tx.staff.update({
+          where: { id: item.staffId },
+          data: { email: item.newEmail },
+        });
+
+        if (
+          item.oldEmail &&
+          item.oldEmail.toLowerCase().trim() !== item.newEmail
+        ) {
+          if (tx.staffOAuthIdentity?.deleteMany) {
+            await tx.staffOAuthIdentity.deleteMany({
+              where: { staffId: item.staffId, provider: 'google' },
+            });
+          }
+        }
+      }
+    };
+
+    if (typeof this.prisma.$transaction === 'function') {
+      try {
+        await this.prisma.$transaction(runInTx);
+      } catch (err) {
+        if (err instanceof TypeError && String(err).includes('not iterable')) {
+          await runInTx(this.prisma);
+        } else {
+          throw err;
+        }
+      }
+    } else {
+      await runInTx(this.prisma);
+    }
+
+    await this.auditService.log({
+      staffId: adminId,
+      action: 'ADMIN_BULK_ASSIGN_STAFF_EMAIL',
+      entity: 'Staff',
+      metadata: {
+        staffCodes: rawCodes,
+        updated: toUpdate.length,
+        newlyAssigned: newlyAssignedCount,
+        overridden: overriddenCount,
+        skipped: skippedCount,
+        overrideExisting,
+      },
+    });
+    return {
+      updated: toUpdate.length,
+      newlyAssigned: newlyAssignedCount,
+      overridden: overriddenCount,
+      skipped: skippedCount,
+    };
+  }
+
   async bulkAssignDepartment(adminId: string, dto: BulkAssignDepartmentDto) {
     const department = await this.prisma.department.findUnique({
       where: { id: dto.departmentId },
@@ -249,6 +479,45 @@ export class AdminService {
     });
 
     return { updated: result.count };
+  }
+
+  /**
+   * Tạo file Excel mẫu (.xlsx) chứa 2 cột manv và email để admin tải về điền.
+   */
+  async getEmailTemplateBuffer(): Promise<Buffer> {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('EmailMapping');
+    sheet.columns = [
+      { header: 'manv', key: 'manv', width: 20 },
+      { header: 'email', key: 'email', width: 35 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+    sheet.addRow(['vandtb2', 'VanDTB2@fe.edu.vn']);
+    sheet.addRow(['hieunt249', 'hieunt249@fe.edu.vn']);
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
+  }
+
+  /**
+   * Xuất danh sách nhân viên hiện tại ra file Excel (.xlsx) với cấu trúc manv | email.
+   */
+  async exportEmailsBuffer(): Promise<Buffer> {
+    const staff = await this.prisma.staff.findMany({
+      orderBy: { staffCode: 'asc' },
+      select: { staffCode: true, email: true },
+    });
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('EmailNhanVien');
+    sheet.columns = [
+      { header: 'manv', key: 'manv', width: 20 },
+      { header: 'email', key: 'email', width: 35 },
+    ];
+    sheet.getRow(1).font = { bold: true };
+    for (const member of staff) {
+      sheet.addRow([member.staffCode, member.email ?? '']);
+    }
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
   }
 
   /**

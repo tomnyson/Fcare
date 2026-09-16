@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
 import { DataTable, Td } from '../../../components/ui/data-table';
+import { Pagination } from '../../../components/ui/pagination';
 import { FormError, Label, Select, Textarea } from '../../../components/ui/form';
 import {
   FilterBar,
@@ -23,7 +24,9 @@ import { useMe } from '../../../lib/hooks';
 import {
   ALERT_LEVEL_LABELS,
   ALERT_LEVEL_TONES,
+  ALERT_SOURCE_LABELS,
   ALERT_STATUS_LABELS,
+  formatDate,
   formatDateTime,
 } from '../../../lib/labels';
 import {
@@ -33,11 +36,12 @@ import {
 } from '../../../lib/alert-filters';
 import type { Alert, Paginated, StudentFilterOptions } from '../../../lib/types';
 import { useCurrentTerm } from '../../../lib/use-current-term';
+import { pageCount, parsePageParam } from '../../../lib/pagination';
 
 const RESOLVER_ROLES = ['ADMIN', 'HEAD_OF_DEPT', 'TRAINING_OFFICER', 'SA_HEAD'];
 
-// Trang cảnh báo tải một lượt, không phân trang — cỡ này cũng là số hàng skeleton.
-const PAGE_SIZE = 50;
+// Mỗi trang 20 cảnh báo — cùng cỡ với trang Sinh viên; cũng là số hàng skeleton.
+const PAGE_SIZE = 20;
 
 // Danh mục kỳ/lớp/ngành/GV/lớp học phần đổi theo học kỳ chứ không theo phút.
 // Dùng chung queryKey với trang /students để hai trang xài chung một lần gọi.
@@ -56,6 +60,7 @@ function AlertsPageContent() {
 
   // URL là nguồn sự thật của bộ lọc — link "cảnh báo mức 4 của lớp X" gửi được.
   const filters = parseAlertFilters(params);
+  const page = parsePageParam(params.get('page'));
   const submittedSearch = filters.search;
   const [search, setSearch] = useState(submittedSearch);
 
@@ -71,9 +76,10 @@ function AlertsPageContent() {
     setSearch(submittedSearch);
   }, [submittedSearch]);
 
+  // Đổi bất kỳ bộ lọc nào → về trang 1, trừ khi patch tự đặt `page`.
   function setFilters(patch: Record<string, string | null>) {
     const next = new URLSearchParams(params.toString());
-    for (const [key, value] of Object.entries(patch)) {
+    for (const [key, value] of Object.entries({ page: null, ...patch })) {
       if (value) next.set(key, value);
       else next.delete(key);
     }
@@ -115,6 +121,12 @@ function AlertsPageContent() {
           : ''
       }`,
     });
+  if (filters.source)
+    chips.push({
+      key: 'source',
+      label: 'Nguồn',
+      value: (ALERT_SOURCE_LABELS as Record<string, string>)[filters.source] ?? filters.source,
+    });
   if (filters.term) chips.push({ key: 'term', label: 'Học kỳ', value: filters.term });
   if (filters.classCode) chips.push({ key: 'classCode', label: 'Lớp', value: filters.classCode });
   if (filters.majorId)
@@ -140,7 +152,7 @@ function AlertsPageContent() {
         'đã chọn',
     });
 
-  const listQuery = buildAlertListQuery(filters, PAGE_SIZE).toString();
+  const listQuery = buildAlertListQuery(filters, PAGE_SIZE, page).toString();
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['alerts', listQuery],
     queryFn: () => apiFetch<Paginated<Alert>>(`/alerts?${listQuery}`),
@@ -234,6 +246,21 @@ function AlertsPageContent() {
               {Object.entries(ALERT_LEVEL_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>
                   Mức {value} — {label}
+                </option>
+              ))}
+            </Select>
+          </FilterField>
+
+          <FilterField label="Nguồn" htmlFor="alert-source">
+            <Select
+              id="alert-source"
+              value={filters.source}
+              onChange={(event) => setFilters({ source: event.target.value || null })}
+            >
+              <option value="">Mọi nguồn</option>
+              {Object.entries(ALERT_SOURCE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
                 </option>
               ))}
             </Select>
@@ -357,6 +384,7 @@ function AlertsPageContent() {
         headers={[
           'Độ khẩn',
           'Sinh viên',
+          'Lớp học phần',
           'Lý do',
           'Người phát',
           'Thời điểm',
@@ -372,7 +400,10 @@ function AlertsPageContent() {
         {(data?.items ?? []).map((alert) => (
           <tr key={alert.id} className="transition-colors hover:bg-fpt-orange-50/40">
             <Td>
-              <Badge tone={ALERT_LEVEL_TONES[alert.level] ?? 'info'}>
+              <Badge
+                tone={ALERT_LEVEL_TONES[alert.level] ?? 'info'}
+                pulse={alert.level >= 3 && alert.status !== 'RESOLVED'}
+              >
                 Mức {alert.level} — {ALERT_LEVEL_LABELS[alert.level] ?? alert.level}
               </Badge>
             </Td>
@@ -389,8 +420,33 @@ function AlertsPageContent() {
                 '—'
               )}
             </Td>
-            <Td className="max-w-80 whitespace-normal">{alert.reason}</Td>
-            <Td>{alert.raisedBy?.fullName ?? '—'}</Td>
+            <Td>
+              {alert.classSection ? (
+                <span className="font-medium">{alert.classSection.code}</span>
+              ) : (
+                <span className="text-muted">—</span>
+              )}
+              {alert.absentSessions !== null ? (
+                <span className="ml-2 text-xs font-semibold text-danger tabular-nums">
+                  vắng {alert.absentSessions} buổi
+                </span>
+              ) : null}
+            </Td>
+            <Td className="max-w-80 whitespace-normal">
+              {alert.reason}
+              {alert.source === 'AUTO_ATTENDANCE' && alert.ownerCaredAt ? (
+                <span className="mt-1 block">
+                  <Badge tone="success">GV lớp đã chăm sóc {formatDate(alert.ownerCaredAt)}</Badge>
+                </span>
+              ) : null}
+            </Td>
+            <Td>
+              {alert.raisedBy ? (
+                alert.raisedBy.fullName
+              ) : (
+                <span className="text-muted">Hệ thống</span>
+              )}
+            </Td>
             <Td className="text-muted">{formatDateTime(alert.createdAt)}</Td>
             <Td>
               <Badge
@@ -432,6 +488,15 @@ function AlertsPageContent() {
           </tr>
         ))}
       </DataTable>
+
+      <Pagination
+        page={page}
+        totalPages={pageCount(data?.meta.total ?? 0, PAGE_SIZE)}
+        total={data?.meta.total ?? 0}
+        limit={PAGE_SIZE}
+        isLoading={isLoading}
+        onPageChange={(next) => setFilters({ page: String(next) })}
+      />
 
       <Modal
         title={`Xử lý cảnh báo — ${resolving?.student?.fullName ?? ''}`}

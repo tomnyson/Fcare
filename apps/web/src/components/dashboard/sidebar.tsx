@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { apiFetch } from '../../lib/api';
+import { formatNavBadge } from '../../lib/attendance-care';
 import { BrandMark } from '../ui/brand-mark';
 import { ROLE_LABELS } from '../../lib/labels';
 import type { AuthUser, StatisticsOverview } from '../../lib/types';
@@ -30,18 +31,46 @@ function initials(fullName: string): string {
   return `${first}${last}`.toUpperCase() || '?';
 }
 
-/** Số cảnh báo đang mở của riêng người đang đăng nhập (đã lọc theo phạm vi). */
-function useOpenAlertBadge(): string | null {
+export interface NavBadges {
+  /** Tổng cảnh báo đang mở trong phạm vi của người đăng nhập. */
+  openAlerts: string | null;
+  /** Cảnh báo điểm danh ở lớp mình đứng lớp mà mình chưa chăm sóc — cần hành động. */
+  attendancePending: string | null;
+}
+
+function useNavBadges(): NavBadges {
   const { data } = useQuery({
     queryKey: ['statistics', 'overview'],
     queryFn: () => apiFetch<StatisticsOverview>('/statistics/overview'),
     retry: false,
   });
   const total = (data?.openAlertsByLevel ?? []).reduce((sum, item) => sum + item.count, 0);
-  if (total <= 0) {
-    return null;
+  return {
+    openAlerts: formatNavBadge(total),
+    attendancePending: formatNavBadge(data?.attendancePending),
+  };
+}
+
+/** Pill cạnh mục "Cảnh báo": ưu tiên số việc đang chờ mình (cam đậm), không thì tổng đang mở. */
+function AlertPill({ badge }: { badge: NavBadges }) {
+  if (badge.attendancePending) {
+    return (
+      <span
+        title={`${badge.attendancePending} cảnh báo điểm danh chờ bạn chăm sóc`}
+        className="ml-auto rounded-full bg-fpt-orange px-2 py-0.5 text-[11px] font-bold tabular-nums text-white max-lg:hidden"
+      >
+        {badge.attendancePending}
+      </span>
+    );
   }
-  return total > 99 ? '99+' : String(total);
+  if (badge.openAlerts) {
+    return (
+      <span className="ml-auto rounded-full bg-fpt-orange/15 px-2 py-0.5 text-[11px] font-bold tabular-nums text-fpt-orange max-lg:hidden">
+        {badge.openAlerts}
+      </span>
+    );
+  }
+  return null;
 }
 
 const ROW_BASE =
@@ -90,7 +119,7 @@ function RowIcon({ item, active }: { item: NavLeaf | NavGroup; active: boolean }
   );
 }
 
-function LeafLink({ item, pathname, badge }: { item: NavLeaf; pathname: string; badge: string | null }) {
+function LeafLink({ item, pathname, badge }: { item: NavLeaf; pathname: string; badge: NavBadges }) {
   const active = isNavActive(pathname, item.href);
   return (
     <Link
@@ -103,11 +132,7 @@ function LeafLink({ item, pathname, badge }: { item: NavLeaf; pathname: string; 
       <ActiveBar active={active} />
       <RowIcon item={item} active={active} />
       <span className="truncate max-lg:hidden">{item.label}</span>
-      {item.badge === 'openAlerts' && badge ? (
-        <span className="ml-auto rounded-full bg-fpt-orange/15 px-2 py-0.5 text-[11px] font-bold tabular-nums text-fpt-orange max-lg:hidden">
-          {badge}
-        </span>
-      ) : null}
+      {item.badge === 'openAlerts' ? <AlertPill badge={badge} /> : null}
     </Link>
   );
 }
@@ -127,7 +152,7 @@ function Group({
   pathname: string;
   collapsed: ReadonlySet<string>;
   onToggle: (id: string) => void;
-  badge: string | null;
+  badge: NavBadges;
 }) {
   const open = isGroupOpen(group, pathname, collapsed);
   const active = group.href ? isNavActive(pathname, group.href) : false;
@@ -203,7 +228,7 @@ function NavItem({
   pathname: string;
   collapsed: ReadonlySet<string>;
   onToggle: (id: string) => void;
-  badge: string | null;
+  badge: NavBadges;
 }) {
   if (node.kind === 'group') {
     return (
@@ -224,7 +249,7 @@ function Section({
   pathname: string;
   collapsed: ReadonlySet<string>;
   onToggle: (id: string) => void;
-  badge: string | null;
+  badge: NavBadges;
 }) {
   return (
     <div className="mt-5 first:mt-0 max-lg:border-t max-lg:border-white/10 max-lg:pt-3 max-lg:first:border-0 max-lg:first:pt-0">
@@ -289,7 +314,7 @@ function SidebarFooter({ user }: { user: AuthUser }) {
 export function Sidebar({ user }: { user: AuthUser }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set<string>());
-  const badge = useOpenAlertBadge();
+  const badge = useNavBadges();
   const sections = buildNavSections(user);
 
   function onToggle(id: string) {

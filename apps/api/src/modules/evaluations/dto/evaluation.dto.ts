@@ -90,6 +90,11 @@ export class ListEvaluationsQuery {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsUUID()
+  classSectionId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
   @MaxLength(20)
   term?: string;

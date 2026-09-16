@@ -72,8 +72,11 @@ ngành, alias tra cứu và quy tắc lớp→ngành dùng khi import Excel.
 - **Thống kê**: tổng quan, tỷ lệ đạt/trượt/cấm thi theo lớp học phần, theo bộ môn.
 - **Excel I/O**: import/export sinh viên + bảng điểm; file chứa cột PII cấm bị từ chối;
   mọi thao tác ghi audit log; rate limit riêng.
-- **Quản trị**: tạo tài khoản, gán vai trò, khóa/mở khóa, cấp mật khẩu tạm (không có email
-  trong hệ thống → không có luồng reset qua email).
+- **Quản trị**: tạo tài khoản, gán vai trò, khóa/mở khóa, cấp mật khẩu tạm (không có luồng
+  reset mật khẩu qua email).
+- **Email**: ADMIN cấu hình SMTP tại Hệ thống → Cấu hình email (`/admin/mail`), gửi mail thử
+  trước khi lưu; chưa cấu hình thì dùng `SMTP_*` trong env (dev: MailHog :8025). Cần
+  `SETTINGS_ENCRYPTION_KEY` (32 byte hex) để lưu mật khẩu SMTP; đổi khoá phải nhập lại.
 
 ## Làm việc với Claude Code
 

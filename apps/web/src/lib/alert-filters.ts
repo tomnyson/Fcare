@@ -14,6 +14,8 @@ export interface AlertFilters {
   majorId: string;
   lecturerId: string;
   sectionId: string;
+  /** Nguồn cảnh báo: '' (tất cả) | 'MANUAL' | 'AUTO_ATTENDANCE'. */
+  source: string;
 }
 
 /** Khóa query string của từng bộ lọc, dùng chung cho đọc URL và xóa lọc. */
@@ -26,6 +28,7 @@ export const ALERT_FILTER_KEYS = [
   'majorId',
   'lecturerId',
   'sectionId',
+  'source',
 ] as const;
 
 export function parseAlertFilters(params: URLSearchParams): AlertFilters {
@@ -38,14 +41,17 @@ export function parseAlertFilters(params: URLSearchParams): AlertFilters {
     majorId: params.get('majorId') ?? '',
     lecturerId: params.get('lecturerId') ?? '',
     sectionId: params.get('sectionId') ?? '',
+    source: params.get('source') ?? '',
   };
 }
 
 export function buildAlertListQuery(
   filters: AlertFilters,
   limit: number,
+  page = 1,
 ): URLSearchParams {
   const query = new URLSearchParams({ limit: String(limit) });
+  if (page > 1) query.set('page', String(page));
   const entries: Array<[string, string]> = [
     ['search', filters.search.trim()],
     ['status', filters.status],
@@ -55,6 +61,7 @@ export function buildAlertListQuery(
     ['majorId', filters.majorId],
     ['lecturerId', filters.lecturerId],
     ['sectionId', filters.sectionId],
+    ['source', filters.source],
   ];
   for (const [key, value] of entries) {
     if (value) query.set(key, value);
@@ -73,6 +80,7 @@ export function activeAlertFilterCount(filters: AlertFilters): number {
     filters.majorId,
     filters.lecturerId,
     filters.sectionId,
+    filters.source,
   ].filter(Boolean).length;
 }
 

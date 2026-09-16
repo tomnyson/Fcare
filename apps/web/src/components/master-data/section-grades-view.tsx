@@ -211,7 +211,10 @@ export function SectionGradesView({ sectionId }: { sectionId: string }) {
               {row.alertLevel === null ? (
                 <span className="text-muted">—</span>
               ) : (
-                <Badge tone={ALERT_LEVEL_TONES[row.alertLevel] ?? 'info'}>
+                <Badge
+                  tone={ALERT_LEVEL_TONES[row.alertLevel] ?? 'info'}
+                  pulse={row.alertLevel >= 3}
+                >
                   Mức {row.alertLevel} — {ALERT_LEVEL_LABELS[row.alertLevel] ?? row.alertLevel}
                 </Badge>
               )}

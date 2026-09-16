@@ -30,6 +30,14 @@ export class CreateStaffDto {
   fullName!: string;
 
   @ApiPropertyOptional({
+    description: 'Email công vụ của nhân viên/giảng viên',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(320)
+  email?: string;
+
+  @ApiPropertyOptional({
     description: 'ID bộ môn (bắt buộc với giảng viên/trưởng bộ môn)',
   })
   @IsOptional()
@@ -44,6 +52,14 @@ export class CreateStaffDto {
 }
 
 export class UpdateStaffDto {
+  @ApiPropertyOptional({
+    description: 'Email công vụ của nhân viên/giảng viên',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(320)
+  email?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

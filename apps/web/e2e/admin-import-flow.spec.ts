@@ -17,6 +17,7 @@ import {
   IMPORT_KIND_LABELS,
   reloadImportExport,
   selectImportKinds,
+  setImportTerm,
   uploadForPreview,
 } from './fixtures/import';
 import { paceImportCall } from './fixtures/rate-limit';
@@ -122,7 +123,7 @@ test.describe('Quản trị viên import và dọn dữ liệu', () => {
     await gotoImportExport(page);
     // Tick lộn thứ tự — hệ thống phải tự sắp lại catalog → lecturer → schedule.
     await selectImportKinds(page, ['schedule', 'catalog', 'lecturer']);
-    await page.locator('#import-term').fill('SU26');
+    await setImportTerm(page, 'SU26');
     await page.locator('#import-file').setInputFiles(ASSIGNMENT_FILE_CLEAN);
     await paceImportCall('upload');
     await page.getByRole('button', { name: '3. Đọc file và xem trước' }).click();
@@ -151,7 +152,7 @@ test.describe('Quản trị viên import và dọn dữ liệu', () => {
   test('huỷ lô giữa chuỗi thì dừng lại, loại còn lại không chạy', async ({ page }) => {
     await gotoImportExport(page);
     await selectImportKinds(page, ['catalog', 'lecturer']);
-    await page.locator('#import-term').fill('SU26');
+    await setImportTerm(page, 'SU26');
     await page.locator('#import-file').setInputFiles(ASSIGNMENT_FILE_UNMAPPED_ALIAS);
     await paceImportCall('upload');
     await page.getByRole('button', { name: '3. Đọc file và xem trước' }).click();

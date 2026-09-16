@@ -75,6 +75,8 @@ describe('SectionListParser', () => {
       code: 'GD21301-MUL2123',
       classCode: 'GD21301',
       subjectCode: 'MUL2123',
+      altSubjectCode: 'MUL212',
+      subjectName: 'Thiết kế bao bì',
       block: 1,
       slot: '1',
       room: 'F302',
@@ -82,6 +84,15 @@ describe('SectionListParser', () => {
       startDate: '2026-05-11T00:00:00.000Z',
       lecturerUsername: 'dungnth6',
     });
+  });
+
+  it('nhận diện cột giảng viên qua các tên cột khác nhau như Mã NV hoặc Phân công giảng viên', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Danh_sach_lop');
+    worksheet.getRow(1).values = ['Tên lớp', 'Mã môn', 'Mã NV'];
+    worksheet.getRow(2).values = ['AI21301', 'ITA202', 'sonlh32'];
+    const result = await parser.parse(workbook, ctx);
+    expect(result.rows[0].payload.lecturerUsername).toBe('sonlh32');
   });
 
   it('đọc ngày ở dạng chuỗi Date.toString() của JS', async () => {

@@ -14,7 +14,8 @@ export type Action =
   | 'delete'
   | 'import'
   | 'export'
-  | 'resolve';
+  | 'resolve'
+  | 'review';
 
 export type Subjects =
   | 'Student'
@@ -22,11 +23,14 @@ export type Subjects =
   | 'CareLog'
   | 'Discussion'
   | 'Alert'
+  | 'AttendanceAlert'
   | 'Notification'
   | 'MasterData'
   | 'Staff'
+  | 'MailSettings'
   | 'Statistics'
   | 'Excel'
+  | 'Backup'
   | 'all';
 
 export type AppAbility = MongoAbility<[Action, Subjects]>;
@@ -87,6 +91,8 @@ export class AbilityFactory {
           can(['create', 'update'], 'Student');
           can('manage', 'MasterData');
           can('resolve', 'Alert');
+          // Bước 2 FLOW 2: Đào tạo nhập điểm danh nên được chạy lại rà soát tay.
+          can('review', 'AttendanceAlert');
           can(['import', 'export'], 'Excel');
           can(['read', 'create'], 'Discussion');
           break;

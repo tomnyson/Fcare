@@ -14,6 +14,7 @@ interface AlertFindManyArgs {
   where: {
     status?: string;
     level?: number;
+    source?: string;
     student: {
       AND?: unknown[];
       OR?: unknown[];
@@ -120,6 +121,17 @@ describe('AlertsService.list — lọc nhiều tiêu chí', () => {
     });
     const [args] = findMany.mock.calls[0] as [AlertFindManyArgs];
     expect(args.where.student.AND).toEqual(LECTURER_SCOPE);
+  });
+
+  it('lọc theo nguồn cảnh báo và kèm lớp học phần phát cảnh báo', async () => {
+    await service.list(adminUser, { source: 'AUTO_ATTENDANCE' });
+    const [args] = findMany.mock.calls[0] as [
+      AlertFindManyArgs & { include: { classSection: unknown } },
+    ];
+    expect(args.where.source).toBe('AUTO_ATTENDANCE');
+    expect(args.include.classSection).toEqual({
+      select: { id: true, code: true, subject: { select: { name: true } } },
+    });
   });
 
   it('count dùng đúng where với findMany để tổng số không lệch', async () => {

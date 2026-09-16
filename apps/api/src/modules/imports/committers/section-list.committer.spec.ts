@@ -135,6 +135,44 @@ describe('SectionListCommitter', () => {
     expect(args.data.lecturerId).toBe('gv-1');
   });
 
+  it('khớp giảng viên theo staffCode (manv) không phân biệt hoa thường', async () => {
+    const tx = makeTx();
+    tx.staff.findMany.mockResolvedValue([
+      { id: 'gv-son', staffCode: 'SONLH32', username: null },
+    ]);
+
+    await committer.commit(
+      [row({ ...BASE, lecturerUsername: 'sonlh32' })],
+      tx,
+      ctx,
+    );
+
+    const args = firstArg<CreateSectionArgs>(tx.classSection.create);
+    expect(args.data.lecturerId).toBe('gv-son');
+  });
+
+  it('khớp môn học theo altSubjectCode (mã chuyển đổi) khi mã môn không tìm thấy', async () => {
+    const tx = makeTx();
+    tx.subject.findMany.mockResolvedValue([{ id: 'sub-soa', code: 'SOA204' }]);
+
+    const result = await committer.commit(
+      [
+        row({
+          ...BASE,
+          subjectCode: 'SOA2042',
+          altSubjectCode: 'SOA204',
+          code: 'SA22301-SOA2042',
+        }),
+      ],
+      tx,
+      ctx,
+    );
+
+    expect(result).toEqual({ created: 1, updated: 0, skipped: 0 });
+    const args = firstArg<CreateSectionArgs>(tx.classSection.create);
+    expect(args.data.subjectId).toBe('sub-soa');
+  });
+
   it('chỉ ghi dòng đầu khi cùng một mã lớp xuất hiện hai lần', async () => {
     const tx = makeTx();
 
@@ -153,5 +191,45 @@ describe('SectionListCommitter', () => {
       tx.classSection.findMany,
     );
     expect(args.where.term).toBe('SU26');
+  });
+
+  it('tự động tạo môn học mới nếu môn học chưa có trong hệ thống', async () => {
+    const tx = makeTx();
+    tx.subject.findMany.mockResolvedValue([]);
+    (tx as any).department = {
+      findMany: jest
+        .fn()
+        .mockResolvedValue([{ id: 'dept-cntt', code: 'CNTT' }]),
+    };
+    (tx.subject as any).create = jest.fn().mockResolvedValue({
+      id: 'sub-new-soa',
+      code: 'SOA210',
+    });
+
+    const result = await committer.commit(
+      [
+        row({
+          ...BASE,
+          subjectCode: 'SOA210',
+          subjectName: 'Thiết lập và quản trị mạng máy tính với AI',
+          code: 'SA21301-SOA210',
+        }),
+      ],
+      tx,
+      ctx,
+    );
+
+    expect(result).toEqual({ created: 1, updated: 0, skipped: 0 });
+    expect((tx.subject as any).create).toHaveBeenCalledWith({
+      data: {
+        code: 'SOA210',
+        name: 'Thiết lập và quản trị mạng máy tính với AI',
+        credits: 3,
+        departmentId: 'dept-cntt',
+      },
+      select: { id: true, code: true },
+    });
+    const args = firstArg<CreateSectionArgs>(tx.classSection.create);
+    expect(args.data.subjectId).toBe('sub-new-soa');
   });
 });

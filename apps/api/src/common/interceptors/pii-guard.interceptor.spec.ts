@@ -24,6 +24,14 @@ describe('stripPii', () => {
     });
   });
 
+  it('cho phép email khi response là staff admin được ủy quyền', () => {
+    expect(
+      stripPii({ email: 'gv@fpt.edu.vn' }, { allowStaffEmail: true }),
+    ).toEqual({
+      email: 'gv@fpt.edu.vn',
+    });
+  });
+
   it('không tạo side-effect trên object gốc', () => {
     const input = { email: 'a@b.c', keep: 1 };
     stripPii(input);
@@ -41,5 +49,48 @@ describe('stripPii', () => {
   it('xử lý mảng ở cấp cao nhất', () => {
     const result = stripPii([{ email: 'x@y.z', id: 1 }]);
     expect(result).toEqual([{ id: 1 }]);
+  });
+});
+
+describe('PiiGuardInterceptor', () => {
+  it('cho phép staff email khi route là /api/admin/staff', (done) => {
+    const { PiiGuardInterceptor } = require('./pii-guard.interceptor');
+    const { of } = require('rxjs');
+    const interceptor = new PiiGuardInterceptor();
+    const context = {
+      switchToHttp: () => ({
+        getRequest: () => ({ originalUrl: '/api/admin/staff' }),
+      }),
+    };
+    const next = {
+      handle: () => of([{ staffCode: 'VANDTB2', email: 'vandtb2@fe.edu.vn' }]),
+    };
+
+    interceptor.intercept(context, next).subscribe((result: unknown[]) => {
+      expect(result).toEqual([
+        { staffCode: 'VANDTB2', email: 'vandtb2@fe.edu.vn' },
+      ]);
+      done();
+    });
+  });
+
+  it('vẫn loại bỏ email khi route là sinh viên /api/students', (done) => {
+    const { PiiGuardInterceptor } = require('./pii-guard.interceptor');
+    const { of } = require('rxjs');
+    const interceptor = new PiiGuardInterceptor();
+    const context = {
+      switchToHttp: () => ({
+        getRequest: () => ({ originalUrl: '/api/students' }),
+      }),
+    };
+    const next = {
+      handle: () =>
+        of([{ studentCode: 'SE19001', email: 'student@fpt.edu.vn' }]),
+    };
+
+    interceptor.intercept(context, next).subscribe((result: unknown[]) => {
+      expect(result).toEqual([{ studentCode: 'SE19001' }]);
+      done();
+    });
   });
 });

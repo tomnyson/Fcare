@@ -1,4 +1,5 @@
 import type { RoleKey } from '@fcare/shared-types';
+export { ALERT_SOURCE_LABELS } from '@fcare/shared-types';
 import type { AlertStatus, CareChannel, EnrollmentResult, StudentStatus } from './types';
 
 export const STUDENT_STATUS_LABELS: Record<StudentStatus, string> = {

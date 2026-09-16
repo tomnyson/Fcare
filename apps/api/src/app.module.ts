@@ -14,15 +14,19 @@ import { PoliciesGuard } from './common/guards/policies.guard';
 import { PiiGuardInterceptor } from './common/interceptors/pii-guard.interceptor';
 import { ResponseEnvelopeInterceptor } from './common/interceptors/response-envelope.interceptor';
 import { AdminModule } from './modules/admin/admin.module';
+import { BackupModule } from './modules/backup/backup.module';
 import { AlertsModule } from './modules/alerts/alerts.module';
+import { AttendanceAlertsModule } from './modules/attendance-alerts/attendance-alerts.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CareLogsModule } from './modules/care-logs/care-logs.module';
 import { DiscussionsModule } from './modules/discussions/discussions.module';
+import { EmailModule } from './modules/email/email.module';
 import { EnrollmentsModule } from './modules/enrollments/enrollments.module';
 import { EvaluationsModule } from './modules/evaluations/evaluations.module';
 import { ExcelModule } from './modules/excel/excel.module';
 import { HealthModule } from './modules/health/health.module';
 import { ImportsModule } from './modules/imports/imports.module';
+import { MailSettingsModule } from './modules/mail-settings/mail-settings.module';
 import { MasterDataModule } from './modules/master-data/master-data.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
 import { StudentAnalysesModule } from './modules/student-analyses/student-analyses.module';
@@ -75,11 +79,15 @@ import { PrismaModule } from './prisma/prisma.module';
     StudentAnalysesModule,
     CareLogsModule,
     DiscussionsModule,
+    EmailModule,
     AlertsModule,
+    AttendanceAlertsModule,
     StatisticsModule,
     ExcelModule,
     ImportsModule,
     AdminModule,
+    MailSettingsModule,
+    BackupModule,
   ],
   providers: [
     // Thứ tự guard: rate-limit → chống CSRF → xác thực JWT → cam kết bảo mật → phân quyền CASL.

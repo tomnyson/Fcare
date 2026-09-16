@@ -12,4 +12,11 @@ describe('levelBadge', () => {
   it('dùng token màu, không hardcode mã màu', () => {
     expect(levelBadge(4).className).not.toMatch(/#[0-9a-f]{3,6}/i);
   });
+
+  it('thêm hiệu ứng nhấp nháy animate-pulse cho các mức độ nguy hiểm (Cấp 3 và 4)', () => {
+    expect(levelBadge(1).className).not.toContain('animate-pulse');
+    expect(levelBadge(2).className).not.toContain('animate-pulse');
+    expect(levelBadge(3).className).toContain('animate-pulse');
+    expect(levelBadge(4).className).toContain('animate-pulse');
+  });
 });

@@ -49,6 +49,23 @@ export function chainResult(page: Page, kind: ImportKindKey) {
     .filter({ hasText: /Đã ghi: \d+ tạo mới, \d+ cập nhật, \d+ bỏ qua\./ });
 }
 
+/** Điền hoặc chọn học kỳ (hỗ trợ cả select dropdown và input text). */
+export async function setImportTerm(page: Page, term: string): Promise<void> {
+  const termLocator = page.locator('#import-term');
+  const tag = await termLocator.evaluate((el) => el.tagName.toLowerCase());
+  if (tag === 'select') {
+    const hasOption = (await termLocator.locator(`option[value="${term}"]`).count()) > 0;
+    if (hasOption) {
+      await termLocator.selectOption(term);
+    } else {
+      await termLocator.selectOption('__custom__');
+      await page.locator('#import-term').fill(term);
+    }
+  } else {
+    await termLocator.fill(term);
+  }
+}
+
 /** Chọn loại + file rồi bấm "Đọc file và xem trước"; trả về khi bản xem trước hiện ra. */
 export async function uploadForPreview(
   page: Page,
@@ -57,7 +74,7 @@ export async function uploadForPreview(
   term = 'SU26',
 ): Promise<void> {
   await selectImportKind(page, kind);
-  await page.locator('#import-term').fill(term);
+  await setImportTerm(page, term);
   await page.locator('#import-file').setInputFiles(filePath);
   await paceImportCall('upload');
   await page.getByRole('button', { name: '3. Đọc file và xem trước' }).click();

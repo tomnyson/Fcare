@@ -37,6 +37,7 @@ function StudentDetailContent() {
   // Thông báo trao đổi trỏ tới `/students/:id?tab=discussion` — mở đúng tab ngay.
   const search = useSearchParams();
   const requested = search.get('tab');
+  const requestedTerm = search.get('term') ?? '';
   const [tab, setTab] = useState<TabKey>(
     TABS.some((item) => item.key === requested) ? (requested as TabKey) : 'enrollments',
   );
@@ -122,7 +123,13 @@ function StudentDetailContent() {
       </div>
 
       {tab === 'enrollments' ? <EnrollmentsTab studentId={studentId} /> : null}
-      {tab === 'evaluations' ? <EvaluationsTab studentId={studentId} user={me.user} /> : null}
+      {tab === 'evaluations' ? (
+        <EvaluationsTab
+          studentId={studentId}
+          user={me.user}
+          initialTerm={requestedTerm}
+        />
+      ) : null}
       {tab === 'care-logs' ? <CareLogsTab studentId={studentId} /> : null}
       {tab === 'alerts' ? <AlertsTab studentId={studentId} user={me.user} /> : null}
       {tab === 'discussion' ? (

@@ -37,8 +37,8 @@ describe('buildStatisticsQuery', () => {
 });
 
 describe('isStatisticsTabKey', () => {
-  it('nhận đúng bốn tab', () => {
-    for (const key of ['classes', 'departments', 'subjects', 'lecturers']) {
+  it('nhận đúng năm tab', () => {
+    for (const key of ['classes', 'departments', 'subjects', 'lecturers', 'care']) {
       expect(isStatisticsTabKey(key)).toBe(true);
     }
     expect(isStatisticsTabKey('students')).toBe(false);

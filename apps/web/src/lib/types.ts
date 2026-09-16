@@ -1,8 +1,4 @@
-import type {
-  EvaluationCriterion,
-  ForcedEscalationRule,
-  RoleKey,
-} from '@fcare/shared-types';
+import type { AlertSource, EvaluationCriterion, ForcedEscalationRule, RoleKey } from '@fcare/shared-types';
 
 export interface AuthUser {
   id: string;
@@ -85,6 +81,7 @@ export interface ClassSection {
   subject?: Subject;
   lecturer?: StaffRef;
   _count?: { enrollments: number };
+  openAlertCount?: number;
 }
 
 export type TermSeason = 'SPRING' | 'SUMMER' | 'FALL';
@@ -189,6 +186,7 @@ export interface SectionGradesResponse {
 export interface Evaluation {
   id: string;
   term: string;
+  studentId?: string;
   classSectionId: string;
   academicScore: number;
   attitudeScore: number;
@@ -211,6 +209,8 @@ export interface CareLog {
   createdAt: string;
   staff?: StaffRef;
   student?: Student;
+  /** Cảnh báo được gắn khi ghi nhật ký (chăm sóc sau điểm danh). */
+  alert?: { id: string; level: number; source: AlertSource; classSection: { code: string } | null } | null;
 }
 
 export interface Alert {
@@ -221,8 +221,15 @@ export interface Alert {
   resolutionNote: string | null;
   createdAt: string;
   resolvedAt: string | null;
+  source: AlertSource;
+  /** Số buổi vắng khi hệ thống tự phát cảnh báo; null với cảnh báo thủ công. */
+  absentSessions: number | null;
+  /** Thời điểm giảng viên đứng lớp ghi nhật ký cho cảnh báo này. */
+  ownerCaredAt: string | null;
+  classSection?: { id: string; code: string; subject?: { name: string } } | null;
   student?: Student & { department?: { code: string; name: string } };
-  raisedBy?: StaffRef;
+  /** null khi cảnh báo do hệ thống tự phát. */
+  raisedBy?: StaffRef | null;
   resolvedBy?: StaffRef | null;
 }
 
@@ -368,6 +375,32 @@ export interface StatisticsOverview {
   careLogsLast30Days: number;
   studentsByStatus: Array<{ status: StudentStatus; count: number }>;
   openAlertsByLevel: Array<{ level: number; count: number }>;
+  /** Cảnh báo điểm danh ở lớp mình đứng lớp mà mình chưa chăm sóc. */
+  attendancePending: number;
+}
+
+export type PendingScope = 'owned' | 'all';
+
+/** Một dòng trong bảng "cần chăm sóc sau điểm danh" (GET /attendance-alerts/pending). */
+export interface PendingAttendanceAlert {
+  id: string;
+  level: number;
+  status: AlertStatus;
+  reason: string;
+  absentSessions: number | null;
+  ownerCaredAt: string | null;
+  createdAt: string;
+  careLogCount: number;
+  /** true = người xem là giảng viên đứng lớp và chưa chăm sóc. */
+  isOwner: boolean;
+  student: { id: string; studentCode: string; fullName: string; classCode: string | null };
+  classSection: { id: string; code: string; subjectName: string; lecturerName: string | null };
+}
+
+export interface PendingAttendanceAlertsResult {
+  items: PendingAttendanceAlert[];
+  total: number;
+  ownedTotal: number;
 }
 
 export interface ClassStatistics {
@@ -433,6 +466,7 @@ export interface StaffMember {
   id: string;
   staffCode: string;
   fullName: string;
+  email: string | null;
   departmentId: string | null;
   mustChangePassword: boolean;
   isActive: boolean;
@@ -502,7 +536,8 @@ export interface ImportBatchSummary {
 }
 
 export interface ImportBatchDetail extends ImportBatchSummary {
-  rows: ImportRowView[];
+  /** Một TRANG dòng staging (mặc định 50) — lật trang/lọc lỗi qua GET preview?page&onlyErrors. */
+  rows: Paginated<ImportRowView>;
 }
 
 export interface ImportCommitResult {
@@ -530,3 +565,44 @@ export interface DiscussionThread {
   messages: DiscussionMessage[];
   lastReadAt: string | null;
 }
+
+export type BackupType = 'MANUAL' | 'SCHEDULED' | 'PRE_RESTORE';
+export type BackupStatus = 'COMPLETED' | 'FAILED' | 'IN_PROGRESS';
+
+export interface BackupMetadata {
+  id: string;
+  filename: string;
+  filepath: string;
+  sizeBytes: number;
+  checksumSha256: string;
+  type: BackupType;
+  status: BackupStatus;
+  createdAt: string;
+  createdByStaffId?: string;
+  createdByName?: string;
+  comment?: string;
+  pgVersion?: string;
+  errorMessage?: string;
+}
+
+export interface BackupScheduleConfig {
+  enabled: boolean;
+  cronExpression: string;
+  retentionCount: number;
+  lastRunAt?: string;
+  nextRunAt?: string;
+}
+
+export interface BackupOverviewStats {
+  totalBackups: number;
+  totalSizeBytes: number;
+  lastBackupAt?: string;
+  scheduleConfig: BackupScheduleConfig;
+  isLocked: boolean;
+  activeOperation?: {
+    type: 'BACKUP' | 'RESTORE';
+    startedAt: string;
+    targetId?: string;
+  };
+}
+
