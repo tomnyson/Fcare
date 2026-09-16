@@ -426,7 +426,7 @@ describe('ClassSectionsService — phạm vi lớp học phần & cảnh báo', 
     await new ClassSectionsService(prisma, audit).findAll(lecturerUser, {
       term: 'SU25',
     });
-    const [args] = findMany.mock.calls[0];
+    const [args] = findMany.mock.calls[0] as [{ where: { AND?: unknown } }];
     expect(args.where.AND).toBeDefined();
     expect(args.where.AND).toEqual(
       expect.arrayContaining([

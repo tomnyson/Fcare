@@ -20,6 +20,13 @@ function rowsOf(...overrides: Partial<typeof BASE>[]): ParsedRow[] {
   }));
 }
 
+/** Các delegate chỉ cần cho luồng tự tạo môn/lớp — gắn thêm vào txMock. */
+interface AutoCreateTx {
+  department: { findMany: jest.Mock };
+  subject: { create: jest.Mock };
+  classSection: { create: jest.Mock };
+}
+
 interface TxOverrides {
   students?: unknown[];
   enrollments?: unknown[];
@@ -437,17 +444,18 @@ describe('RosterCommitter', () => {
     const tx = txMock();
     tx.subject.findMany.mockResolvedValue([]);
     tx.classSection.findMany.mockResolvedValue([]);
-    (tx as any).department = {
+    const auto = tx as unknown as AutoCreateTx;
+    auto.department = {
       findMany: jest
         .fn()
         .mockResolvedValue([{ id: 'dept-cntt', code: 'CNTT' }]),
     };
-    (tx as any).subject.create = jest.fn().mockResolvedValue({
+    auto.subject.create = jest.fn().mockResolvedValue({
       id: 'sub-created',
       code: 'SOA210',
       departmentId: 'dept-udpm',
     });
-    (tx as any).classSection.create = jest.fn().mockResolvedValue({
+    auto.classSection.create = jest.fn().mockResolvedValue({
       id: 'sec-created',
       code: 'SA21301-SOA210',
       subjectId: 'sub-created',
@@ -464,7 +472,7 @@ describe('RosterCommitter', () => {
     );
 
     expect(result).toEqual({ created: 1, updated: 0, skipped: 0 });
-    expect((tx as any).subject.create).toHaveBeenCalled();
-    expect((tx as any).classSection.create).toHaveBeenCalled();
+    expect(auto.subject.create).toHaveBeenCalled();
+    expect(auto.classSection.create).toHaveBeenCalled();
   });
 });

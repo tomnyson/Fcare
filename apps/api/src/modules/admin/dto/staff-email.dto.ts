@@ -10,13 +10,15 @@ import {
 
 export class StaffEmailMappingDto {
   @ApiProperty({ description: 'Mã nhân viên' })
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsString()
   @IsNotEmpty()
   staffCode!: string;
 
   @ApiProperty({ description: 'Email FPT (@fpt.edu.vn / @fe.edu.vn)' })
-  @Transform(({ value }) =>
+  @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim().toLowerCase() : value,
   )
   @IsEmail()
@@ -41,7 +43,7 @@ export class BulkStaffEmailDto {
     default: true,
   })
   @Transform(
-    ({ value }) =>
+    ({ value }: { value: unknown }) =>
       value === true || value === 'true' || value === 1 || value === '1',
   )
   overrideExisting?: boolean = true;

@@ -48,7 +48,8 @@ function makeUpdatePrisma(existing: {
   return { prisma, deleteMany, createMany, staffUpdate };
 }
 
-const audit = { log: jest.fn() } as unknown as AuditService;
+const auditLog = jest.fn();
+const audit = { log: auditLog } as unknown as AuditService;
 
 describe('AdminService — danh sách nhân viên trả kèm loại GV', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -71,7 +72,7 @@ describe('AdminService.bulkAssignEmails', () => {
       staff: { findMany, update },
       $transaction: jest.fn((input: unknown) =>
         typeof input === 'function'
-          ? (input as any)(prisma)
+          ? (input as (client: PrismaService) => unknown)(prisma)
           : Promise.all(input as Promise<unknown>[]),
       ),
     } as unknown as PrismaService;
@@ -90,7 +91,7 @@ describe('AdminService.bulkAssignEmails', () => {
       where: { id: 'staff-1' },
       data: { email: 'gv001@fpt.edu.vn' },
     });
-    expect(audit.log).toHaveBeenCalledWith(
+    expect(auditLog).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'ADMIN_BULK_ASSIGN_STAFF_EMAIL' }),
     );
   });
@@ -115,7 +116,7 @@ describe('AdminService.bulkAssignEmails', () => {
       staff: { findMany, update },
       $transaction: jest.fn((input: unknown) =>
         typeof input === 'function'
-          ? (input as any)(prisma)
+          ? (input as (client: PrismaService) => unknown)(prisma)
           : Promise.all(input as Promise<unknown>[]),
       ),
     } as unknown as PrismaService;

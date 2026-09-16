@@ -147,7 +147,7 @@ describe('TermsService', () => {
         ...validDto,
         isCurrentOverride: true,
       };
-      transaction.mockImplementation(async (callback) => {
+      transaction.mockImplementation((callback: (tx: unknown) => unknown) => {
         const txPrisma = {
           term: {
             updateMany: jest.fn(),
@@ -169,7 +169,7 @@ describe('TermsService', () => {
   describe('setCurrent', () => {
     it('gán cờ override cho kỳ và tắt cờ các kỳ khác trong transaction', async () => {
       findUnique.mockResolvedValue({ id: 't1', code: 'SP25' });
-      transaction.mockImplementation(async (callback) => {
+      transaction.mockImplementation((callback: (tx: unknown) => unknown) => {
         const txPrisma = {
           term: {
             updateMany: jest.fn(),

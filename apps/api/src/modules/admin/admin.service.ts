@@ -21,6 +21,16 @@ import {
 import { BulkStaffEmailDto } from './dto/staff-email.dto';
 
 /**
+ * Phần client đủ dùng cho việc gán email công vụ. Các delegate tùy chọn
+ * vì transaction có thể là mock tối giản trong spec.
+ */
+type StaffEmailTx = {
+  staff: Pick<PrismaService['staff'], 'update'> &
+    Partial<Pick<PrismaService['staff'], 'updateMany'>>;
+  staffOAuthIdentity?: Pick<PrismaService['staffOAuthIdentity'], 'deleteMany'>;
+};
+
+/**
  * Vai trò bị giới hạn theo bộ môn (`deptFilter`): thiếu bộ môn thì tài khoản
  * không thấy sinh viên nào — đúng lỗi 32/35 GV gặp sau import.
  */
@@ -383,9 +393,9 @@ export class AdminService {
       select: { id: true, staffCode: true, email: true },
     });
 
-    const runInTx = async (tx: any) => {
+    const runInTx = async (tx: StaffEmailTx) => {
       if (otherStaffWithSameEmail.length > 0) {
-        if (tx.staff?.updateMany) {
+        if (tx.staff.updateMany) {
           await tx.staff.updateMany({
             where: { id: { in: otherStaffWithSameEmail.map((s) => s.id) } },
             data: { email: null },

@@ -153,13 +153,12 @@ describe('EvaluationsService.list', () => {
       term: 'FA26',
       classSectionId: 'sec-123',
     });
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          term: 'FA26',
-          classSectionId: 'sec-123',
-        }),
-      }),
-    );
+    const [args] = findMany.mock.calls[0] as [
+      { where: Record<string, unknown> },
+    ];
+    expect(args.where).toMatchObject({
+      term: 'FA26',
+      classSectionId: 'sec-123',
+    });
   });
 });

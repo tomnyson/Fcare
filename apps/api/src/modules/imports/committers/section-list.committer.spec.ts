@@ -64,6 +64,12 @@ function firstArg<T>(mock: jest.Mock): T {
   return calls[0][0];
 }
 
+/** Delegate chỉ cần cho luồng tự tạo môn học — gắn thêm vào makeTx(). */
+interface AutoCreateTx {
+  department: { findMany: jest.Mock };
+  subject: { create: jest.Mock };
+}
+
 const ctx = { term: 'SU26' } as ImportContext;
 
 describe('SectionListCommitter', () => {
@@ -196,12 +202,13 @@ describe('SectionListCommitter', () => {
   it('tự động tạo môn học mới nếu môn học chưa có trong hệ thống', async () => {
     const tx = makeTx();
     tx.subject.findMany.mockResolvedValue([]);
-    (tx as any).department = {
+    const auto = tx as unknown as AutoCreateTx;
+    auto.department = {
       findMany: jest
         .fn()
         .mockResolvedValue([{ id: 'dept-cntt', code: 'CNTT' }]),
     };
-    (tx.subject as any).create = jest.fn().mockResolvedValue({
+    auto.subject.create = jest.fn().mockResolvedValue({
       id: 'sub-new-soa',
       code: 'SOA210',
     });
@@ -220,7 +227,7 @@ describe('SectionListCommitter', () => {
     );
 
     expect(result).toEqual({ created: 1, updated: 0, skipped: 0 });
-    expect((tx.subject as any).create).toHaveBeenCalledWith({
+    expect(auto.subject.create).toHaveBeenCalledWith({
       data: {
         code: 'SOA210',
         name: 'Thiết lập và quản trị mạng máy tính với AI',

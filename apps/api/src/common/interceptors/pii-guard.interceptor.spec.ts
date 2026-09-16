@@ -1,4 +1,17 @@
-import { stripPii } from './pii-guard.interceptor';
+import type { CallHandler, ExecutionContext } from '@nestjs/common';
+import { of } from 'rxjs';
+import { PiiGuardInterceptor, stripPii } from './pii-guard.interceptor';
+
+/** Context tối giản: interceptor chỉ đọc `originalUrl` của request. */
+function contextFor(originalUrl: string): ExecutionContext {
+  return {
+    switchToHttp: () => ({ getRequest: () => ({ originalUrl }) }),
+  } as unknown as ExecutionContext;
+}
+
+function handlerOf(payload: unknown): CallHandler {
+  return { handle: () => of(payload) };
+}
 
 describe('stripPii', () => {
   it('loại bỏ các trường PII bị cấm ở mọi cấp lồng nhau', () => {
@@ -54,19 +67,13 @@ describe('stripPii', () => {
 
 describe('PiiGuardInterceptor', () => {
   it('cho phép staff email khi route là /api/admin/staff', (done) => {
-    const { PiiGuardInterceptor } = require('./pii-guard.interceptor');
-    const { of } = require('rxjs');
     const interceptor = new PiiGuardInterceptor();
-    const context = {
-      switchToHttp: () => ({
-        getRequest: () => ({ originalUrl: '/api/admin/staff' }),
-      }),
-    };
-    const next = {
-      handle: () => of([{ staffCode: 'VANDTB2', email: 'vandtb2@fe.edu.vn' }]),
-    };
+    const context = contextFor('/api/admin/staff');
+    const next = handlerOf([
+      { staffCode: 'VANDTB2', email: 'vandtb2@fe.edu.vn' },
+    ]);
 
-    interceptor.intercept(context, next).subscribe((result: unknown[]) => {
+    interceptor.intercept(context, next).subscribe((result) => {
       expect(result).toEqual([
         { staffCode: 'VANDTB2', email: 'vandtb2@fe.edu.vn' },
       ]);
@@ -75,20 +82,13 @@ describe('PiiGuardInterceptor', () => {
   });
 
   it('vẫn loại bỏ email khi route là sinh viên /api/students', (done) => {
-    const { PiiGuardInterceptor } = require('./pii-guard.interceptor');
-    const { of } = require('rxjs');
     const interceptor = new PiiGuardInterceptor();
-    const context = {
-      switchToHttp: () => ({
-        getRequest: () => ({ originalUrl: '/api/students' }),
-      }),
-    };
-    const next = {
-      handle: () =>
-        of([{ studentCode: 'SE19001', email: 'student@fpt.edu.vn' }]),
-    };
+    const context = contextFor('/api/students');
+    const next = handlerOf([
+      { studentCode: 'SE19001', email: 'student@fpt.edu.vn' },
+    ]);
 
-    interceptor.intercept(context, next).subscribe((result: unknown[]) => {
+    interceptor.intercept(context, next).subscribe((result) => {
       expect(result).toEqual([{ studentCode: 'SE19001' }]);
       done();
     });
