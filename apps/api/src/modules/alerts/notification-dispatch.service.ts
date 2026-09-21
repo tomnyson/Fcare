@@ -4,6 +4,7 @@ import type { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationEventsService } from './notification-events.service';
 import { EmailService } from '../email/email.service';
+import { PushService } from '../push/push.service';
 
 export const ALERT_ESCALATION_QUEUE = 'alert-escalation';
 export const DELIVER_NOTIFICATIONS_JOB = 'deliver-notifications';
@@ -55,6 +56,7 @@ export class NotificationDispatchService {
     private readonly prisma: PrismaService,
     private readonly events: NotificationEventsService,
     @Optional() private readonly emailService?: EmailService,
+    @Optional() private readonly pushService?: PushService,
   ) {}
 
   /**
@@ -116,12 +118,18 @@ export class NotificationDispatchService {
       },
     });
 
+    const alertLevel =
+      notifications.length > 0
+        ? await this.alertLevelOf(normalized.source)
+        : null;
+
     for (const notification of notifications) {
       this.events.emit({
         recipientId: notification.recipientId,
         payload: {
           id: notification.id,
           alertId: notification.alertId ?? null,
+          alertLevel,
           analysisVersionId: notification.analysisVersionId ?? null,
           discussionMessageId: notification.discussionMessageId ?? null,
           targetUrl: notification.targetUrl ?? null,
@@ -142,7 +150,52 @@ export class NotificationDispatchService {
       );
     }
 
+    if (
+      this.pushService &&
+      alertLevel !== null &&
+      normalized.source.kind === 'alert'
+    ) {
+      this.pushService
+        .sendAlertPush({
+          alertId: normalized.source.alertId,
+          alertLevel,
+          recipientIds: notifications.map((row) => row.recipientId),
+          title: normalized.title,
+          body: normalized.body,
+          targetUrl: normalized.source.targetUrl ?? null,
+        })
+        .catch((err) =>
+          this.logger.warn(
+            `Lỗi push trình duyệt: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          ),
+        );
+    }
+
     return notifications.length;
+  }
+
+  /**
+   * Chỉ thông báo nguồn `alert` mới mang cấp — nguồn khác không phát tiếng/push.
+   * Đọc lỗi → null: thông báo trong app vẫn phải tới, chỉ mất tiếng + push.
+   */
+  private async alertLevelOf(
+    source: NotificationSource,
+  ): Promise<number | null> {
+    if (source.kind !== 'alert') {
+      return null;
+    }
+    try {
+      const alert = await this.prisma.alert.findUnique({
+        where: { id: source.alertId },
+        select: { level: true },
+      });
+      return alert?.level ?? null;
+    } catch (error) {
+      this.logger.warn(
+        `Không đọc được cấp cảnh báo ${source.alertId}: ${error instanceof Error ? error.message : 'lỗi không xác định'}`,
+      );
+      return null;
+    }
   }
 
   private async dispatchEmail(

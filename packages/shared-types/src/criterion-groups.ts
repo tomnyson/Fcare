@@ -59,6 +59,8 @@ export interface EvaluationScores {
   academicScore: number;
   attitudeScore: number;
   criteria: readonly EvaluationCriterion[];
+  /** Số buổi vắng của lớp học phần này; bỏ trống/null = chưa có dữ liệu chuyên cần. */
+  absentSessions?: number | null;
 }
 
 export interface EvaluationGuidance {
@@ -93,7 +95,7 @@ export function evaluationGuidance(
     {
       academicScore: scores.academicScore,
       attitudeScore: scores.attitudeScore,
-      absentSessions: null,
+      absentSessions: scores.absentSessions ?? null,
       criteria: [...scores.criteria],
     },
   ]);

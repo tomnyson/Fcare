@@ -3,6 +3,11 @@ import {
   activeFilterCount,
   buildStudentListQuery,
   clearFiltersPatch,
+  majorsForClass,
+  nextStudentSort,
+  parseStudentSort,
+  studentCareHref,
+  studentSortPatch,
   parseStudentFilters,
 } from './student-filters';
 
@@ -30,6 +35,7 @@ describe('parseStudentFilters', () => {
       status: 'WARNED',
       classCode: 'SE1901',
       majorId: 'mj-1',
+      departmentId: '',
       term: 'SU25',
       lecturerId: 'gv-1',
       sectionId: 'cs-1',
@@ -44,6 +50,7 @@ describe('parseStudentFilters', () => {
       status: '',
       classCode: '',
       majorId: '',
+      departmentId: '',
       term: '',
       lecturerId: '',
       sectionId: '',
@@ -129,6 +136,7 @@ describe('clearFiltersPatch', () => {
     expect(Object.values(patch).every((value) => value === null)).toBe(true);
     expect(Object.keys(patch).sort()).toEqual([
       'classCode',
+      'departmentId',
       'lecturerId',
       'majorId',
       'missingMajor',
@@ -138,5 +146,116 @@ describe('clearFiltersPatch', () => {
       'status',
       'term',
     ]);
+  });
+});
+
+describe('majorsForClass', () => {
+  const majors = [
+    { id: 'mj-web', code: 'WEB', name: 'Lập trình web' },
+    { id: 'mj-mkt', code: 'MKT', name: 'Digital Marketing' },
+  ];
+  const classMajors = { CNTT: ['mj-web'], KT: ['mj-mkt'], MOI: [] };
+
+  it('chưa chọn lớp thì giữ mọi ngành', () => {
+    expect(majorsForClass(majors, classMajors, '')).toEqual(majors);
+  });
+
+  it('chọn lớp thì chỉ còn ngành có sinh viên trong lớp đó', () => {
+    expect(majorsForClass(majors, classMajors, 'CNTT')).toEqual([majors[0]]);
+  });
+
+  it('lớp chỉ có sinh viên chưa gán ngành thì không còn ngành nào', () => {
+    expect(majorsForClass(majors, classMajors, 'MOI')).toEqual([]);
+  });
+
+  it('API cũ chưa trả classMajors thì không lọc', () => {
+    expect(majorsForClass(majors, undefined, 'CNTT')).toEqual(majors);
+  });
+});
+
+describe('studentCareHref', () => {
+  it('mở thẳng tab Nhật ký chăm sóc', () => {
+    expect(studentCareHref('sv-1', '')).toBe('/students/sv-1?tab=care-logs');
+  });
+
+  it('giữ học kỳ đang lọc để trang chi tiết mở đúng kỳ', () => {
+    expect(studentCareHref('sv-1', 'FA26')).toBe('/students/sv-1?tab=care-logs&term=FA26');
+  });
+});
+
+describe('parseStudentSort', () => {
+  it('đọc cột và chiều sắp xếp hợp lệ', () => {
+    expect(parseStudentSort(params({ sortBy: 'absentSessions', sortDir: 'asc' }))).toEqual({
+      by: 'absentSessions',
+      dir: 'asc',
+    });
+  });
+
+  it('thiếu chiều thì mặc định giảm dần (nhiều nhất lên đầu)', () => {
+    expect(parseStudentSort(params({ sortBy: 'openAlerts' }))).toEqual({
+      by: 'openAlerts',
+      dir: 'desc',
+    });
+  });
+
+  it('bỏ qua giá trị lạ trong URL — không gửi rác lên API', () => {
+    expect(parseStudentSort(params({ sortBy: 'fullName' }))).toBeNull();
+    expect(parseStudentSort(params({}))).toBeNull();
+    expect(parseStudentSort(params({ sortBy: 'openAlerts', sortDir: 'up' }))).toEqual({
+      by: 'openAlerts',
+      dir: 'desc',
+    });
+  });
+});
+
+describe('nextStudentSort', () => {
+  it('bấm cột mới bắt đầu từ giảm dần', () => {
+    expect(nextStudentSort(null, 'absentSessions')).toEqual({ by: 'absentSessions', dir: 'desc' });
+    expect(nextStudentSort({ by: 'openAlerts', dir: 'asc' }, 'absentSessions')).toEqual({
+      by: 'absentSessions',
+      dir: 'desc',
+    });
+  });
+
+  it('bấm lại cùng cột: giảm → tăng → bỏ sắp xếp', () => {
+    expect(nextStudentSort({ by: 'openAlerts', dir: 'desc' }, 'openAlerts')).toEqual({
+      by: 'openAlerts',
+      dir: 'asc',
+    });
+    expect(nextStudentSort({ by: 'openAlerts', dir: 'asc' }, 'openAlerts')).toBeNull();
+  });
+});
+
+describe('studentSortPatch', () => {
+  it('ghi sắp xếp vào URL và quay về trang 1', () => {
+    expect(studentSortPatch({ by: 'openAlerts', dir: 'asc' })).toEqual({
+      sortBy: 'openAlerts',
+      sortDir: 'asc',
+      page: null,
+    });
+  });
+
+  it('bỏ sắp xếp thì xoá khỏi URL', () => {
+    expect(studentSortPatch(null)).toEqual({ sortBy: null, sortDir: null, page: null });
+  });
+});
+
+describe('buildStudentListQuery — sắp xếp', () => {
+  it('gửi sortBy/sortDir khi có', () => {
+    const query = buildStudentListQuery(parseStudentFilters(params({})), 1, 20, {
+      by: 'absentSessions',
+      dir: 'asc',
+    });
+    expect(query.get('sortBy')).toBe('absentSessions');
+    expect(query.get('sortDir')).toBe('asc');
+  });
+
+  it('không sắp xếp thì không gửi gì thêm', () => {
+    const query = buildStudentListQuery(parseStudentFilters(params({})), 1, 20, null);
+    expect(query.has('sortBy')).toBe(false);
+  });
+
+  it('sắp xếp không tính là bộ lọc đang áp dụng', () => {
+    expect(activeFilterCount(parseStudentFilters(params({ sortBy: 'openAlerts' })))).toBe(0);
   });
 });

@@ -11,9 +11,9 @@ describe('uniqueTermsFromEnrollments', () => {
   it('loại trùng và sắp xếp học kỳ giảm dần', () => {
     expect(
       uniqueTermsFromEnrollments([
-        { id: '1', attendanceRate: null, midtermScore: null, finalScore: null, totalScore: null, isExamBanned: false, result: 'IN_PROGRESS', classSection: { id: 'a', code: 'A', term: 'SP25', subjectId: 's', lecturerId: null } },
-        { id: '2', attendanceRate: null, midtermScore: null, finalScore: null, totalScore: null, isExamBanned: false, result: 'IN_PROGRESS', classSection: { id: 'b', code: 'B', term: 'SU25', subjectId: 's', lecturerId: null } },
-        { id: '3', attendanceRate: null, midtermScore: null, finalScore: null, totalScore: null, isExamBanned: false, result: 'IN_PROGRESS', classSection: { id: 'c', code: 'C', term: 'SU25', subjectId: 's', lecturerId: null } },
+        { id: '1', attendanceRate: null, absentSessions: null, midtermScore: null, finalScore: null, totalScore: null, isExamBanned: false, result: 'IN_PROGRESS', classSection: { id: 'a', code: 'A', term: 'SP25', subjectId: 's', lecturerId: null } },
+        { id: '2', attendanceRate: null, absentSessions: null, midtermScore: null, finalScore: null, totalScore: null, isExamBanned: false, result: 'IN_PROGRESS', classSection: { id: 'b', code: 'B', term: 'SU25', subjectId: 's', lecturerId: null } },
+        { id: '3', attendanceRate: null, absentSessions: null, midtermScore: null, finalScore: null, totalScore: null, isExamBanned: false, result: 'IN_PROGRESS', classSection: { id: 'c', code: 'C', term: 'SU25', subjectId: 's', lecturerId: null } },
       ]),
     ).toEqual(['SU25', 'SP25']);
   });

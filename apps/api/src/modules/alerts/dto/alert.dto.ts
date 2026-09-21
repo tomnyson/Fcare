@@ -94,6 +94,13 @@ export class ListAlertsQuery {
   @MaxLength(50)
   classCode?: string;
 
+  @ApiPropertyOptional({
+    description: 'Bộ môn của sinh viên (vẫn bị cắt theo phạm vi người xem)',
+  })
+  @IsOptional()
+  @IsUUID()
+  departmentId?: string;
+
   @ApiPropertyOptional({ description: 'Ngành của sinh viên' })
   @IsOptional()
   @IsUUID()

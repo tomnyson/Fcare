@@ -325,17 +325,6 @@ export function StudentAnalysisPanel({
               </div>
             </form>
           ) : null}
-
-          {analysisDetail?.aiOriginal ? (
-            <details className="mt-4 rounded-lg border border-border bg-white px-4 py-3">
-              <summary className="cursor-pointer text-sm font-semibold text-ink">
-                Xem bản gốc AI
-              </summary>
-              <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-xs text-muted">
-                {JSON.stringify(analysisDetail.aiOriginal, null, 2)}
-              </pre>
-            </details>
-          ) : null}
         </div>
 
         {isDraft ? (

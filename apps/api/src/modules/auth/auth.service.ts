@@ -9,7 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { getGoogleOAuthConfig } from './auth.config';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import type { Prisma } from '@prisma/client';
+import type { AuthMethod, Prisma } from '@prisma/client';
 import type { RoleKey } from '@fcare/shared-types';
 import * as bcrypt from 'bcryptjs';
 import { AuditService } from '../../audit/audit.service';
@@ -109,8 +109,15 @@ export class AuthService {
     }
 
     // Cam kết bảo mật là bắt buộc với MỖI lần đăng nhập → consented luôn false ở đây.
-    const user = this.toAuthUser(staff, { consented: false });
-    const refreshToken = await this.issueRefreshToken(staff.id, null);
+    const user = this.toAuthUser(staff, {
+      consented: false,
+      authMethod: 'PASSWORD',
+    });
+    const refreshToken = await this.issueRefreshToken(
+      staff.id,
+      null,
+      'PASSWORD',
+    );
     const accessToken = this.signAccessToken(user);
 
     await this.auditService.log({
@@ -153,7 +160,10 @@ export class AuthService {
       include: { staff: { ...staffWithRoles } },
     });
     if (identity?.staff.isActive) {
-      const user = this.toAuthUser(identity.staff, { consented: false });
+      const user = this.toAuthUser(identity.staff, {
+        consented: false,
+        authMethod: 'GOOGLE',
+      });
       return {
         session: await this.createSession(
           identity.staff,
@@ -193,7 +203,10 @@ export class AuthService {
         entity: 'Staff',
         entityId: staffByEmail.id,
       });
-      const user = this.toAuthUser(staffByEmail, { consented: false });
+      const user = this.toAuthUser(staffByEmail, {
+        consented: false,
+        authMethod: 'GOOGLE',
+      });
       return {
         session: await this.createSession(
           staffByEmail,
@@ -241,12 +254,13 @@ export class AuthService {
     return session;
   }
 
+  /** Phiên đăng nhập Google — xem `toAuthUser` về cờ đổi mật khẩu. */
   private async createSession(
     staff: StaffWithRoles,
     user: AuthUser,
     action: string,
   ): Promise<AuthSession> {
-    const refreshToken = await this.issueRefreshToken(staff.id, null);
+    const refreshToken = await this.issueRefreshToken(staff.id, null, 'GOOGLE');
     const accessToken = this.signAccessToken(user);
     await this.auditService.log({
       staffId: staff.id,
@@ -264,6 +278,14 @@ export class AuthService {
     userAgent: string | undefined,
   ): Promise<{ user: AuthUser; accessToken: string }> {
     const staff = await this.requireStaff(userId);
+    // Ký cam kết phát lại access token: phải giữ đúng cách đăng nhập của phiên,
+    // nếu không phiên Google lại bị đẩy sang trang đổi mật khẩu tạm.
+    const session = refreshTokenValue
+      ? await this.prisma.refreshToken.findUnique({
+          where: { tokenHash: hashToken(refreshTokenValue) },
+          select: { authMethod: true },
+        })
+      : null;
 
     const consentLog = await this.prisma.consentLog.create({
       data: { staffId: userId, userAgent: userAgent?.slice(0, 255) },
@@ -280,7 +302,10 @@ export class AuthService {
       });
     }
 
-    const user = this.toAuthUser(staff, { consented: true });
+    const user = this.toAuthUser(staff, {
+      consented: true,
+      authMethod: session?.authMethod ?? 'PASSWORD',
+    });
     return { user, accessToken: this.signAccessToken(user) };
   }
 
@@ -307,11 +332,16 @@ export class AuthService {
         where: { id: record.id },
         data: { revokedAt: new Date() },
       }),
-      this.issueRefreshToken(record.staffId, record.consentLogId),
+      this.issueRefreshToken(
+        record.staffId,
+        record.consentLogId,
+        record.authMethod,
+      ),
     ]);
 
     const user = this.toAuthUser(record.staff, {
       consented: record.consentLogId !== null,
+      authMethod: record.authMethod,
     });
     return { user, accessToken: this.signAccessToken(user), refreshToken };
   }
@@ -378,12 +408,14 @@ export class AuthService {
   private async issueRefreshToken(
     staffId: string,
     consentLogId: string | null,
+    authMethod: AuthMethod,
   ): Promise<string> {
     const value = randomBytes(48).toString('base64url');
     await this.prisma.refreshToken.create({
       data: {
         staffId,
         consentLogId,
+        authMethod,
         tokenHash: hashToken(value),
         expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
       },
@@ -404,9 +436,14 @@ export class AuthService {
     return this.jwtService.sign(payload);
   }
 
+  /**
+   * Mật khẩu tạm chỉ bắt đổi khi đăng nhập BẰNG mật khẩu. Đăng nhập Google đã
+   * xác thực qua tài khoản @fpt.edu.vn/@fe.edu.vn, và giảng viên import từ file
+   * không hề biết mật khẩu tạm — bắt đổi là kẹt ở /change-password mãi.
+   */
   private toAuthUser(
     staff: StaffWithRoles,
-    options: { consented: boolean },
+    options: { consented: boolean; authMethod: AuthMethod },
   ): AuthUser {
     return {
       id: staff.id,
@@ -415,7 +452,8 @@ export class AuthService {
       roles: staff.roles.map((staffRole) => staffRole.role.key as RoleKey),
       departmentId: staff.departmentId,
       consented: options.consented,
-      mustChangePassword: staff.mustChangePassword,
+      mustChangePassword:
+        options.authMethod === 'PASSWORD' && staff.mustChangePassword,
     };
   }
 }

@@ -6,6 +6,8 @@ export interface NotificationEvent {
   payload: {
     id: string;
     alertId: string | null;
+    /** Cấp cảnh báo (1–4) khi thông báo gắn cảnh báo — web dùng để phát tiếng. */
+    alertLevel: number | null;
     analysisVersionId?: string | null;
     discussionMessageId?: string | null;
     targetUrl?: string | null;

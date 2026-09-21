@@ -356,7 +356,7 @@ export function CareTable({ term }: { term: string }) {
         </div>
       </div>
       <p className="text-sm text-muted">
-        Chỉ liệt kê sinh viên có cảnh báo trong kỳ (gắn lớp đó hoặc không gắn lớp nào). Tỷ lệ = SV cảnh báo đã chăm sóc / SV cảnh báo, không tính trên sĩ số. Đã chăm sóc khi sinh viên có nhận xét tại lớp trong kỳ, nhật ký chăm sóc hoặc trao đổi nội bộ trong thời gian học kỳ. Tổng giảng viên đếm mỗi sinh viên một lần; cộng các lớp có thể lớn hơn tổng này. Cảnh báo là mức cao nhất trong kỳ tại lớp, kể cả đã giải quyết. Số liệu bên dưới và Excel áp dụng cùng bộ lọc.
+        Chỉ liệt kê sinh viên có cảnh báo trong kỳ (gắn lớp đó hoặc không gắn lớp nào). Tỷ lệ = SV cảnh báo đã chăm sóc / SV cảnh báo, không tính trên sĩ số. Đã chăm sóc khi sinh viên có ít nhất một nhật ký chăm sóc trong học kỳ; nhận xét và trao đổi nội bộ không tính là chăm sóc. Tổng giảng viên đếm mỗi sinh viên một lần; cộng các lớp có thể lớn hơn tổng này. Cảnh báo là mức cao nhất trong kỳ tại lớp, kể cả đã giải quyết. Số liệu bên dưới và Excel áp dụng cùng bộ lọc.
       </p>
       {exportError && <FormError>{exportError}</FormError>}
       {all.isError && report !== all && <FormError>Không tải được danh sách giảng viên.</FormError>}

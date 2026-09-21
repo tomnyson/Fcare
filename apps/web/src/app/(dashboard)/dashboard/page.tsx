@@ -1,12 +1,12 @@
 'use client';
 
-import { Badge } from '@fcare/ui-kit';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { AttendanceCarePanel } from '../../../components/dashboard/attendance-care-panel';
 import { CareOverviewPanel } from '../../../components/dashboard/care-overview-panel';
+import { DepartmentCard } from '../../../components/dashboard/department-card';
 import { MyClassesPanel } from '../../../components/dashboard/my-classes-panel';
 import { WarnedStudentsPanel } from '../../../components/dashboard/warned-students-panel';
 import { Select } from '../../../components/ui/form';
@@ -16,7 +16,7 @@ import { StatCard } from '../../../components/ui/stat-card';
 import { apiFetch } from '../../../lib/api';
 import { dashboardSections } from '../../../lib/dashboard-sections';
 import { useMe } from '../../../lib/hooks';
-import { ALERT_LEVEL_LABELS, ALERT_LEVEL_TONES, STUDENT_STATUS_LABELS } from '../../../lib/labels';
+import { ALERT_LEVEL_LABELS } from '../../../lib/labels';
 import { buildStatisticsQuery, statisticsTabHref } from '../../../lib/statistics-view';
 import type { DepartmentStatistics, StatisticsOverview } from '../../../lib/types';
 import { useTerms } from '../../../lib/use-current-term';
@@ -174,35 +174,7 @@ function DashboardContent() {
                 </article>
               ))
             : (deptStats ?? []).map((department) => (
-                <article
-                  key={department.id}
-                  className="rounded-[var(--radius-card)] border border-border bg-white p-5 shadow-[var(--shadow-card)]"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="font-bold text-fpt-blue-900">{department.name}</h3>
-                      <p className="text-xs text-muted">
-                        {department.code} · {department.totalStudents} SV
-                        {department.totalStaff !== null ? ` · ${department.totalStaff} GV/NV` : ''}
-                      </p>
-                    </div>
-                    {department.openAlerts > 0 ? (
-                      <Badge tone={ALERT_LEVEL_TONES[4]}>{department.openAlerts} cảnh báo</Badge>
-                    ) : (
-                      <Badge tone="success">Ổn định</Badge>
-                    )}
-                  </div>
-                  <ul className="mt-4 flex flex-wrap gap-2 text-xs">
-                    {department.studentsByStatus.map((group) => (
-                      <li
-                        key={group.status}
-                        className="rounded-full bg-surface px-3 py-1 text-muted"
-                      >
-                        {STUDENT_STATUS_LABELS[group.status]}: <strong>{group.count}</strong>
-                      </li>
-                    ))}
-                  </ul>
-                </article>
+                <DepartmentCard key={department.id} department={department} />
               ))}
         </div>
       </section>

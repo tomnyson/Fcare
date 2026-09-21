@@ -151,4 +151,33 @@ describe('evaluationGuidance', () => {
       }
     }
   });
+
+  it('số buổi vắng được chấm vào R_C của mức đề xuất (trước đây luôn bỏ qua)', () => {
+    const base = { academicScore: 6, attitudeScore: 6, criteria: [] };
+    const none = evaluationGuidance(base);
+    const two = evaluationGuidance({ ...base, absentSessions: 2 });
+    const three = evaluationGuidance({ ...base, absentSessions: 3 });
+
+    // Dải 6-5 → R_L 2 + R_A 2 = 4 (cấp 1); vắng 2 buổi +2 = 6, vắng 3 buổi +3 = 7 (cấp 2).
+    expect(none.suggestedLevel).toBe(1);
+    expect(two.suggestedLevel).toBe(2);
+    expect(three.suggestedLevel).toBe(2);
+    expect(two.suggestedLevelReasons.join(' ')).toContain('vắng nhiều nhất 2 buổi → 2 điểm');
+    expect(three.suggestedLevelReasons.join(' ')).toContain('vắng nhiều nhất 3 buổi → 3 điểm');
+  });
+
+  it('vắng dưới 2 buổi hoặc bỏ trống thì không cộng điểm chuyên cần', () => {
+    const base = { academicScore: 4, attitudeScore: 4, criteria: [] };
+    expect(evaluationGuidance({ ...base, absentSessions: 1 }).suggestedLevelReasons.join(' '))
+      .not.toContain('Chuyên cần');
+    expect(evaluationGuidance({ ...base, absentSessions: null }).suggestedLevelReasons.join(' '))
+      .not.toContain('Chuyên cần');
+  });
+
+  it('vắng 3 buổi đẩy bản nhận xét đang ở cấp 2 lên cấp 3', () => {
+    // Dải 4-3 → R_L 3 + R_A 3 = 6 (cấp 2); +3 chuyên cần = 9 → cấp 3.
+    const base = { academicScore: 4, attitudeScore: 4, criteria: [] };
+    expect(evaluationGuidance(base).suggestedLevel).toBe(2);
+    expect(evaluationGuidance({ ...base, absentSessions: 3 }).suggestedLevel).toBe(3);
+  });
 });

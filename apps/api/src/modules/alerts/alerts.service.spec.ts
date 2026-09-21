@@ -19,6 +19,7 @@ interface AlertFindManyArgs {
       AND?: unknown[];
       OR?: unknown[];
       classCode?: string;
+      departmentId?: string;
       majorId?: string;
       enrollments?: {
         some: {
@@ -83,6 +84,16 @@ describe('AlertsService.list — lọc nhiều tiêu chí', () => {
     const [args] = findMany.mock.calls[0] as [AlertFindManyArgs];
     expect(args.where.student.classCode).toBe('SE1901');
     expect(args.where.student.majorId).toBe('mj-1');
+  });
+
+  it('lọc theo bộ môn của sinh viên, scope của GV vẫn giữ nguyên', async () => {
+    await service.list(lecturerUser, {
+      departmentId: 'dept-2',
+      openOnly: true,
+    });
+    const [args] = findMany.mock.calls[0] as [AlertFindManyArgs];
+    expect(args.where.student.departmentId).toBe('dept-2');
+    expect(args.where.student.AND).toBeDefined();
   });
 
   it('kỳ + giảng viên + lớp học phần gộp vào CÙNG một lần đăng ký', async () => {

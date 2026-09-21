@@ -1,3 +1,5 @@
+import { createSessionRefresher, type RefreshResult } from './session-refresh';
+
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
 
 interface ApiEnvelope<T> {
@@ -31,6 +33,31 @@ async function rawFetch(path: string, init?: RequestInit): Promise<Response> {
   return fetch(`${API_URL}${path}`, buildInit(init));
 }
 
+const refreshOnce = createSessionRefresher({
+  post: () => rawFetch('/auth/refresh', { method: 'POST' }),
+  locks: typeof navigator !== 'undefined' ? navigator.locks : undefined,
+});
+
+/** Mốc làm mới gần nhất (tính từ lúc tải trang) — `useSessionKeepAlive` dựa vào đây. */
+let lastSessionRefreshAt = Date.now();
+
+export function getLastSessionRefreshAt(): number {
+  return lastSessionRefreshAt;
+}
+
+/** Làm mới phiên — gộp mọi lời gọi đồng thời thành một lượt (xem `session-refresh.ts`). */
+export async function refreshSession(): Promise<RefreshResult> {
+  const result = await refreshOnce();
+  if (result === 'ok') lastSessionRefreshAt = Date.now();
+  return result;
+}
+
+export function redirectToLogin(): void {
+  if (typeof window !== 'undefined') {
+    window.location.href = '/login';
+  }
+}
+
 /** Điều hướng theo mã lỗi nghiệp vụ của consent gate / mật khẩu tạm. */
 function redirectForCode(code: string | undefined): boolean {
   if (typeof window === 'undefined') {
@@ -52,14 +79,15 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
   // Access token hết hạn → thử refresh một lần rồi gọi lại.
   if (response.status === 401 && path !== '/auth/login' && path !== '/auth/refresh') {
-    const refreshed = await rawFetch('/auth/refresh', { method: 'POST' });
-    if (refreshed.ok) {
+    const refreshed = await refreshSession();
+    if (refreshed === 'ok') {
       response = await rawFetch(path, init);
-    } else {
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login';
-      }
+    } else if (refreshed === 'unauthorized') {
+      redirectToLogin();
       throw new ApiError('Phiên đăng nhập đã hết hạn.', 401);
+    } else {
+      // Mạng chập chờn không phải hết phiên — báo lỗi, KHÔNG đá về /login.
+      throw new ApiError('Không kết nối được máy chủ. Vui lòng thử lại.', 0);
     }
   }
 
@@ -77,10 +105,13 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 export async function apiDownload(path: string, fallbackName: string): Promise<void> {
   let response = await rawFetch(path);
   if (response.status === 401) {
-    const refreshed = await rawFetch('/auth/refresh', { method: 'POST' });
-    if (!refreshed.ok) {
-      window.location.href = '/login';
+    const refreshed = await refreshSession();
+    if (refreshed === 'unauthorized') {
+      redirectToLogin();
       return;
+    }
+    if (refreshed === 'error') {
+      throw new ApiError('Không kết nối được máy chủ. Vui lòng thử lại.', 0);
     }
     response = await rawFetch(path);
   }

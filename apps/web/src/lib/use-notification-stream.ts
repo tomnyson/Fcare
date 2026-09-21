@@ -2,9 +2,10 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
-import { API_URL } from './api';
+import { API_URL, redirectToLogin, refreshSession } from './api';
 import { latestDiscussionMessageId } from './discussion';
 import { useNotificationsPolling } from './hooks';
+import { playAlertSound, readSoundPreference, shouldPlayAlertSound } from './push/alert-sound';
 
 const RECONNECT_DELAY_MS = 5_000;
 
@@ -28,7 +29,12 @@ export function useNotificationStream(): void {
         const payload = JSON.parse(event.data) as {
           discussionMessageId?: string | null;
           alertId?: string | null;
+          alertLevel?: number | null;
         };
+        // Cảnh báo cấp 3–4 → kêu để cán bộ đang làm việc khác trong tab vẫn biết.
+        if (shouldPlayAlertSound(payload, readSoundPreference())) {
+          playAlertSound();
+        }
         if (payload.discussionMessageId) {
           void queryClient.invalidateQueries({ queryKey: ['discussions'] });
         }
@@ -58,13 +64,12 @@ export function useNotificationStream(): void {
           return;
         }
         retryTimer = setTimeout(() => {
-          void fetch(`${API_URL}/auth/refresh`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-          })
-            .catch(() => undefined)
-            .finally(connect);
+          // Dùng chung lượt refresh với apiFetch: gọi riêng sẽ xoay token chồng
+          // lên các request đang chạy và làm chúng rơi về /login.
+          void refreshSession().then((result) => {
+            if (result === 'unauthorized') redirectToLogin();
+            else connect();
+          });
         }, RECONNECT_DELAY_MS);
       };
     }

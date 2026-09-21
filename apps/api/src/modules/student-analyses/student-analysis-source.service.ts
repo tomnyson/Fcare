@@ -10,6 +10,10 @@ import type { AuthUser } from '../../common/types/auth-user';
 import { studentScope } from '../../common/utils/dept-scope';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
+  attendanceOfStudentSelect,
+  effectiveAbsentSessions,
+} from '../evaluations/absent-sessions';
+import {
   containsForbiddenAnalysisPii,
   hashAnalysisSource,
   redactAnalysisText,
@@ -93,6 +97,7 @@ export class StudentAnalysisSourceService {
             attitudeScore: true,
             absentSessions: true,
             criteria: { select: { criterion: true } },
+            classSection: attendanceOfStudentSelect(studentId),
             note: true,
             updatedAt: true,
             lecturer: {
@@ -154,7 +159,7 @@ export class StudentAnalysisSourceService {
         term: evaluation.term,
         academicScore: evaluation.academicScore,
         attitudeScore: evaluation.attitudeScore,
-        absentSessions: evaluation.absentSessions,
+        absentSessions: effectiveAbsentSessions(evaluation),
         criteria: evaluation.criteria.map((mark) => mark.criterion),
         note: evaluation.note
           ? redactAnalysisText(evaluation.note, [...identifiers])
@@ -181,7 +186,7 @@ export class StudentAnalysisSourceService {
           .map((item) => ({
             academicScore: item.academicScore,
             attitudeScore: item.attitudeScore,
-            absentSessions: item.absentSessions,
+            absentSessions: effectiveAbsentSessions(item),
             criteria: item.criteria.map((mark) => mark.criterion),
           })),
       ),

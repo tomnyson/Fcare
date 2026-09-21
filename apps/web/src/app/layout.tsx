@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Be_Vietnam_Pro, Inter } from 'next/font/google';
 import { Providers } from '../components/providers';
+import { FeedbackButton } from '../components/ui/feedback-button';
 import './globals.css';
 
 const beVietnam = Be_Vietnam_Pro({
@@ -31,6 +32,7 @@ export default function RootLayout({
     <html lang="vi">
       <body className={`${beVietnam.variable} ${inter.variable} antialiased`}>
         <Providers>{children}</Providers>
+        <FeedbackButton />
       </body>
     </html>
   );

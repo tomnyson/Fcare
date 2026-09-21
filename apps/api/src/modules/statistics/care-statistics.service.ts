@@ -320,14 +320,11 @@ export class CareStatisticsService {
           const careLogs = logMap.get(student.id) ?? [];
           const studentDiscussions = discussionMap.get(student.id) ?? [];
 
-          const dates = [
-            ...marks.map((mark) => mark.updatedAt.getTime()),
-            ...careLogs.map((log) => log.createdAt.getTime()),
-            ...studentDiscussions.map((msg) => msg.createdAt.getTime()),
-          ];
-
-          const cared =
-            marks.length + careLogs.length + studentDiscussions.length > 0;
+          // Chỉ nhật ký chăm sóc mới tính là "đã chăm sóc" (quyết định của
+          // user): nhận xét là thứ SINH RA cảnh báo, thảo luận là trao đổi
+          // nội bộ — tính chúng sẽ thổi phồng tỷ lệ chăm sóc.
+          const dates = careLogs.map((log) => log.createdAt.getTime());
+          const cared = careLogs.length > 0;
 
           return {
             ...student,
