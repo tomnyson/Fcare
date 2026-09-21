@@ -36,6 +36,14 @@ export class RaiseAlertDto {
   @MinLength(10, { message: 'Lý do cảnh báo cần tối thiểu 10 ký tự.' })
   @MaxLength(2000)
   reason!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Lớp học phần của nhận xét sinh ra cảnh báo — sinh viên phải học lớp này',
+  })
+  @IsOptional()
+  @IsUUID()
+  classSectionId?: string;
 }
 
 export class ResolveAlertDto {

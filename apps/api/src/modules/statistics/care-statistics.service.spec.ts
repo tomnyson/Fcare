@@ -339,7 +339,12 @@ describe('CareStatisticsService', () => {
         studentId: { in: ['student'] },
         createdAt: { gte: term.startDate, lte: term.endDate },
       },
-      select: { studentId: true, classSectionId: true, level: true },
+      select: {
+        studentId: true,
+        classSectionId: true,
+        level: true,
+        source: true,
+      },
     });
   });
 
@@ -363,6 +368,24 @@ describe('CareStatisticsService', () => {
     expect(
       (await service.list(user, { term: 'FA26' })).lecturers[0],
     ).toMatchObject({ studentCount: 0, careRate: null });
+  });
+
+  it('cảnh báo DRS (MANUAL) gắn lớp nhận xét gốc vẫn tính cho mọi lớp SV học trong kỳ', async () => {
+    const { service, prisma } = setup();
+    prisma.classSection.findMany.mockResolvedValue([
+      { ...section('A'), enrollments: [{ student }] },
+      { ...section('B'), enrollments: [{ student }] },
+    ]);
+    prisma.levelAlerts = [
+      { studentId: 'student', classSectionId: 'A', level: 4, source: 'MANUAL' },
+    ];
+    const report = await service.list(user, { term: 'FA26' });
+    const sections = report.lecturers.flatMap((row) => row.sections);
+    expect(sections).toHaveLength(2);
+    for (const row of sections) {
+      expect(row.alertedStudentCount).toBe(1);
+      expect(row.students[0].alertLevel).toBe(4);
+    }
   });
 
   it('chỉ tính SV có cảnh báo: tỷ lệ trên SV cảnh báo, sĩ số vẫn là mọi SV', async () => {

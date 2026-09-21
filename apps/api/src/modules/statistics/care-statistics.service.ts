@@ -240,7 +240,12 @@ export class CareStatisticsService {
             }),
             this.prisma.alert.findMany({
               where: { studentId: { in: studentIds }, createdAt: range },
-              select: { studentId: true, classSectionId: true, level: true },
+              select: {
+                studentId: true,
+                classSectionId: true,
+                level: true,
+                source: true,
+              },
             }),
             this.prisma.alert.findMany({
               where: {
@@ -305,11 +310,14 @@ export class CareStatisticsService {
       if (!lecturer) continue;
 
       // Chỉ SV có cảnh báo trong kỳ (gắn lớp này hoặc không gắn lớp nào).
+      // Cảnh báo DRS (MANUAL) tính cho cả kỳ: lớp gắn kèm chỉ là lớp của nhận
+      // xét gốc để liên kết, nên vẫn tính cho mọi lớp SV đang học.
       const alerted: CareStudent[] = section.enrollments
         .map(({ student }) => ({
           student,
           sectionAlerts: (alertsByStudent.get(student.id) ?? []).filter(
             (alert) =>
+              alert.source === 'MANUAL' ||
               alert.classSectionId === null ||
               alert.classSectionId === section.id,
           ),

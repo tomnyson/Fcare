@@ -435,7 +435,13 @@ function AlertsPageContent() {
             </Td>
             <Td>
               {alert.classSection ? (
-                <span className="font-medium">{alert.classSection.code}</span>
+                <Link
+                  href={`/class-sections/${alert.classSection.id}/grades`}
+                  title={alert.classSection.subject?.name}
+                  className="font-medium text-fpt-blue hover:underline focus-visible:underline"
+                >
+                  {alert.classSection.code}
+                </Link>
               ) : (
                 <span className="text-muted">—</span>
               )}
