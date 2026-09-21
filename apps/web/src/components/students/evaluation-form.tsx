@@ -16,7 +16,7 @@ import {
 } from '@fcare/shared-types';
 import { Button } from '@fcare/ui-kit';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { apiFetch, ApiError } from '../../lib/api';
 import {
   absenceSourceHint,
@@ -152,6 +152,8 @@ interface EvaluationFormProps {
   onCancel: () => void;
   /** ID lớp học phần chọn sẵn khi mở modal từ danh sách lớp. */
   initialSectionId?: string;
+  /** Dòng thông tin sinh viên — ghim cùng lớp học phần và số buổi vắng. */
+  summary?: ReactNode;
 }
 
 export function EvaluationForm({
@@ -163,6 +165,7 @@ export function EvaluationForm({
   onSaved,
   onCancel,
   initialSectionId,
+  summary,
 }: EvaluationFormProps) {
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
@@ -294,37 +297,65 @@ export function EvaluationForm({
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      <FormError>{error}</FormError>
-
-      <div>
-        <Label htmlFor="classSectionId">Lớp học phần</Label>
-        <Select
-          id="classSectionId"
-          name="classSectionId"
-          required
-          value={classSectionId}
-          onChange={(event) => selectSection(event.target.value)}
-        >
-          <option value="" disabled>
-            Chọn lớp học phần
-          </option>
-          {sections.map((section) => (
-            <option key={section.id} value={section.id}>
-              {section.code}
-              {section.subject ? ` — ${section.subject.name}` : ''}
-              {ownEvaluations.some(
-                (evaluation) => evaluation.classSectionId === section.id,
-              )
-                ? ' (đã nhận xét)'
-                : ''}
-            </option>
-          ))}
-        </Select>
-        <p className="mt-1 text-xs text-muted">
-          {existing
-            ? 'Bạn đã nhận xét lớp này — lưu lại sẽ cập nhật bản cũ và chạy lại phân tích AI.'
-            : `Mỗi lớp học phần chỉ có một bản nhận xét trong học kỳ ${term}.`}
-        </p>
+      {/* Ghim ở đầu vùng cuộn của modal (từ sm): kéo xem tiêu chí vẫn thấy đang
+          nhận xét ai, lớp nào, vắng mấy buổi. Điện thoại thấp nên để cuộn thường. */}
+      <div
+        data-evaluation-pinned
+        className="-mx-6 space-y-3 border-b border-border bg-white px-6 pb-3 sm:sticky sm:top-0 sm:z-10"
+      >
+        {summary}
+        <FormError>{error}</FormError>
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_16rem]">
+          <div>
+            <Label htmlFor="classSectionId">Lớp học phần</Label>
+            <Select
+              id="classSectionId"
+              name="classSectionId"
+              required
+              value={classSectionId}
+              onChange={(event) => selectSection(event.target.value)}
+            >
+              <option value="" disabled>
+                Chọn lớp học phần
+              </option>
+              {sections.map((section) => (
+                <option key={section.id} value={section.id}>
+                  {section.code}
+                  {section.subject ? ` — ${section.subject.name}` : ''}
+                  {ownEvaluations.some(
+                    (evaluation) => evaluation.classSectionId === section.id,
+                  )
+                    ? ' (đã nhận xét)'
+                    : ''}
+                </option>
+              ))}
+            </Select>
+            <p className="mt-1 text-xs text-muted">
+              {existing
+                ? 'Bạn đã nhận xét lớp này — lưu lại sẽ cập nhật bản cũ và chạy lại phân tích AI.'
+                : `Mỗi lớp học phần chỉ có một bản nhận xét trong học kỳ ${term}.`}
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="absentSessions">Số buổi đã vắng</Label>
+            <Input
+              id="absentSessions"
+              name="absentSessions"
+              type="number"
+              min={0}
+              max={100}
+              value={absentInput}
+              onChange={(event) => setAbsentInput(event.target.value)}
+              aria-describedby="absentSessions-hint"
+            />
+            <p id="absentSessions-hint" className="mt-1 text-xs text-muted">
+              {classSectionId
+                ? absenceSourceHint(systemAbsences[classSectionId], absentInput)
+                : 'Chọn lớp học phần để lấy số buổi vắng từ dữ liệu điểm danh.'}{' '}
+              Vắng 2 buổi +2 điểm, từ 3 buổi +3 điểm rủi ro.
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -342,26 +373,6 @@ export function EvaluationForm({
           value={attitudeBand}
           onChange={setAttitudeBand}
         />
-      </div>
-
-      <div className="max-w-56">
-        <Label htmlFor="absentSessions">Số buổi đã vắng</Label>
-        <Input
-          id="absentSessions"
-          name="absentSessions"
-          type="number"
-          min={0}
-          max={100}
-          value={absentInput}
-          onChange={(event) => setAbsentInput(event.target.value)}
-          aria-describedby="absentSessions-hint"
-        />
-        <p id="absentSessions-hint" className="mt-1 text-xs text-muted">
-          {classSectionId
-            ? absenceSourceHint(systemAbsences[classSectionId], absentInput)
-            : 'Chọn lớp học phần để lấy số buổi vắng từ dữ liệu điểm danh.'}{' '}
-          Vắng 2 buổi +2 điểm, từ 3 buổi +3 điểm rủi ro.
-        </p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

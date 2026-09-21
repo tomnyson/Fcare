@@ -210,6 +210,7 @@ function AlertsPageContent() {
 
       <FilterBar
         label="Bộ lọc cảnh báo"
+        activeCount={chips.filter((chip) => chip.key !== 'search').length}
         onSubmit={(event) => {
           event.preventDefault();
           setFilters({ search: search.trim() || null });

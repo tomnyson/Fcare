@@ -2,6 +2,8 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
+import { getErrorBoundary, startMonitoring } from '../lib/monitoring/bugsnag';
+import { ErrorFallback } from './monitoring/error-fallback';
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
@@ -16,6 +18,10 @@ export function Providers({ children }: { children: ReactNode }) {
         },
       }),
   );
+  // Chỉ có ở trình duyệt khi đã cấu hình Bugsnag; boundary không sinh DOM nên không lệch hydrate.
+  const [ErrorBoundary] = useState(() => (startMonitoring() ? getErrorBoundary() : null));
 
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  const content = <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  if (!ErrorBoundary) return content;
+  return <ErrorBoundary FallbackComponent={ErrorFallback}>{content}</ErrorBoundary>;
 }

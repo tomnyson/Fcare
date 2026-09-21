@@ -2,7 +2,6 @@
 
 import { Badge } from '@fcare/ui-kit';
 import { useQuery } from '@tanstack/react-query';
-import Link from 'next/link';
 import { DataTable, Td } from '../ui/data-table';
 import { apiFetch } from '../../lib/api';
 import { ENROLLMENT_RESULT_LABELS } from '../../lib/labels';
@@ -14,7 +13,15 @@ function score(value: number | null): string {
   return value === null ? '—' : value.toString();
 }
 
-export function EnrollmentsTab({ studentId }: { studentId: string }) {
+interface EnrollmentsTabProps {
+  studentId: string;
+  /** Mở form nhận xét đã chọn sẵn lớp học phần của dòng được bấm. */
+  onEvaluate?: (enrollment: Enrollment) => void;
+  /** Dòng người dùng không được nhận xét thì hiện gạch ngang. */
+  canEvaluate?: (enrollment: Enrollment) => boolean;
+}
+
+export function EnrollmentsTab({ studentId, onEvaluate, canEvaluate }: EnrollmentsTabProps) {
   const { data, isLoading } = useQuery({
     queryKey: ['enrollments', studentId],
     queryFn: () => apiFetch<Enrollment[]>(`/enrollments?studentId=${studentId}`),
@@ -44,12 +51,18 @@ export function EnrollmentsTab({ studentId }: { studentId: string }) {
             </Badge>
           </Td>
           <Td>
-            <Link
-              href={`/students/${studentId}?tab=evaluations&term=${encodeURIComponent(enrollment.classSection?.term ?? '')}`}
-              className="rounded-md px-2 py-1 text-sm font-semibold text-fpt-blue hover:underline"
-            >
-              Nhận xét
-            </Link>
+            {onEvaluate && enrollment.classSection && (canEvaluate?.(enrollment) ?? true) ? (
+              <button
+                type="button"
+                data-evaluate-section={enrollment.classSection.id}
+                onClick={() => onEvaluate(enrollment)}
+                className="rounded-md px-2 py-1 text-sm font-semibold text-fpt-blue underline-offset-4 transition-colors duration-[var(--duration-fast)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-fpt-blue"
+              >
+                Nhận xét
+              </button>
+            ) : (
+              '—'
+            )}
           </Td>
         </tr>
       ))}

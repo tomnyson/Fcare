@@ -165,3 +165,20 @@ export const IconLogout: NavIcon = (props) => (
     <path d="M5 12h10" />
   </Icon>
 );
+
+/** Mở menu điều hướng (điện thoại). */
+export const IconMenu: NavIcon = (props) => (
+  <Icon {...props}>
+    <path d="M4 7h16" />
+    <path d="M4 12h16" />
+    <path d="M4 17h10" />
+  </Icon>
+);
+
+/** Đóng menu điều hướng. */
+export const IconClose: NavIcon = (props) => (
+  <Icon {...props}>
+    <path d="m6 6 12 12" />
+    <path d="M18 6 6 18" />
+  </Icon>
+);

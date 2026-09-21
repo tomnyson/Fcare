@@ -13,7 +13,7 @@ export function ShellSkeleton() {
       aria-label="Đang tải phiên làm việc"
       className="flex min-h-screen bg-surface"
     >
-      <aside className="flex w-60 shrink-0 flex-col bg-fpt-blue-900 max-lg:w-16">
+      <aside className="flex w-64 shrink-0 flex-col bg-fpt-blue-900 max-md:hidden max-lg:w-16">
         <div className="flex items-center gap-3 px-5 py-5 max-lg:justify-center max-lg:px-2">
           <span aria-hidden className="h-9 w-9 shrink-0 rounded-lg bg-fpt-orange/40" />
           <span aria-hidden className="h-4 w-24 rounded bg-white/15 max-lg:hidden" />
@@ -30,14 +30,17 @@ export function ShellSkeleton() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-4 border-b border-border bg-white px-6 py-3">
-          <Skeleton className="h-4 w-56 max-sm:hidden" />
+        <header className="flex items-center justify-between gap-4 border-b border-border bg-white px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-9 w-9 rounded-md md:hidden" />
+            <Skeleton className="h-4 w-56 max-sm:hidden" />
+          </div>
           <div className="flex items-center gap-3">
             <Skeleton className="h-9 w-9 rounded-md" />
             <Skeleton className="h-9 w-24 rounded-md" />
           </div>
         </header>
-        <main className="min-w-0 flex-1 p-6 lg:p-8">
+        <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
           <PageSkeleton />
         </main>
       </div>

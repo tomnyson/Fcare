@@ -267,6 +267,7 @@ function StudentsPageContent() {
 
       <FilterBar
         label="Bộ lọc sinh viên"
+        activeCount={chips.filter((chip) => chip.key !== 'search').length}
         onSubmit={(event) => {
           event.preventDefault();
           setFilters({ search: search.trim() || null });
