@@ -23,6 +23,22 @@
   --shadow-card: var(--shadow-card);
 }
 
+/* Sidebar thu thành thanh icon dưới lg — nhưng CHỈ khi nằm trong rail. Menu
+   trượt trên điện thoại dùng cùng component và luôn cần đủ chữ, nên không thể
+   dựa vào max-lg: thuần theo màn hình. */
+@custom-variant compact {
+  @media (width < 64rem) {
+    &:where([data-nav='rail'], [data-nav='rail'] *) {
+      @slot;
+    }
+  }
+}
+
+/* Menu trượt đang mở → trang phía sau không cuộn theo ngón tay. */
+html:has(dialog[data-mobile-nav][open]) {
+  overflow: hidden;
+}
+
 body {
   background: var(--color-surface);
   color: var(--color-ink);

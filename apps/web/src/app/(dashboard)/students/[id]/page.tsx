@@ -8,16 +8,16 @@ import { AlertsTab } from '../../../../components/students/alerts-tab';
 import { CareLogsTab } from '../../../../components/students/care-logs-tab';
 import { DiscussionTab } from '../../../../components/students/discussion-tab';
 import { EnrollmentsTab } from '../../../../components/students/enrollments-tab';
-import { EvaluationsTab } from '../../../../components/students/evaluations-tab';
+import {
+  EvaluationsTab,
+  type EvaluateRequest,
+} from '../../../../components/students/evaluations-tab';
 import { PageHeader } from '../../../../components/ui/page-header';
 import { apiFetch } from '../../../../lib/api';
 import { countUnread } from '../../../../lib/discussion';
 import { useDiscussion, useMe } from '../../../../lib/hooks';
-import {
-  formatDate,
-  STUDENT_STATUS_LABELS,
-  STUDENT_STATUS_TONES,
-} from '../../../../lib/labels';
+import { canEvaluateSection } from '../../../../lib/evaluation-access';
+import { STUDENT_STATUS_LABELS, STUDENT_STATUS_TONES } from '../../../../lib/labels';
 import type { Student } from '../../../../lib/types';
 import { PageSkeleton } from '../../../../components/dashboard/shell-skeleton';
 
@@ -38,8 +38,15 @@ function StudentDetailContent() {
   const search = useSearchParams();
   const requested = search.get('tab');
   const requestedTerm = search.get('term') ?? '';
+  const requestedSection = search.get('section') ?? '';
   const [tab, setTab] = useState<TabKey>(
     TABS.some((item) => item.key === requested) ? (requested as TabKey) : 'enrollments',
+  );
+  // Liên kết `?tab=evaluations&term=…&section=…` mở thẳng form của lớp đó.
+  const [evaluateRequest, setEvaluateRequest] = useState<EvaluateRequest | null>(() =>
+    requested === 'evaluations' && requestedTerm && requestedSection
+      ? { term: requestedTerm, sectionId: requestedSection, nonce: 0 }
+      : null,
   );
   const { data: me } = useMe();
   const discussion = useDiscussion(studentId);
@@ -75,15 +82,7 @@ function StudentDetailContent() {
         }
       />
 
-      <dl className="mb-6 grid gap-4 rounded-[var(--radius-card)] border border-border bg-white p-5 text-sm shadow-[var(--shadow-card)] sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <dt className="text-xs font-bold uppercase tracking-wide text-muted">Ngày sinh</dt>
-          <dd className="mt-1 font-medium text-ink">{formatDate(student.dateOfBirth)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs font-bold uppercase tracking-wide text-muted">Giới tính</dt>
-          <dd className="mt-1 font-medium text-ink">{student.gender ?? '—'}</dd>
-        </div>
+      <dl className="mb-6 grid gap-4 rounded-[var(--radius-card)] border border-border bg-white p-5 text-sm shadow-[var(--shadow-card)] sm:grid-cols-2">
         <div>
           <dt className="text-xs font-bold uppercase tracking-wide text-muted">Khóa</dt>
           <dd className="mt-1 font-medium text-ink">{student.cohort ?? '—'}</dd>
@@ -122,12 +121,30 @@ function StudentDetailContent() {
         ))}
       </div>
 
-      {tab === 'enrollments' ? <EnrollmentsTab studentId={studentId} /> : null}
+      {tab === 'enrollments' ? (
+        <EnrollmentsTab
+          studentId={studentId}
+          canEvaluate={(enrollment) =>
+            enrollment.classSection !== undefined &&
+            canEvaluateSection(me.user, enrollment.classSection)
+          }
+          onEvaluate={(enrollment) => {
+            if (!enrollment.classSection) return;
+            setEvaluateRequest({
+              term: enrollment.classSection.term,
+              sectionId: enrollment.classSection.id,
+              nonce: Date.now(),
+            });
+            setTab('evaluations');
+          }}
+        />
+      ) : null}
       {tab === 'evaluations' ? (
         <EvaluationsTab
           studentId={studentId}
           user={me.user}
           initialTerm={requestedTerm}
+          evaluateRequest={evaluateRequest}
         />
       ) : null}
       {tab === 'care-logs' ? <CareLogsTab studentId={studentId} /> : null}

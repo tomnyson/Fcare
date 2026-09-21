@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { apiFetch } from '../../lib/api';
 import { formatNavBadge } from '../../lib/attendance-care';
 import { resetPush } from '../../lib/push/onesignal';
@@ -58,7 +58,7 @@ function AlertPill({ badge }: { badge: NavBadges }) {
     return (
       <span
         title={`${badge.attendancePending} cảnh báo điểm danh chờ bạn chăm sóc`}
-        className="ml-auto rounded-full bg-fpt-orange px-2 py-0.5 text-[11px] font-bold tabular-nums text-white max-lg:hidden"
+        className="ml-auto rounded-full bg-fpt-orange px-2 py-0.5 text-[11px] font-bold tabular-nums text-white compact:hidden"
       >
         {badge.attendancePending}
       </span>
@@ -66,7 +66,7 @@ function AlertPill({ badge }: { badge: NavBadges }) {
   }
   if (badge.openAlerts) {
     return (
-      <span className="ml-auto rounded-full bg-fpt-orange/15 px-2 py-0.5 text-[11px] font-bold tabular-nums text-fpt-orange max-lg:hidden">
+      <span className="ml-auto rounded-full bg-fpt-orange/15 px-2 py-0.5 text-[11px] font-bold tabular-nums text-fpt-orange compact:hidden">
         {badge.openAlerts}
       </span>
     );
@@ -75,7 +75,7 @@ function AlertPill({ badge }: { badge: NavBadges }) {
 }
 
 const ROW_BASE =
-  'group relative flex w-full items-center gap-3 rounded-lg py-2.5 pl-3 pr-2.5 text-left text-[13.5px] transition-colors max-lg:justify-center max-lg:px-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fpt-orange/70';
+  'group relative flex w-full items-center gap-3 rounded-lg py-2.5 pl-3 pr-2.5 text-left text-[13.5px] transition-colors compact:justify-center compact:px-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fpt-orange/70';
 
 function rowClass(active: boolean): string {
   return `${ROW_BASE} ${
@@ -140,7 +140,7 @@ function LeafLink({
     >
       <ActiveBar active={active} />
       <RowIcon item={item} active={active} />
-      <span className="truncate max-lg:hidden">{item.label}</span>
+      <span className="truncate compact:hidden">{item.label}</span>
       {item.badge === 'openAlerts' ? <AlertPill badge={badge} /> : null}
     </Link>
   );
@@ -169,7 +169,7 @@ function Group({
 }) {
   const open = isGroupOpen(group, pathname, collapsed);
   const active = group.href ? isNavActive(pathname, group.href) : false;
-  const panelId = `nav-group-${group.id}`;
+  const panelId = useId();
   const toggleLabel = `${open ? 'Thu gọn' : 'Mở rộng'} ${group.label}`;
 
   return (
@@ -184,7 +184,7 @@ function Group({
             >
               <ActiveBar active={active} />
               <RowIcon item={group} active={active} />
-              <span className="truncate max-lg:hidden">{group.label}</span>
+              <span className="truncate compact:hidden">{group.label}</span>
             </Link>
             <button
               type="button"
@@ -192,7 +192,7 @@ function Group({
               aria-expanded={open}
               aria-controls={panelId}
               aria-label={toggleLabel}
-              className="absolute right-1 rounded-md p-1.5 text-white/40 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fpt-orange/70 max-lg:hidden"
+              className="absolute right-1 rounded-md p-1.5 text-white/40 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fpt-orange/70 compact:hidden"
             >
               <Chevron open={open} />
             </button>
@@ -206,8 +206,8 @@ function Group({
             className={rowClass(false)}
           >
             <RowIcon item={group} active={false} />
-            <span className="truncate max-lg:hidden">{group.label}</span>
-            <span className="ml-auto max-lg:hidden">
+            <span className="truncate compact:hidden">{group.label}</span>
+            <span className="ml-auto compact:hidden">
               <Chevron open={open} />
             </span>
           </button>
@@ -217,7 +217,7 @@ function Group({
       <ul
         id={panelId}
         hidden={!open}
-        className="mt-0.5 space-y-0.5 lg:ml-4 lg:border-l lg:border-white/10 lg:pl-2"
+        className="mt-0.5 ml-4 space-y-0.5 border-l border-white/10 pl-2 compact:ml-0 compact:border-l-0 compact:pl-0"
       >
         {group.children.map((child) => (
           <NavItem
@@ -279,8 +279,8 @@ function Section({
   badge: NavBadges;
 }) {
   return (
-    <div className="mt-5 first:mt-0 max-lg:border-t max-lg:border-white/10 max-lg:pt-3 max-lg:first:border-0 max-lg:first:pt-0">
-      <p className="mb-2 flex items-center gap-3 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-white/35 max-lg:hidden">
+    <div className="mt-5 first:mt-0 compact:border-t compact:border-white/10 compact:pt-3 compact:first:border-0 compact:first:pt-0">
+      <p className="mb-2 flex items-center gap-3 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-white/35 compact:hidden">
         {section.label}
         <span aria-hidden="true" className="h-px flex-1 bg-white/10" />
       </p>
@@ -314,14 +314,14 @@ function SidebarFooter({ user }: { user: AuthUser }) {
 
   return (
     <div className="mt-auto border-t border-white/10 px-3 py-3">
-      <div className="flex items-center gap-3 rounded-lg px-1 py-1 max-lg:flex-col max-lg:gap-2 max-lg:px-0">
+      <div className="flex items-center gap-3 rounded-lg px-1 py-1 compact:flex-col compact:gap-2 compact:px-0">
         <span
           aria-hidden="true"
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-[12px] font-bold tracking-wide text-white"
         >
           {initials(user.fullName)}
         </span>
-        <span className="min-w-0 flex-1 max-lg:hidden">
+        <span className="min-w-0 flex-1 compact:hidden">
           <span className="block truncate text-[13px] font-semibold text-white">
             {user.fullName}
           </span>
@@ -342,7 +342,16 @@ function SidebarFooter({ user }: { user: AuthUser }) {
   );
 }
 
-export function Sidebar({ user }: { user: AuthUser }) {
+interface SidebarPanelProps {
+  user: AuthUser;
+  /** Nút phụ cạnh logo — menu trượt dùng để đặt nút đóng. */
+  headerAction?: ReactNode;
+  /** Logo nằm trong khung đầu trang nhìn thấy ngay → tải ưu tiên. */
+  priorityBrand?: boolean;
+}
+
+/** Ruột menu (logo + điều hướng + chân) — dùng chung cho sidebar và menu trượt. */
+export function SidebarPanel({ user, headerAction, priorityBrand = false }: SidebarPanelProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set<string>());
   const badge = useNavBadges();
@@ -361,21 +370,24 @@ export function Sidebar({ user }: { user: AuthUser }) {
   }
 
   return (
-    <aside className="sticky top-0 flex h-[100dvh] w-64 shrink-0 flex-col self-start bg-fpt-blue-900 text-white max-lg:w-16">
-      <Link
-        href="/dashboard"
-        className="flex items-center gap-3 px-4 py-5 max-lg:justify-center max-lg:px-0"
-      >
-        <BrandMark size={40} priority />
-        <span className="min-w-0 max-lg:hidden">
-          <span className="block font-[family-name:var(--font-display)] text-lg font-bold leading-tight">
-            FCare
+    <>
+      <div className="flex items-center gap-2 pr-3 compact:pr-0">
+        <Link
+          href="/dashboard"
+          className="flex min-w-0 flex-1 items-center gap-3 px-4 py-5 compact:justify-center compact:px-0"
+        >
+          <BrandMark size={40} priority={priorityBrand} />
+          <span className="min-w-0 compact:hidden">
+            <span className="block font-[family-name:var(--font-display)] text-lg font-bold leading-tight">
+              FCare
+            </span>
+            <span className="block truncate text-[11px] text-white/45">Quản lý đào tạo</span>
           </span>
-          <span className="block truncate text-[11px] text-white/45">Quản lý đào tạo</span>
-        </span>
-      </Link>
+        </Link>
+        {headerAction}
+      </div>
 
-      <nav aria-label="Điều hướng chính" className="flex-1 overflow-y-auto px-3 pb-4 max-lg:px-2">
+      <nav aria-label="Điều hướng chính" className="flex-1 overflow-y-auto px-3 pb-4 compact:px-2">
         {sections.map((section) => (
           <Section
             key={section.id}
@@ -389,6 +401,18 @@ export function Sidebar({ user }: { user: AuthUser }) {
       </nav>
 
       <SidebarFooter user={user} />
+    </>
+  );
+}
+
+/** Sidebar cố định: đủ chữ từ lg, thanh icon ở tablet, ẩn trên điện thoại (thay bằng MobileNav). */
+export function Sidebar({ user }: { user: AuthUser }) {
+  return (
+    <aside
+      data-nav="rail"
+      className="sticky top-0 flex h-[100dvh] w-64 shrink-0 flex-col self-start bg-fpt-blue-900 text-white max-md:hidden compact:w-16"
+    >
+      <SidebarPanel user={user} priorityBrand />
     </aside>
   );
 }

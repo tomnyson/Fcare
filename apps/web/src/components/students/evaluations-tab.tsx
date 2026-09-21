@@ -9,6 +9,7 @@ import { useCurrentTerm } from '../../lib/use-current-term';
 import { Modal } from '../ui/modal';
 import { EvaluationForm } from './evaluation-form';
 import { attendanceBySection } from '../../lib/evaluation-absence';
+import { canEvaluateSection } from '../../lib/evaluation-access';
 import { EvaluationList } from './evaluation-list';
 import { RiskScorePanel } from './risk-score-panel';
 import { uniqueTermsFromEnrollments } from './student-analysis-helpers';
@@ -21,17 +22,31 @@ import { StudentAnalysisPanel } from './student-analysis-panel';
  * thấy. Mọi logic nghiệp vụ nằm trong các component con, ở đây chỉ điều phối
  * học kỳ đang chọn.
  */
+/**
+ * Yêu cầu mở form nhận xét cho đúng một lớp học phần (bấm "Nhận xét" ở tab
+ * Học phần & điểm). `nonce` đổi mỗi lần bấm để bấm lại cùng lớp vẫn mở lại.
+ */
+export interface EvaluateRequest {
+  term: string;
+  sectionId: string;
+  nonce: number;
+}
+
 export function EvaluationsTab({
   studentId,
   user,
   initialTerm = '',
+  evaluateRequest,
 }: {
   studentId: string;
   user: AuthUser;
   initialTerm?: string;
+  evaluateRequest?: EvaluateRequest | null;
 }) {
   const [open, setOpen] = useState(false);
-  const [selectedTerm, setSelectedTerm] = useState(initialTerm);
+  const [selectedTerm, setSelectedTerm] = useState(evaluateRequest?.term || initialTerm);
+  const [formSectionId, setFormSectionId] = useState('');
+  const handledRequest = useRef<number | null>(null);
   const [postSaveTerm, setPostSaveTerm] = useState('');
   const { data: currentTerm } = useCurrentTerm();
   const analysisRef = useRef<HTMLDivElement>(null);
@@ -47,6 +62,17 @@ export function EvaluationsTab({
 
   const terms = uniqueTermsFromEnrollments(enrollments ?? []);
 
+  // Chỉ mở modal khi đã có danh sách lớp: form khởi tạo lớp chọn sẵn và số buổi
+  // vắng đúng một lần lúc mount, mở sớm thì form rỗng.
+  useEffect(() => {
+    if (!evaluateRequest || !enrollments) return;
+    if (handledRequest.current === evaluateRequest.nonce) return;
+    handledRequest.current = evaluateRequest.nonce;
+    setSelectedTerm(evaluateRequest.term);
+    setFormSectionId(evaluateRequest.sectionId);
+    setOpen(true);
+  }, [evaluateRequest, enrollments]);
+
   useEffect(() => {
     if ((!selectedTerm || !terms.includes(selectedTerm)) && terms.length > 0) {
       if (currentTerm?.code && terms.includes(currentTerm.code)) {
@@ -58,12 +84,11 @@ export function EvaluationsTab({
   }, [selectedTerm, terms, currentTerm?.code]);
 
   // Giảng viên chỉ nhận xét lớp mình đứng lớp; vai quản lý thấy mọi lớp của kỳ.
-  const seesAllSections = user.roles.some((role) => ['HEAD_OF_DEPT', 'ADMIN'].includes(role));
   const sections: ClassSection[] = (enrollments ?? [])
     .map((enrollment) => enrollment.classSection)
     .filter((section): section is ClassSection => Boolean(section))
     .filter((section) => section.term === selectedTerm)
-    .filter((section) => seesAllSections || section.lecturerId === user.id);
+    .filter((section) => canEvaluateSection(user, section));
 
   // Mỗi lớp học phần chỉ có một nhận xét của một giảng viên: giữ sẵn bản của
   // chính mình trong kỳ để form biết lúc nào là sửa thay vì tạo mới.
@@ -86,7 +111,10 @@ export function EvaluationsTab({
           {canCreate ? (
             <Button
               type="button"
-              onClick={() => setOpen(true)}
+              onClick={() => {
+                setFormSectionId('');
+                setOpen(true);
+              }}
               disabled={terms.length === 0}
               data-testid="add-evaluation"
             >
@@ -135,11 +163,18 @@ export function EvaluationsTab({
         />
       </div>
 
-      <Modal title="Nhận xét sinh viên" size="lg" open={open} onClose={() => setOpen(false)}>
+      <Modal
+        title="Nhận xét sinh viên"
+        size="xl"
+        scrollBody
+        open={open}
+        onClose={() => setOpen(false)}
+      >
         <EvaluationForm
           studentId={studentId}
           term={selectedTerm}
           sections={sections}
+          initialSectionId={formSectionId || undefined}
           ownEvaluations={ownEvaluations}
           systemAbsences={attendanceBySection(enrollments ?? [])}
           onSaved={(term) => {

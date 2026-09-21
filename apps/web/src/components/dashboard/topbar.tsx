@@ -13,6 +13,7 @@ import {
   useNotificationStream,
 } from '../../lib/use-notification-stream';
 import { ANALYSIS_RISK_LABELS } from '../students/student-analysis-helpers';
+import { MobileNav } from './mobile-nav';
 import { PushSettings } from './push-settings';
 
 export function Topbar({ user }: { user: AuthUser }) {
@@ -46,10 +47,13 @@ export function Topbar({ user }: { user: AuthUser }) {
   const discussionBadge = formatUnreadBadge(discussionUnread?.count ?? 0);
 
   return (
-    <header className="flex items-center justify-between gap-4 border-b border-border bg-white px-6 py-3">
-      <p className="truncate text-sm font-semibold text-fpt-blue-900 max-sm:hidden">
-        Xin chào, {user.fullName}
-      </p>
+    <header className="flex items-center justify-between gap-4 border-b border-border bg-white px-4 py-3 max-md:sticky max-md:top-0 max-md:z-20 sm:px-6">
+      <div className="flex min-w-0 items-center gap-3">
+        <MobileNav user={user} />
+        <p className="truncate text-sm font-semibold text-fpt-blue-900 max-sm:hidden">
+          Xin chào, {user.fullName}
+        </p>
+      </div>
 
       <div className="flex items-center gap-3">
         {discussionBadge ? (

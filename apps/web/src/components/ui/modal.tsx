@@ -3,14 +3,16 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 
 /**
- * Bề ngang hộp thoại. Mặc định 'md' cho form ngắn; 'lg' dành cho form nhiều
- * cột (nhận xét sinh viên) để hai nhóm radio không bị bóp thành cột hẹp.
+ * Bề ngang hộp thoại. Mặc định 'md' cho form ngắn; 'lg' cho form hai cột;
+ * 'xl' cho form nhận xét sinh viên — mô tả từng mức điểm dài, hẹp là phải cuộn
+ * rất nhiều.
  */
-type ModalSize = 'md' | 'lg';
+type ModalSize = 'md' | 'lg' | 'xl';
 
 const SIZE_CLASSES: Record<ModalSize, string> = {
   md: 'max-w-lg',
   lg: 'max-w-3xl',
+  xl: 'max-w-5xl',
 };
 
 interface ModalProps {
@@ -18,10 +20,22 @@ interface ModalProps {
   open: boolean;
   onClose: () => void;
   size?: ModalSize;
+  /**
+   * Tiêu đề + nút đóng đứng yên, chỉ phần thân cuộn — cho form dài. Con bên
+   * trong có thể dùng `sticky top-0` để ghim thêm một khối ở đầu thân.
+   */
+  scrollBody?: boolean;
   children: ReactNode;
 }
 
-export function Modal({ title, open, onClose, size = 'md', children }: ModalProps) {
+export function Modal({
+  title,
+  open,
+  onClose,
+  size = 'md',
+  scrollBody = false,
+  children,
+}: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   /** Phần tử đang focus lúc dialog mở — phải trả focus về đúng chỗ này khi đóng. */
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -70,10 +84,16 @@ export function Modal({ title, open, onClose, size = 'md', children }: ModalProp
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className={`max-h-[85vh] w-full ${SIZE_CLASSES[size]} overflow-y-auto rounded-[var(--radius-card)] border-t-4 border-fpt-orange bg-white p-6 shadow-xl outline-none`}
+        className={`w-full ${SIZE_CLASSES[size]} rounded-[var(--radius-card)] border-t-4 border-fpt-orange bg-white shadow-xl outline-none ${
+          scrollBody ? 'flex max-h-[90vh] flex-col overflow-hidden' : 'max-h-[85vh] overflow-y-auto p-6'
+        }`}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="mb-4 flex items-start justify-between gap-4">
+        <div
+          className={`flex items-start justify-between gap-4 ${
+            scrollBody ? 'shrink-0 px-6 pb-3 pt-5' : 'mb-4'
+          }`}
+        >
           <h2 className="font-[family-name:var(--font-display)] text-lg font-bold text-fpt-blue-900">
             {title}
           </h2>
@@ -86,7 +106,13 @@ export function Modal({ title, open, onClose, size = 'md', children }: ModalProp
             ✕
           </button>
         </div>
-        {children}
+        {scrollBody ? (
+          <div data-modal-body className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pb-6">
+            {children}
+          </div>
+        ) : (
+          children
+        )}
       </div>
     </div>
   );

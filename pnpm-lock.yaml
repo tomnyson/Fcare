@@ -201,6 +201,15 @@ importers:
 
   apps/web:
     dependencies:
+      '@bugsnag/browser-performance':
+        specifier: ^3.4.1
+        version: 3.4.1
+      '@bugsnag/js':
+        specifier: ^8.10.0
+        version: 8.10.0
+      '@bugsnag/plugin-react':
+        specifier: ^8.9.0
+        version: 8.9.0(@bugsnag/core@8.9.0)
       '@fcare/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
@@ -495,6 +504,44 @@ packages:
 
   '@borewit/text-codec@0.2.2':
     resolution: {integrity: sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ==}
+
+  '@bugsnag/browser-performance@3.4.1':
+    resolution: {integrity: sha512-kAg8SkB/qKoCTwJ3wOmgaeTu+lXVscwjaQQa0lf0OHIhRBUh5voCRZc+rxo+XqqkXa2nQzGuBBlYx6e9ZcnJ+A==}
+
+  '@bugsnag/browser@8.10.0':
+    resolution: {integrity: sha512-RucooYQMoLSD+aU3YOh3d22/rgqIt0pDr6bgSokvandS0mt1IOK318QwEsBq6aZ68j7vhhMt84Z3Tdum64QsOA==}
+
+  '@bugsnag/core-performance@3.2.0':
+    resolution: {integrity: sha512-g2tNpwhme3l0QvOe3VVUhAFXDubPfm/9kRg++ELrAPiA2QVMQNPwBUS73ICFfLBCnPIa+P8StsGpYg6vUddfEA==}
+
+  '@bugsnag/core@8.9.0':
+    resolution: {integrity: sha512-SrXO0isIZfrCem06/WDvC5MSd1Tj6Yjm4Wqdlv6jyjTvsow+cppvt7rS9Bps3qOeXfYCqWHN4ev02OdwnfZ1PQ==}
+
+  '@bugsnag/cuid@3.2.2':
+    resolution: {integrity: sha512-7onuYLTMqMmHE9BBPG0YER4nFsU1rB+me1/YIeMusqcLbVbKKuG9u9+BDVDpje5e0llkkrVNOKYwmzM9DRIo7A==}
+
+  '@bugsnag/delivery-fetch-performance@3.2.0':
+    resolution: {integrity: sha512-U5CzG7cN0z4CimaWeIXnkBm7D01OPXZItYRviTVtBOnl2FLY4xuHa+B8Veh39WKLztqG0RMI9YlD4I0zI09faA==}
+
+  '@bugsnag/js@8.10.0':
+    resolution: {integrity: sha512-D8IYjkGltLw5m1ujM33AAARFYIS4S2KgUdk6QrKR+r/NGfygHOyyMPXNfxvmiap5d4EusPxPOWCKT+1TN9ToKA==}
+
+  '@bugsnag/node@8.10.0':
+    resolution: {integrity: sha512-xLDSk3EBUDIAwYyECxzdEpsgZv6Mwn/WAV57vQBiKsTgia7cnjE83VeR9O6uu4oAUhye160LAVzRCvmJNac+nw==}
+
+  '@bugsnag/plugin-react@8.9.0':
+    resolution: {integrity: sha512-36vmZC4Wi+A53mEM25uFlKo/Khhk2qDVJfsmVtFkBnOr5AdKyr0VhqR0dSEaTaDtoZDtVpF60ux/ujahxVCxzQ==}
+    peerDependencies:
+      '@bugsnag/core': ^8.0.0
+    peerDependenciesMeta:
+      '@bugsnag/core':
+        optional: true
+
+  '@bugsnag/request-tracker-performance@3.2.0':
+    resolution: {integrity: sha512-mo9UcwynXL3vUB/g4TR4r7nZpc/l/IFHYUoamboBILidJmsZZvFA3fXw60o02jCs8sMu54EbRuL0l01Q5hysjg==}
+
+  '@bugsnag/safe-json-stringify@6.1.0':
+    resolution: {integrity: sha512-ImA35rnM7bGr+J30R979FQ95BhRB4UO1KfJA0J2sVqc8nwnrS9hhE5mkTmQWMs8Vh1Da+hkLKs5jJB4JjNZp4A==}
 
   '@casl/ability@7.0.0':
     resolution: {integrity: sha512-QhwRflkTucpdS2uw1XScrzLWbgLYJGvPoq2Xm5OjeRci3dwtPixxnjUKJ04Ss1ivNS9tZQ8y4sjWeelWsrwo4g==}
@@ -2479,6 +2526,10 @@ packages:
     resolution: {integrity: sha512-8SFQbg/0hQ9xy3UNTB0YEnsNBbWfhf7RtnzpL7TkBiTBRfrQ9Fxcnz7VJsleJpyp6rVLvXiuORqjlHi5q+PYuA==}
     engines: {node: '>=10.16.0'}
 
+  byline@5.0.0:
+    resolution: {integrity: sha512-s6webAy+R4SR8XVuJWt2V2rGvhnrhxN+9S15GNuTK3wKPOXFF6RNc+8ug2XhH+2s4f+uudG4kUVYmYOQWL2g0Q==}
+    engines: {node: '>=0.10.0'}
+
   bytes@3.1.2:
     resolution: {integrity: sha512-/Nf7TyzTx6S3yRJObOAV7956r8cr2+Oj8AC5dt8wSP3BQAoeX58NoHyCU8P8zGkNXStjTSi6fzO6F0pBdcYbEg==}
     engines: {node: '>= 0.8'}
@@ -2893,6 +2944,9 @@ packages:
 
   error-ex@1.3.4:
     resolution: {integrity: sha512-sqQamAnR14VgCr1A618A3sGrygcpK+HEbenA/HiEAkkUwcZIIB/tgWqHFxWgOyDh4nB4JCRimh79dR5Ywc9MDQ==}
+
+  error-stack-parser@2.1.4:
+    resolution: {integrity: sha512-Sk5V6wVazPhq5MhpO+AUxJn5x7XSXGl1R93Vn7i+zS15KDVxQijejNCrz8340/2bgLBjR9GtEG8ZVKONDjcqGQ==}
 
   es-abstract-get@1.0.0:
     resolution: {integrity: sha512-6PMWXpdhshVvFp+FoWYs1EvG1Nj0tvk0dZM+XcK0xMEM1czRVcP6ohqPWHy6qPagSpC8j4+p89WXlT+xXJs/fg==}
@@ -3643,6 +3697,9 @@ packages:
 
   isarray@2.0.5:
     resolution: {integrity: sha512-xHjhDr3cNBK0BzdUJSPXZntQUx/mwMS5Rw4A7lPJ90XGAO6ISP/ePDNuo0vhqOZU+UD5JoodwCAAoZQd3FeAKw==}
+
+  iserror@0.0.2:
+    resolution: {integrity: sha512-oKGGrFVaWwETimP3SiWwjDeY27ovZoyZPHtxblC4hCq9fXxed/jasx+ATWFFjCVSRZng8VTMsN1nDnGo6zMBSw==}
 
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
@@ -4994,12 +5051,18 @@ packages:
   stable-hash@0.0.5:
     resolution: {integrity: sha512-+L3ccpzibovGXFK+Ap/f8LOS0ahMrHTf3xu7mMLSpEGU0EO9ucaysSylKo9eRDFNhWve/y275iPmIZ4z39a9iA==}
 
+  stack-generator@2.0.10:
+    resolution: {integrity: sha512-mwnua/hkqM6pF4k8SnmZ2zfETsRUpWXREfA/goT8SLCV4iOFa4bzOX2nDipWAZFPTjLvQB82f5yaodMVhK0yJQ==}
+
   stack-utils@2.0.6:
     resolution: {integrity: sha512-XlkWvfIm6RmsWtNJx+uqtKLS8eqFbxUg0ZzLXqY0caEy9l7hruX8IpiDnjsLavoBgqCCR71TqWO8MaXYheJ3RQ==}
     engines: {node: '>=10'}
 
   stackback@0.0.2:
     resolution: {integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==}
+
+  stackframe@1.3.4:
+    resolution: {integrity: sha512-oeVtt7eWQS+Na6F//S4kJ2K2VbRlS9D43mAlMyVpVWovy9o+jfgH8O9agzANzaiLjclA0oYzUXEM4PurhSUChw==}
 
   standard-as-callback@2.1.0:
     resolution: {integrity: sha512-qoRRSyROncaz1z0mvYqIE4lCd9p2R90i6GxW3uZv5ucSu8tU7B5HXUP1gG8pVZsYNVaXjk8ClXHPttLyxAL48A==}
@@ -5901,6 +5964,59 @@ snapshots:
   '@bcoe/v8-coverage@0.2.3': {}
 
   '@borewit/text-codec@0.2.2': {}
+
+  '@bugsnag/browser-performance@3.4.1':
+    dependencies:
+      '@bugsnag/core-performance': 3.2.0
+      '@bugsnag/cuid': 3.2.2
+      '@bugsnag/delivery-fetch-performance': 3.2.0
+      '@bugsnag/request-tracker-performance': 3.2.0
+
+  '@bugsnag/browser@8.10.0':
+    dependencies:
+      '@bugsnag/core': 8.9.0
+
+  '@bugsnag/core-performance@3.2.0':
+    dependencies:
+      '@bugsnag/cuid': 3.2.2
+
+  '@bugsnag/core@8.9.0':
+    dependencies:
+      '@bugsnag/cuid': 3.2.2
+      '@bugsnag/safe-json-stringify': 6.1.0
+      error-stack-parser: 2.1.4
+      iserror: 0.0.2
+      stack-generator: 2.0.10
+
+  '@bugsnag/cuid@3.2.2': {}
+
+  '@bugsnag/delivery-fetch-performance@3.2.0':
+    dependencies:
+      '@bugsnag/core-performance': 3.2.0
+
+  '@bugsnag/js@8.10.0':
+    dependencies:
+      '@bugsnag/browser': 8.10.0
+      '@bugsnag/node': 8.10.0
+
+  '@bugsnag/node@8.10.0':
+    dependencies:
+      '@bugsnag/core': 8.9.0
+      byline: 5.0.0
+      error-stack-parser: 2.1.4
+      iserror: 0.0.2
+      pump: 3.0.4
+      stack-generator: 2.0.10
+
+  '@bugsnag/plugin-react@8.9.0(@bugsnag/core@8.9.0)':
+    optionalDependencies:
+      '@bugsnag/core': 8.9.0
+
+  '@bugsnag/request-tracker-performance@3.2.0':
+    dependencies:
+      '@bugsnag/core-performance': 3.2.0
+
+  '@bugsnag/safe-json-stringify@6.1.0': {}
 
   '@casl/ability@7.0.0':
     dependencies:
@@ -7885,6 +8001,8 @@ snapshots:
     dependencies:
       streamsearch: 1.1.0
 
+  byline@5.0.0: {}
+
   bytes@3.1.2: {}
 
   c12@3.1.0:
@@ -8240,6 +8358,10 @@ snapshots:
   error-ex@1.3.4:
     dependencies:
       is-arrayish: 0.2.1
+
+  error-stack-parser@2.1.4:
+    dependencies:
+      stackframe: 1.3.4
 
   es-abstract-get@1.0.0:
     dependencies:
@@ -9239,6 +9361,8 @@ snapshots:
   isarray@1.0.0: {}
 
   isarray@2.0.5: {}
+
+  iserror@0.0.2: {}
 
   isexe@2.0.0: {}
 
@@ -10778,11 +10902,17 @@ snapshots:
 
   stable-hash@0.0.5: {}
 
+  stack-generator@2.0.10:
+    dependencies:
+      stackframe: 1.3.4
+
   stack-utils@2.0.6:
     dependencies:
       escape-string-regexp: 2.0.0
 
   stackback@0.0.2: {}
+
+  stackframe@1.3.4: {}
 
   standard-as-callback@2.1.0: {}
 

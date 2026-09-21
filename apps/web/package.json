@@ -13,6 +13,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@bugsnag/browser-performance": "^3.4.1",
+    "@bugsnag/js": "^8.10.0",
+    "@bugsnag/plugin-react": "^8.9.0",
     "@fcare/shared-types": "workspace:*",
     "@fcare/ui-kit": "workspace:*",
     "@tanstack/react-query": "^5.101.2",

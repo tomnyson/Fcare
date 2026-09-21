@@ -193,7 +193,11 @@ export function ClassesView() {
       </div>
 
       {/* Thanh bộ lọc */}
-      <FilterBar label="Bộ lọc lớp học" onSubmit={handleSearchSubmit}>
+      <FilterBar
+        label="Bộ lọc lớp học"
+        onSubmit={handleSearchSubmit}
+        activeCount={[blockParam, alertStatusParam].filter(Boolean).length}
+      >
         <FilterSearchRow>
           <FilterSearchInput
             id="classes-search"
