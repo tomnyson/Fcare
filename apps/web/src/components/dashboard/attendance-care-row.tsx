@@ -16,7 +16,11 @@ function OwnerState({ alert }: { alert: PendingAttendanceAlert }) {
   if (alert.ownerCaredAt) {
     return <Badge tone="success">GV lớp đã chăm sóc {formatDate(alert.ownerCaredAt)}</Badge>;
   }
-  return <Badge tone="neutral">Chờ GV lớp{alert.careLogCount > 0 ? ` · ${alert.careLogCount} lượt GV khác` : ''}</Badge>;
+  return (
+    <Badge tone="neutral">
+      Chờ GV lớp{alert.careLogCount > 0 ? ` · ${alert.careLogCount} lượt GV khác` : ''}
+    </Badge>
+  );
 }
 
 /** Một dòng trong bảng "cần chăm sóc sau điểm danh": ai, lớp nào, vắng bao nhiêu, làm gì tiếp. */
@@ -37,14 +41,19 @@ export function AttendanceCareRow({ alert, emphasize, onCare }: AttendanceCareRo
           ) : null}
         </p>
         <p className="truncate text-xs text-muted">
-          <span className="font-medium text-ink">{alert.classSection.code}</span> · {alert.classSection.subjectName}
+          <span className="font-medium text-ink">{alert.classSection.code}</span> ·{' '}
+          {alert.classSection.subjectName}
           {alert.absentSessions !== null ? (
             <>
               {' · '}
-              <span className="font-semibold text-danger tabular-nums">vắng {alert.absentSessions} buổi</span>
+              <span className="font-semibold text-danger tabular-nums">
+                vắng {alert.absentSessions} buổi
+              </span>
             </>
           ) : null}
-          {!emphasize && alert.classSection.lecturerName ? ` · GV ${alert.classSection.lecturerName}` : ''}
+          {!emphasize && alert.classSection.lecturerName
+            ? ` · GV ${alert.classSection.lecturerName}`
+            : ''}
         </p>
       </div>
       {!emphasize ? <OwnerState alert={alert} /> : null}

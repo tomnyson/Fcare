@@ -11,9 +11,15 @@ import { CreateDepartmentDto, UpdateDepartmentDto } from './dto/department.dto';
 export class DepartmentsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll() {
+  /**
+   * Mặc định chỉ trả bộ môn đang bật để mọi dropdown (gán ngành, tài khoản,
+   * ánh xạ import) tự ẩn bộ môn cơ sở không mở. Trang quản lý danh mục truyền
+   * `includeInactive` để còn bật lại được.
+   */
+  findAll(includeInactive = false) {
     return this.prisma.department.findMany({
-      orderBy: { code: 'asc' },
+      where: includeInactive ? {} : { isActive: true },
+      orderBy: [{ isActive: 'desc' }, { code: 'asc' }],
       include: {
         _count: { select: { students: true, staff: true, majors: true } },
       },

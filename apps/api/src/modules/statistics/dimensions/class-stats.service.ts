@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import type { AuthUser } from '../../../common/types/auth-user';
-import { sectionScope } from '../../../common/utils/dept-scope';
+import { statsSectionScope } from '../../../common/utils/dept-scope';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
   emptyTotals,
@@ -14,11 +14,12 @@ import {
 export class ClassStatsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(user: AuthUser, term?: string) {
+  async list(user: AuthUser, term?: string, block?: number) {
     // Lớp của bộ môn mình + lớp mình đứng tên dạy (kể cả dạy chéo bộ môn).
     const sectionWhere: Prisma.ClassSectionWhereInput = {
       term,
-      ...sectionScope(user),
+      ...(block ? { block } : {}),
+      ...statsSectionScope(user),
     };
 
     const [sections, totalsBySection] = await Promise.all([

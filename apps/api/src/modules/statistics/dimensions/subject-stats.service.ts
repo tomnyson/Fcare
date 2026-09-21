@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import type { AuthUser } from '../../../common/types/auth-user';
-import { sectionScope } from '../../../common/utils/dept-scope';
+import { statsSectionScope } from '../../../common/utils/dept-scope';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
   addTotals,
@@ -52,7 +52,7 @@ export class SubjectStatsService {
   async list(user: AuthUser, term?: string) {
     const sectionWhere: Prisma.ClassSectionWhereInput = {
       term,
-      ...sectionScope(user),
+      ...statsSectionScope(user),
     };
 
     const [sections, totalsBySection, scoreGroups] = await Promise.all([

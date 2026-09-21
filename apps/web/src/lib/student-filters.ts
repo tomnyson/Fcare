@@ -90,7 +90,5 @@ export function activeFilterCount(filters: StudentFilters): number {
 
 /** Patch cho `setFilters` để xóa sạch bộ lọc và quay về trang 1. */
 export function clearFiltersPatch(): Record<string, null> {
-  return Object.fromEntries(
-    [...STUDENT_FILTER_KEYS, 'page'].map((key) => [key, null]),
-  );
+  return Object.fromEntries([...STUDENT_FILTER_KEYS, 'page'].map((key) => [key, null]));
 }

@@ -6,6 +6,8 @@ import {
   lecturerStatsScope,
   sectionScope,
   seesWholeDepartment,
+  statsSectionScope,
+  statsStudentScope,
   studentScope,
 } from './dept-scope';
 
@@ -210,5 +212,44 @@ describe('lecturerStatsScope', () => {
     expect(
       lecturerStatsScope(makeUser({ roles: ['LECTURER', 'HEAD_OF_DEPT'] })),
     ).toEqual({ departmentId: 'dept-se' });
+  });
+});
+
+describe('statsStudentScope / statsSectionScope — thống kê của giảng viên chỉ trong bộ môn mình', () => {
+  const ownSections = {
+    lecturerId: 'staff-1',
+    subject: { departmentId: 'dept-se' },
+  };
+
+  it('giảng viên: SV học lớp mình dạy của môn thuộc bộ môn mình (không xét bộ môn của SV)', () => {
+    expect(statsStudentScope(makeUser({ roles: ['LECTURER'] }))).toEqual({
+      AND: [{ enrollments: { some: { classSection: ownSections } } }],
+    });
+  });
+
+  it('giảng viên: lớp mình dạy của môn thuộc bộ môn mình', () => {
+    expect(statsSectionScope(makeUser({ roles: ['LECTURER'] }))).toEqual({
+      AND: [ownSections],
+    });
+  });
+
+  it('giảng viên chưa có bộ môn thì không thấy gì', () => {
+    const user = makeUser({ roles: ['LECTURER'], departmentId: null });
+    expect(statsSectionScope(user)).toEqual({
+      AND: [
+        {
+          lecturerId: 'staff-1',
+          subject: { departmentId: '__no_department__' },
+        },
+      ],
+    });
+  });
+
+  it('trưởng bộ môn và vai trò toàn trường giữ nguyên phạm vi thường', () => {
+    for (const roles of [['HEAD_OF_DEPT'], ['ADMIN']] as AuthUser['roles'][]) {
+      const user = makeUser({ roles });
+      expect(statsStudentScope(user)).toEqual(studentScope(user));
+      expect(statsSectionScope(user)).toEqual(sectionScope(user));
+    }
   });
 });

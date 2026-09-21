@@ -20,7 +20,7 @@ import { FormError, FormSuccess, Select } from '../../../components/ui/form';
 import { PageHeader } from '../../../components/ui/page-header';
 import { ApiError, apiFetch } from '../../../lib/api';
 import { useMe } from '../../../lib/hooks';
-import { formatDate, STUDENT_STATUS_LABELS, STUDENT_STATUS_TONES } from '../../../lib/labels';
+import { STUDENT_STATUS_LABELS, STUDENT_STATUS_TONES } from '../../../lib/labels';
 import { QuickEvaluationModal } from '../../../components/students/quick-evaluation-modal';
 import {
   buildStudentListQuery,
@@ -32,6 +32,25 @@ import { useCurrentTerm } from '../../../lib/use-current-term';
 import { pageCount, parsePageParam } from '../../../lib/pagination';
 
 const PAGE_SIZE = 20;
+
+// Ngưỡng cảnh báo điểm danh tự động tính theo TỪNG lớp học phần (2 → L2, ≥ 3 → L3).
+const ABSENCE_WARNING_THRESHOLD = 2;
+const ABSENCE_DANGER_THRESHOLD = 3;
+
+function AbsenceCell({
+  absentSessions,
+  maxSectionAbsent,
+}: {
+  absentSessions?: number | null;
+  maxSectionAbsent?: number | null;
+}) {
+  // Chưa import điểm danh (null) hiển thị như 0 buổi vắng theo yêu cầu nghiệp vụ.
+  const total = absentSessions ?? 0;
+  const peak = maxSectionAbsent ?? 0;
+  if (peak >= ABSENCE_DANGER_THRESHOLD) return <Badge tone="danger">{total}</Badge>;
+  if (peak >= ABSENCE_WARNING_THRESHOLD) return <Badge tone="warning">{total}</Badge>;
+  return <span className={total > 0 ? 'text-ink' : 'text-muted'}>{total}</span>;
+}
 
 // Danh mục kỳ/lớp/ngành/giảng viên đổi theo học kỳ chứ không theo phút — giữ
 // cache 5 phút để đổi bộ lọc liên tục không gọi lại API.
@@ -177,9 +196,7 @@ function StudentsPageContent() {
     chips.push({
       key: 'status',
       label: 'Trạng thái',
-      value:
-        (STUDENT_STATUS_LABELS as Record<string, string>)[filters.status] ??
-        filters.status,
+      value: (STUDENT_STATUS_LABELS as Record<string, string>)[filters.status] ?? filters.status,
     });
   if (missingMajor)
     chips.push({ key: 'missingMajor', label: 'Lọc riêng', value: 'Chưa gán ngành' });
@@ -447,7 +464,7 @@ function StudentsPageContent() {
           'Lớp',
           'Ngành',
           'Bộ môn',
-          'Ngày sinh',
+          'Số buổi vắng',
           'Trạng thái',
           'Cảnh báo mở',
           ...(canEvaluate ? ['Thao tác'] : []),
@@ -483,7 +500,12 @@ function StudentsPageContent() {
             <Td>{student.classCode}</Td>
             <Td>{student.major?.name ?? '—'}</Td>
             <Td>{student.department?.code ?? '—'}</Td>
-            <Td>{formatDate(student.dateOfBirth)}</Td>
+            <Td>
+              <AbsenceCell
+                absentSessions={student.absentSessions}
+                maxSectionAbsent={student.maxSectionAbsent}
+              />
+            </Td>
             <Td>
               <Badge tone={STUDENT_STATUS_TONES[student.status]}>
                 {STUDENT_STATUS_LABELS[student.status]}

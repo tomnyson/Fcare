@@ -603,6 +603,7 @@ function AdminUsersPageContent() {
         ]}
         isLoading={isLoading}
         skeletonRows={6}
+        fitViewport
         isEmpty={!isLoading && !staffIsError && rows.length === 0}
         emptyMessage={
           missingDepartment

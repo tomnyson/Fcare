@@ -70,20 +70,32 @@ interface WhereArgs {
 }
 
 describe('DepartmentStatsService.list', () => {
-  it('RULE 2: giảng viên chỉ đếm sinh viên mình dạy và không thấy tổng nhân sự', async () => {
+  it('RULE 2: giảng viên chỉ đếm SV mình dạy thuộc bộ môn mình, không thấy tổng nhân sự', async () => {
     const { service, departmentFindMany, studentGroupBy } = setup();
 
     const rows = await service.list(makeUser({}));
 
-    // Bộ môn hiện ra là bộ môn CÓ sinh viên trong phạm vi — không tự thêm bộ môn mình.
-    const [deptArgs] = departmentFindMany.mock.calls[0] as [WhereArgs];
-    expect(deptArgs.where?.OR).toEqual([
-      { students: { some: { AND: [TEACHING] } } },
-    ]);
+    // Chỉ dòng bộ môn của mình; SV đếm theo lớp mình dạy của môn thuộc bộ môn mình.
+    const ownDeptTeaching = [
+      {
+        enrollments: {
+          some: {
+            classSection: {
+              lecturerId: 'staff-1',
+              subject: { departmentId: 'dept-1' },
+            },
+          },
+        },
+      },
+    ];
+    const [deptArgs] = departmentFindMany.mock.calls[0] as [
+      { where: Record<string, unknown> },
+    ];
+    expect(deptArgs.where).toEqual({ isActive: true, id: 'dept-1' });
     const [groupArgs] = studentGroupBy.mock.calls[0] as [
       { where: { AND?: unknown[] } },
     ];
-    expect(groupArgs.where.AND).toEqual([TEACHING]);
+    expect(groupArgs.where.AND).toEqual(ownDeptTeaching);
     // Sĩ số lấy từ groupBy đã scope, KHÔNG phải _count thô của bộ môn.
     expect(rows.map((row) => row.totalStudents)).toEqual([3, 2]);
     expect(rows.map((row) => row.totalStaff)).toEqual([null, null]);
@@ -112,7 +124,16 @@ describe('DepartmentStatsService.list', () => {
     const rows = await service.list(makeUser({ roles: ['ADMIN'] }));
 
     const [deptArgs] = departmentFindMany.mock.calls[0] as [WhereArgs];
-    expect(deptArgs.where).toEqual({});
+    expect(deptArgs.where).toEqual({ isActive: true });
     expect(rows.map((row) => row.totalStaff)).toEqual([9, 4]);
+  });
+
+  it('bộ môn đang tắt (cơ sở không có) không lên báo cáo — kể cả với giảng viên', async () => {
+    const { service, departmentFindMany } = setup();
+
+    await service.list(makeUser({}));
+
+    const [deptArgs] = departmentFindMany.mock.calls[0] as [WhereArgs];
+    expect(deptArgs.where).toMatchObject({ isActive: true });
   });
 });

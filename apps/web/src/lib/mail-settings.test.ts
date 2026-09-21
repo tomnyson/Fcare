@@ -48,19 +48,14 @@ describe('validateMailSettings', () => {
     expect(validateMailSettings(ok, view)).toEqual({});
   });
   it('host rỗng, port không phải số 1..65535, fromEmail sai', () => {
-    const errors = validateMailSettings(
-      { ...ok, host: ' ', port: '99999', fromEmail: 'x' },
-      view,
-    );
+    const errors = validateMailSettings({ ...ok, host: ' ', port: '99999', fromEmail: 'x' }, view);
     expect(Object.keys(errors).sort()).toEqual(['fromEmail', 'host', 'port']);
   });
   it('có username mà không có mật khẩu (mới lẫn đã lưu) → lỗi password', () => {
-    expect(validateMailSettings({ ...ok, username: 'u' }, view)).toHaveProperty(
-      'password',
+    expect(validateMailSettings({ ...ok, username: 'u' }, view)).toHaveProperty('password');
+    expect(validateMailSettings({ ...ok, username: 'u' }, { ...view, hasPassword: true })).toEqual(
+      {},
     );
-    expect(
-      validateMailSettings({ ...ok, username: 'u' }, { ...view, hasPassword: true }),
-    ).toEqual({});
     expect(
       validateMailSettings(
         { ...ok, username: 'u', clearPassword: true },

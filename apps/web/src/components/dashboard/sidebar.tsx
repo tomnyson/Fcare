@@ -119,7 +119,15 @@ function RowIcon({ item, active }: { item: NavLeaf | NavGroup; active: boolean }
   );
 }
 
-function LeafLink({ item, pathname, badge }: { item: NavLeaf; pathname: string; badge: NavBadges }) {
+function LeafLink({
+  item,
+  pathname,
+  badge,
+}: {
+  item: NavLeaf;
+  pathname: string;
+  badge: NavBadges;
+}) {
   const active = isNavActive(pathname, item.href);
   return (
     <Link
@@ -146,7 +154,11 @@ function Chevron({ open }: { open: boolean }) {
 }
 
 function Group({
-  group, pathname, collapsed, onToggle, badge,
+  group,
+  pathname,
+  collapsed,
+  onToggle,
+  badge,
 }: {
   group: NavGroup;
   pathname: string;
@@ -222,7 +234,11 @@ function Group({
 }
 
 function NavItem({
-  node, pathname, collapsed, onToggle, badge,
+  node,
+  pathname,
+  collapsed,
+  onToggle,
+  badge,
 }: {
   node: NavNode;
   pathname: string;
@@ -232,7 +248,13 @@ function NavItem({
 }) {
   if (node.kind === 'group') {
     return (
-      <Group group={node} pathname={pathname} collapsed={collapsed} onToggle={onToggle} badge={badge} />
+      <Group
+        group={node}
+        pathname={pathname}
+        collapsed={collapsed}
+        onToggle={onToggle}
+        badge={badge}
+      />
     );
   }
   return (
@@ -243,7 +265,11 @@ function NavItem({
 }
 
 function Section({
-  section, pathname, collapsed, onToggle, badge,
+  section,
+  pathname,
+  collapsed,
+  onToggle,
+  badge,
 }: {
   section: NavSection;
   pathname: string;
@@ -293,7 +319,9 @@ function SidebarFooter({ user }: { user: AuthUser }) {
           {initials(user.fullName)}
         </span>
         <span className="min-w-0 flex-1 max-lg:hidden">
-          <span className="block truncate text-[13px] font-semibold text-white">{user.fullName}</span>
+          <span className="block truncate text-[13px] font-semibold text-white">
+            {user.fullName}
+          </span>
           <span className="block truncate text-[11px] text-white/45">
             {user.roles.map((role) => ROLE_LABELS[role]).join(', ')}
           </span>

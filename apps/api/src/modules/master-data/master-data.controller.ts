@@ -4,12 +4,13 @@ import {
   Delete,
   Get,
   Param,
+  ParseBoolPipe,
   ParseUUIDPipe,
   Patch,
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CheckPolicies } from '../../common/decorators/check-policies.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AppAbility } from '../../casl/ability.factory';
@@ -57,8 +58,12 @@ export class DepartmentsController {
 
   @Get()
   @CheckPolicies(canRead)
-  findAll() {
-    return this.service.findAll();
+  @ApiQuery({ name: 'includeInactive', required: false, type: Boolean })
+  findAll(
+    @Query('includeInactive', new ParseBoolPipe({ optional: true }))
+    includeInactive?: boolean,
+  ) {
+    return this.service.findAll(includeInactive ?? false);
   }
 
   @Post()

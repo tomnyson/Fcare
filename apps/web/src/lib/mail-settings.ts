@@ -65,9 +65,7 @@ export interface MailPreset {
   hint: string;
 }
 
-export type MailSettingsErrors = Partial<
-  Record<keyof MailSettingsFormValues, string>
->;
+export type MailSettingsErrors = Partial<Record<keyof MailSettingsFormValues, string>>;
 
 export type TestStateTone = 'muted' | 'success' | 'danger';
 
@@ -136,9 +134,7 @@ export function matchingPreset(
 ): MailPresetKey | null {
   const found = MAIL_PRESETS.find(
     (p) =>
-      p.host === values.host.trim() &&
-      p.port === Number(values.port) &&
-      p.secure === values.secure,
+      p.host === values.host.trim() && p.port === Number(values.port) && p.secure === values.secure,
   );
   return found?.key ?? null;
 }
@@ -174,9 +170,7 @@ export function validateMailSettings(
   return errors;
 }
 
-export function buildUpdatePayload(
-  values: MailSettingsFormValues,
-): UpdateMailSettingsPayload {
+export function buildUpdatePayload(values: MailSettingsFormValues): UpdateMailSettingsPayload {
   const base: UpdateMailSettingsPayload = {
     host: values.host.trim(),
     port: Number(values.port),

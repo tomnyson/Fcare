@@ -17,6 +17,11 @@ export class CareStatisticsQuery {
   @IsUUID()
   lecturerId?: string;
 
+  /** Bộ môn của giảng viên đứng lớp — chỉ thu hẹp thêm phạm vi đã có. */
+  @IsOptional()
+  @IsUUID()
+  departmentId?: string;
+
   @IsOptional()
   @IsIn(['all', 'cared', 'uncared'])
   status?: 'all' | 'cared' | 'uncared';

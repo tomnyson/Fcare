@@ -5,11 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { apiFetch } from '../../lib/api';
 import { formatUnreadBadge } from '../../lib/discussion';
-import {
-  useDiscussionUnreadCount,
-  useNotifications,
-  useUnreadCount,
-} from '../../lib/hooks';
+import { useDiscussionUnreadCount, useNotifications, useUnreadCount } from '../../lib/hooks';
 import { ALERT_LEVEL_LABELS, formatDateTime } from '../../lib/labels';
 import type { AuthUser } from '../../lib/types';
 import {
@@ -34,7 +30,9 @@ export function Topbar({ user }: { user: AuthUser }) {
   }
 
   async function onOpenNotification(notification: NonNullable<typeof notifications>[number]) {
-    await apiFetch(`/notifications/${notification.id}/read`, { method: 'PATCH' }).catch(() => undefined);
+    await apiFetch(`/notifications/${notification.id}/read`, { method: 'PATCH' }).catch(
+      () => undefined,
+    );
     await queryClient.invalidateQueries({ queryKey: ['notifications'] });
     setOpen(false);
     router.push(notification.targetUrl ?? (notification.alert ? '/alerts' : '/dashboard'));

@@ -12,10 +12,7 @@ import { useCatalogPaging } from './catalog-paging';
 import { ClassSectionsTable, SubjectsTable } from './catalog-tables';
 import { apiFetch, ApiError } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
-import {
-  MASTER_DATA_TABS,
-  type MasterDataTabKey,
-} from '../../lib/master-data-tabs';
+import { MASTER_DATA_TABS, type MasterDataTabKey } from '../../lib/master-data-tabs';
 import type {
   ClassSection,
   Department,
@@ -25,11 +22,8 @@ import type {
   Term,
   TermSeason,
 } from '../../lib/types';
-import {
-  formatDateForInput,
-  generateTermPreset,
-  seasonBadgeInfo,
-} from './term-preset-helpers';
+import { formatDateForInput, generateTermPreset, seasonBadgeInfo } from './term-preset-helpers';
+import { DepartmentActiveToggle } from './department-active-toggle';
 
 type Entity = Department | Major | Subject | ClassSection | Term;
 
@@ -71,10 +65,12 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
   const config = MASTER_DATA_TABS.find((item) => item.key === tab)!;
   const formOpen = creating || editing !== null;
 
+  // Trang quản lý cần cả bộ môn đã tắt để bật lại; dropdown chỉ dùng bộ môn đang mở.
   const departments = useQuery({
-    queryKey: ['departments'],
-    queryFn: () => apiFetch<Department[]>('/departments'),
+    queryKey: ['departments', 'all'],
+    queryFn: () => apiFetch<Department[]>('/departments?includeInactive=true'),
   });
+  const activeDepartments = (departments.data ?? []).filter((department) => department.isActive);
   const majors = useQuery({
     queryKey: ['majors'],
     queryFn: () => apiFetch<Major[]>('/majors'),
@@ -166,9 +162,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
       await queryClient.invalidateQueries({ queryKey: ['terms', 'current'] });
     },
     onError: (err) =>
-      setFormError(
-        err instanceof ApiError ? err.message : 'Không thể cập nhật kỳ hiện tại.',
-      ),
+      setFormError(err instanceof ApiError ? err.message : 'Không thể cập nhật kỳ hiện tại.'),
   });
 
   const saveMutation = useMutation({
@@ -184,21 +178,18 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
       await queryClient.invalidateQueries({ queryKey: [tab] });
       await queryClient.invalidateQueries({ queryKey: ['departments'] });
     },
-    onError: (err) =>
-      setFormError(err instanceof ApiError ? err.message : 'Có lỗi xảy ra.'),
+    onError: (err) => setFormError(err instanceof ApiError ? err.message : 'Có lỗi xảy ra.'),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) =>
-      apiFetch(`${config.path}/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => apiFetch(`${config.path}/${id}`, { method: 'DELETE' }),
     onSuccess: async () => {
       setDeleting(null);
       setDeleteError('');
       await queryClient.invalidateQueries({ queryKey: [tab] });
       await queryClient.invalidateQueries({ queryKey: ['departments'] });
     },
-    onError: (err) =>
-      setDeleteError(err instanceof ApiError ? err.message : 'Không thể xóa.'),
+    onError: (err) => setDeleteError(err instanceof ApiError ? err.message : 'Không thể xóa.'),
   });
 
   function onFormSubmit(event: FormEvent<HTMLFormElement>) {
@@ -223,15 +214,20 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
         lecturerId: form.get('lecturerId'),
         term: form.get('term'),
       },
-      terms: tab === 'terms' ? {
-        code: termCode || form.get('code'),
-        name: termName || form.get('name'),
-        season: termSeason,
-        year: Number(termYear),
-        startDate: new Date(`${termStart || form.get('startDate')}T00:00:00.000Z`).toISOString(),
-        endDate: new Date(`${termEnd || form.get('endDate')}T23:59:59.999Z`).toISOString(),
-        isCurrentOverride: termOverride,
-      } : undefined,
+      terms:
+        tab === 'terms'
+          ? {
+              code: termCode || form.get('code'),
+              name: termName || form.get('name'),
+              season: termSeason,
+              year: Number(termYear),
+              startDate: new Date(
+                `${termStart || form.get('startDate')}T00:00:00.000Z`,
+              ).toISOString(),
+              endDate: new Date(`${termEnd || form.get('endDate')}T23:59:59.999Z`).toISOString(),
+              isCurrentOverride: termOverride,
+            }
+          : undefined,
     };
     saveMutation.mutate(payloads[tab] ?? {});
   }
@@ -308,8 +304,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
   }
 
   const actionHeader = canManage ? ['Thao tác'] : [];
-  const editingClassSection =
-    tab === 'class-sections' ? (editing as ClassSection | null) : null;
+  const editingClassSection = tab === 'class-sections' ? (editing as ClassSection | null) : null;
 
   return (
     <>
@@ -334,7 +329,10 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
         }
       />
 
-      <nav aria-label="Danh mục đào tạo" className="mb-5 flex flex-wrap gap-1 border-b border-border">
+      <nav
+        aria-label="Danh mục đào tạo"
+        className="mb-5 flex flex-wrap gap-1 border-b border-border"
+      >
         {MASTER_DATA_TABS.map((item) => (
           <Link
             key={item.key}
@@ -355,22 +353,42 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
         <>
           {errorBanner(departments)}
           <DataTable
-          headers={['Mã', 'Tên bộ môn', 'Sinh viên', 'GV/NV', 'Ngành', ...actionHeader]}
-          isLoading={departments.isLoading}
-          skeletonRows={5}
-          isEmpty={!departments.isLoading && !departments.isError && (departments.data?.length ?? 0) === 0}
-          emptyMessage="Chưa có bộ môn nào — bấm “+ Thêm bộ môn” để tạo danh mục đầu tiên."
-        >
-          {(departments.data ?? []).map((department) => (
-            <tr key={department.id} className="transition-colors hover:bg-fpt-orange-50/40">
-              <Td className="font-semibold">{department.code}</Td>
-              <Td>{department.name}</Td>
-              <Td className="tabular-nums">{department._count?.students ?? 0}</Td>
-              <Td className="tabular-nums">{department._count?.staff ?? 0}</Td>
-              <Td className="tabular-nums">{department._count?.majors ?? 0}</Td>
-              {rowActions(department)}
-            </tr>
-          ))}
+            headers={[
+              'Mã',
+              'Tên bộ môn',
+              'Sinh viên',
+              'GV/NV',
+              'Ngành',
+              'Cơ sở mở',
+              ...actionHeader,
+            ]}
+            isLoading={departments.isLoading}
+            skeletonRows={5}
+            isEmpty={
+              !departments.isLoading &&
+              !departments.isError &&
+              (departments.data?.length ?? 0) === 0
+            }
+            emptyMessage="Chưa có bộ môn nào — bấm “+ Thêm bộ môn” để tạo danh mục đầu tiên."
+          >
+            {(departments.data ?? []).map((department) => (
+              <tr
+                key={department.id}
+                className={`transition-colors hover:bg-fpt-orange-50/40 ${
+                  department.isActive ? '' : 'text-muted [&_td]:opacity-70'
+                }`}
+              >
+                <Td className="font-semibold">{department.code}</Td>
+                <Td>{department.name}</Td>
+                <Td className="tabular-nums">{department._count?.students ?? 0}</Td>
+                <Td className="tabular-nums">{department._count?.staff ?? 0}</Td>
+                <Td className="tabular-nums">{department._count?.majors ?? 0}</Td>
+                <Td>
+                  <DepartmentActiveToggle department={department} disabled={!canManage} />
+                </Td>
+                {rowActions(department)}
+              </tr>
+            ))}
           </DataTable>
         </>
       ) : null}
@@ -379,21 +397,21 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
         <>
           {errorBanner(majors)}
           <DataTable
-          headers={['Mã', 'Tên ngành', 'Bộ môn', 'Sinh viên', ...actionHeader]}
-          isLoading={majors.isLoading}
-          skeletonRows={5}
-          isEmpty={!majors.isLoading && !majors.isError && (majors.data?.length ?? 0) === 0}
-          emptyMessage="Chưa có ngành học nào — bấm “+ Thêm ngành học” để tạo danh mục đầu tiên."
-        >
-          {(majors.data ?? []).map((major) => (
-            <tr key={major.id} className="transition-colors hover:bg-fpt-orange-50/40">
-              <Td className="font-semibold">{major.code}</Td>
-              <Td>{major.name}</Td>
-              <Td>{major.department?.name ?? '—'}</Td>
-              <Td className="tabular-nums">{major._count?.students ?? 0}</Td>
-              {rowActions(major)}
-            </tr>
-          ))}
+            headers={['Mã', 'Tên ngành', 'Bộ môn', 'Sinh viên', ...actionHeader]}
+            isLoading={majors.isLoading}
+            skeletonRows={5}
+            isEmpty={!majors.isLoading && !majors.isError && (majors.data?.length ?? 0) === 0}
+            emptyMessage="Chưa có ngành học nào — bấm “+ Thêm ngành học” để tạo danh mục đầu tiên."
+          >
+            {(majors.data ?? []).map((major) => (
+              <tr key={major.id} className="transition-colors hover:bg-fpt-orange-50/40">
+                <Td className="font-semibold">{major.code}</Td>
+                <Td>{major.name}</Td>
+                <Td>{major.department?.name ?? '—'}</Td>
+                <Td className="tabular-nums">{major._count?.students ?? 0}</Td>
+                {rowActions(major)}
+              </tr>
+            ))}
           </DataTable>
         </>
       ) : null}
@@ -422,7 +440,14 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
         <>
           {errorBanner(terms)}
           <DataTable
-            headers={['Mã kỳ', 'Tên học kỳ', 'Mùa & Năm', 'Thời gian', 'Trạng thái', ...actionHeader]}
+            headers={[
+              'Mã kỳ',
+              'Tên học kỳ',
+              'Mùa & Năm',
+              'Thời gian',
+              'Trạng thái',
+              ...actionHeader,
+            ]}
             isLoading={terms.isLoading}
             skeletonRows={6}
             isEmpty={!terms.isLoading && !terms.isError && (terms.data?.length ?? 0) === 0}
@@ -441,7 +466,9 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
                   <Td>
                     <span className="inline-flex items-center gap-1 text-xs">
                       <span>{badge.icon}</span>
-                      <span>{badge.label} • {term.year}</span>
+                      <span>
+                        {badge.label} • {term.year}
+                      </span>
                     </span>
                   </Td>
                   <Td className="text-xs text-muted tabular-nums">
@@ -514,14 +541,12 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
                 id="departmentId"
                 name="departmentId"
                 required
-                defaultValue={
-                  editing && 'departmentId' in editing ? editing.departmentId : ''
-                }
+                defaultValue={editing && 'departmentId' in editing ? editing.departmentId : ''}
               >
                 <option value="" disabled>
                   Chọn bộ môn…
                 </option>
-                {(departments.data ?? []).map((department) => (
+                {activeDepartments.map((department) => (
                   <option key={department.id} value={department.id}>
                     {department.name}
                   </option>
@@ -577,9 +602,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
                   id="term"
                   name="term"
                   required
-                  defaultValue={
-                    editingClassSection?.term ?? currentTerm.data?.code ?? ''
-                  }
+                  defaultValue={editingClassSection?.term ?? currentTerm.data?.code ?? ''}
                 >
                   <option value="" disabled>
                     Chọn học kỳ…
@@ -699,7 +722,10 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
                   onChange={(e) => setTermOverride(e.target.checked)}
                   className="h-4 w-4 rounded border-border text-fpt-orange focus:ring-fpt-orange"
                 />
-                <Label htmlFor="isCurrentOverride" className="!mb-0 cursor-pointer text-xs font-medium text-ink">
+                <Label
+                  htmlFor="isCurrentOverride"
+                  className="!mb-0 cursor-pointer text-xs font-medium text-ink"
+                >
                   Đặt làm kỳ hiện tại (bật cờ ưu tiên hiển thị)
                 </Label>
               </div>

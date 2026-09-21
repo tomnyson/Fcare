@@ -15,6 +15,8 @@
   --color-ink: oklch(22% 0.02 250);
   --color-muted: oklch(52% 0.02 250);
   --color-border: oklch(90% 0.01 250);
+  --color-scrollbar-thumb: oklch(70% 0.02 250);
+  --color-scrollbar-thumb-hover: oklch(55% 0.03 250);
 
   /* Semantic */
   --color-success: #2e9e44;
@@ -30,6 +32,8 @@
   /* Rhythm */
   --space-section: clamp(4rem, 3rem + 5vw, 8rem);
   --radius-card: 12px;
+  /* Chiều cao tối đa của bảng `fitViewport`: chừa topbar + khoảng thở. */
+  --table-fit-height: max(20rem, calc(100dvh - 7rem));
   --shadow-card: 0 1px 3px rgb(0 0 0 / 0.04), 0 8px 24px rgb(0 102 179 / 0.06);
 
   /* Motion */

@@ -5,7 +5,7 @@ import {
   isDeptScoped,
   NO_DEPARTMENT,
   seesWholeDepartment,
-  studentScope,
+  statsStudentScope,
 } from '../../../common/utils/dept-scope';
 import { PrismaService } from '../../../prisma/prisma.service';
 
@@ -24,19 +24,23 @@ export class DepartmentStatsService {
   async list(user: AuthUser) {
     const scoped = isDeptScoped(user);
     const deptWide = seesWholeDepartment(user);
-    const scope = studentScope(user);
+    const scope = statsStudentScope(user);
     const ownDepartmentId = user.departmentId ?? NO_DEPARTMENT;
 
     const [departments, studentGroups, openAlerts] = await Promise.all([
       this.prisma.department.findMany({
-        where: scoped
-          ? {
-              OR: [
-                { students: { some: scope } },
-                ...(deptWide ? [{ id: ownDepartmentId }] : []),
-              ],
-            }
-          : {},
+        // Bộ môn đang tắt (cơ sở không có) không lên báo cáo.
+        // Giảng viên thuần chỉ thấy dòng bộ môn của mình; TBM thấy thêm bộ môn
+        // có SV lớp mình dạy chéo.
+        where: {
+          isActive: true,
+          ...(scoped && !deptWide ? { id: ownDepartmentId } : {}),
+          ...(deptWide
+            ? {
+                OR: [{ students: { some: scope } }, { id: ownDepartmentId }],
+              }
+            : {}),
+        },
         orderBy: { code: 'asc' },
         include: { _count: { select: { staff: true } } },
       }),

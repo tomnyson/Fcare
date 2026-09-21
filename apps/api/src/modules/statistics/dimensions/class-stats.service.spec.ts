@@ -53,7 +53,7 @@ const SECTIONS = [
 ];
 
 interface SectionWhereArgs {
-  where: { term?: string };
+  where: { term?: string; block?: number };
 }
 
 interface GroupByWhereArgs {
@@ -120,7 +120,11 @@ describe('ClassStatsService.list', () => {
   it('RULE 2: giảng viên thuần chỉ truy vấn lớp mình đứng lớp', async () => {
     const { service, sectionFindMany, enrollmentGroupBy } = setup();
     await service.list(lecturerUser, 'SU25');
-    const scoped = { term: 'SU25', AND: [{ lecturerId: 'gv-1' }] };
+    // Giảng viên chỉ thống kê lớp mình dạy CỦA bộ môn mình .
+    const scoped = {
+      term: 'SU25',
+      AND: [{ lecturerId: 'gv-1', subject: { departmentId: 'dept-1' } }],
+    };
     const [sectionArgs] = sectionFindMany.mock.calls[0] as [SectionWhereArgs];
     expect(sectionArgs.where).toEqual(scoped);
     for (const call of enrollmentGroupBy.mock.calls as [GroupByWhereArgs][]) {
@@ -151,5 +155,16 @@ describe('ClassStatsService.list', () => {
     await service.list(adminUser);
     const [sectionArgs] = sectionFindMany.mock.calls[0] as [SectionWhereArgs];
     expect(sectionArgs.where.term).toBeUndefined();
+    expect(sectionArgs.where).not.toHaveProperty('block');
+  });
+
+  it('lọc theo block (1|2) cộng với kỳ — áp cho cả sĩ số lẫn kết quả', async () => {
+    const { service, sectionFindMany, enrollmentGroupBy } = setup();
+    await service.list(adminUser, 'SU25', 2);
+    const [sectionArgs] = sectionFindMany.mock.calls[0] as [SectionWhereArgs];
+    expect(sectionArgs.where).toEqual({ term: 'SU25', block: 2 });
+    for (const call of enrollmentGroupBy.mock.calls as [GroupByWhereArgs][]) {
+      expect(call[0].where.classSection).toEqual({ term: 'SU25', block: 2 });
+    }
   });
 });

@@ -1,4 +1,9 @@
-import type { AlertSource, EvaluationCriterion, ForcedEscalationRule, RoleKey } from '@fcare/shared-types';
+import type {
+  AlertSource,
+  EvaluationCriterion,
+  ForcedEscalationRule,
+  RoleKey,
+} from '@fcare/shared-types';
 
 export interface AuthUser {
   id: string;
@@ -36,6 +41,8 @@ export interface Department {
   id: string;
   code: string;
   name: string;
+  /** Bộ môn cơ sở không mở thì tắt — môn học thuộc bộ môn cũng ẩn theo. */
+  isActive: boolean;
   _count?: { students: number; staff: number; majors: number };
 }
 
@@ -132,6 +139,10 @@ export interface Student {
   major?: { id: string; code: string; name: string } | null;
   department?: { id: string; code: string; name: string };
   _count?: Record<string, number>;
+  /** Chỉ có ở `/students` (danh sách): tổng buổi vắng trong phạm vi bộ lọc kỳ/lớp HP; null = chưa có dữ liệu điểm danh. */
+  absentSessions?: number | null;
+  /** Số buổi vắng cao nhất trong một lớp học phần — dùng tô màu theo ngưỡng cảnh báo 2/3 buổi. */
+  maxSectionAbsent?: number | null;
 }
 
 /** Nguồn cấp option cho bộ lọc trang danh sách sinh viên (`/students/filter-options`). */
@@ -210,7 +221,12 @@ export interface CareLog {
   staff?: StaffRef;
   student?: Student;
   /** Cảnh báo được gắn khi ghi nhật ký (chăm sóc sau điểm danh). */
-  alert?: { id: string; level: number; source: AlertSource; classSection: { code: string } | null } | null;
+  alert?: {
+    id: string;
+    level: number;
+    source: AlertSource;
+    classSection: { code: string } | null;
+  } | null;
 }
 
 export interface Alert {
@@ -370,9 +386,14 @@ export interface StudentTermAnalysisDetail {
   disclaimer?: string;
 }
 
+/** Tổng quan của MỘT học kỳ — `term` null khi chưa cấu hình kỳ nào. */
 export interface StatisticsOverview {
+  term: { code: string; name: string; startDate: string; endDate: string } | null;
   totalStudents: number;
-  careLogsLast30Days: number;
+  /** SV có ít nhất một cảnh báo chưa giải quyết thuộc kỳ. */
+  warnedStudents: number;
+  careLogsInTerm: number;
+  careLogsLast7Days: number;
   studentsByStatus: Array<{ status: StudentStatus; count: number }>;
   openAlertsByLevel: Array<{ level: number; count: number }>;
   /** Cảnh báo điểm danh ở lớp mình đứng lớp mà mình chưa chăm sóc. */
@@ -606,3 +627,28 @@ export interface BackupOverviewStats {
   };
 }
 
+/** `GET /statistics/care-overview` — chăm sóc trong một kỳ theo bộ môn / GV / CTSV. */
+export interface CareCountRow {
+  id: string;
+  staffCode: string;
+  fullName: string;
+  careLogs: number;
+  caredStudents: number;
+}
+
+export interface CareDepartmentRow {
+  id: string;
+  code: string;
+  name: string;
+  careLogs: number;
+  caredStudents: number;
+  lecturers: CareCountRow[];
+}
+
+export interface CareOverview {
+  term: { code: string; name: string; startDate: string; endDate: string } | null;
+  departments: CareDepartmentRow[];
+  sa: { careLogs: number; caredStudents: number; staff: CareCountRow[] };
+  /** Luôn đủ 4 mức, Khẩn cấp → Thấp; mỗi SV tính một lần ở mức cao nhất. */
+  warnedByLevel: Array<{ level: number; students: number }>;
+}

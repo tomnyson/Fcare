@@ -8,11 +8,7 @@ import type { ImportKind } from './types';
  * - `term-*`: bộ 3 file nhà trường gửi đầu kỳ, mỗi loại một file riêng.
  */
 export type ImportSource =
-  | 'assignment'
-  | 'gradebook'
-  | 'term-sections'
-  | 'term-roster'
-  | 'term-grades';
+  'assignment' | 'gradebook' | 'term-sections' | 'term-roster' | 'term-grades';
 
 /** Các loại import, theo đúng thứ tự phải chạy: danh mục trước, dữ liệu sau. */
 export const IMPORT_KINDS = [

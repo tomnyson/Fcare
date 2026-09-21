@@ -17,13 +17,17 @@ export interface CareStudentAttendanceAlert {
 }
 
 export interface CareCounts {
+  /** Sĩ số (mọi SV đang học). */
   studentCount: number;
+  /** SV có cảnh báo — mẫu số của `careRate`. */
+  alertedStudentCount?: number;
   caredCount: number;
   uncaredCount: number;
   careRate: number | null;
   evaluationCount: number;
   careLogCount: number;
   discussionCount?: number;
+  ownerCareLogCount?: number;
   attendanceAlerts?: CareAttendanceTotals;
 }
 export interface CareStudent {
@@ -53,11 +57,16 @@ export interface CareSection extends CareCounts {
   subjectName: string;
   students: CareStudent[];
 }
+export interface CareDepartment {
+  id: string;
+  code: string;
+  name: string;
+}
 export interface CareLecturer extends CareCounts {
   id: string;
   staffCode: string;
   fullName: string;
-  department: { code: string; name: string } | null;
+  department: CareDepartment | null;
   sectionCount: number;
   sections: CareSection[];
 }
@@ -68,17 +77,33 @@ export interface CareReport {
 }
 
 export function canViewCareStatistics(roles: readonly string[]): boolean {
-  return roles.some((role) => role === 'ADMIN' || role === 'HEAD_OF_DEPT');
+  return roles.some(
+    (role) => role === 'ADMIN' || role === 'TRAINING_OFFICER' || role === 'HEAD_OF_DEPT',
+  );
 }
 
-export function buildCareQuery(
-  term: string,
-  lecturerId = '',
-  status: CareStatus = 'all',
-  mode?: 'summary' | 'detailed',
-): string {
-  const params = new URLSearchParams({ term, status });
-  if (lecturerId) params.set('lecturerId', lecturerId);
-  if (mode) params.set('mode', mode);
+export interface CareFilters {
+  lecturerId?: string;
+  departmentId?: string;
+  status?: CareStatus;
+  mode?: 'summary' | 'detailed';
+}
+
+/** Cùng một chuỗi lọc cho màn hình và file Excel. */
+export function buildCareQuery(term: string, filters: CareFilters = {}): string {
+  const params = new URLSearchParams({ term });
+  if (filters.lecturerId) params.set('lecturerId', filters.lecturerId);
+  if (filters.departmentId) params.set('departmentId', filters.departmentId);
+  params.set('status', filters.status ?? 'all');
+  if (filters.mode) params.set('mode', filters.mode);
   return `?${params.toString()}`;
+}
+
+/** Bộ môn có giảng viên trong báo cáo — đã nằm sẵn trong phạm vi người xem. */
+export function careDepartments(lecturers: readonly CareLecturer[]): CareDepartment[] {
+  const unique = new Map<string, CareDepartment>();
+  for (const { department } of lecturers) {
+    if (department) unique.set(department.id, department);
+  }
+  return [...unique.values()].sort((a, b) => a.name.localeCompare(b.name, 'vi'));
 }

@@ -23,7 +23,7 @@ const other = {
   classSection: { id: 'section-2', code: 'IT102', subjectName: 'Cơ sở dữ liệu', lecturerName: 'Phạm Dũng' },
 };
 const overview = {
-  totalStudents: 2, careLogsLast30Days: 0,
+  term: null, totalStudents: 2, warnedStudents: 1, careLogsInTerm: 0, careLogsLast7Days: 0,
   studentsByStatus: [{ status: 'ACTIVE', count: 2 }], openAlertsByLevel: [{ level: 3, count: 1 }],
   attendancePending: 1,
 };
@@ -32,6 +32,13 @@ const profileAlert = {
   source: 'AUTO_ATTENDANCE', absentSessions: 3, ownerCaredAt: null, raisedBy: null,
   classSection: { id: 'section-1', code: 'IT101', subject: { name: 'Lập trình' } },
   resolvedBy: null, resolvedAt: null, resolutionNote: null, createdAt: '2026-09-15T02:00:00Z',
+};
+
+const careOverview = {
+  term: null,
+  departments: [],
+  sa: { careLogs: 0, caredStudents: 0, staff: [] },
+  warnedByLevel: [4, 3, 2, 1].map((level) => ({ level, students: 0 })),
 };
 
 async function mockSession(page: Page, role: string) {
@@ -43,12 +50,13 @@ async function mockSession(page: Page, role: string) {
     if (path.endsWith('/auth/me')) data = me(role);
     else if (path.endsWith('/terms/current')) data = term;
     else if (path.endsWith('/statistics/overview')) data = overview;
+    else if (path.endsWith('/statistics/care-overview')) data = careOverview;
     else if (path.endsWith('/attendance-alerts/pending')) {
       const all = url.searchParams.get('scope') === 'all';
       data = { items: all ? [owned, other] : [owned], total: all ? 2 : 1, ownedTotal: 1 };
     } else if (path.endsWith('/unread-count')) data = { count: 0 };
     else if (path.endsWith('/students/student-1')) data = { ...student, dateOfBirth: null, gender: null, cohort: null, status: 'ACTIVE', major: null, department: { id: 'dept-1', code: 'IT', name: 'CNTT' } };
-    else if (path.endsWith('/alerts')) data = { items: [profileAlert], total: 1, page: 1, limit: 50 };
+    else if (path.endsWith('/alerts')) data = { items: [profileAlert], meta: { total: 1, page: 1, limit: 50 } };
     else if (path.endsWith('/care-logs') && route.request().method() === 'POST') data = { id: 'log-1' };
     await route.fulfill({ json: { success: true, data, error: null } });
   });

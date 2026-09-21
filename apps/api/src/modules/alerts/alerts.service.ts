@@ -89,7 +89,7 @@ export class AlertsService {
     };
 
     const where: Prisma.AlertWhereInput = {
-      status: query.status,
+      status: query.openOnly ? { not: AlertStatus.RESOLVED } : query.status,
       level: query.level,
       source: query.source,
       studentId: query.studentId,

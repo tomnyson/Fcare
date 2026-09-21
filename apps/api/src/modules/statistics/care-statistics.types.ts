@@ -56,19 +56,28 @@ export interface CareStudent {
   discussionCount: number;
   lastCareAt: string | null;
   alertLevel: number | null;
+  /** Cảnh báo trong kỳ gắn lớp học phần này hoặc không gắn lớp nào. */
+  alertCount: number;
+  /** Nhật ký do chính giảng viên đứng lớp ghi. */
+  ownerCareLogCount: number;
   attendanceAlert: CareStudentAttendanceAlert | null;
   evaluations?: CareStudentEvaluation[];
   careLogs?: CareStudentLog[];
   discussions?: CareStudentDiscussion[];
 }
 export interface CareTotals {
+  /** Sĩ số: mọi sinh viên đang học (không trùng). */
   studentCount: number;
+  /** Sinh viên có cảnh báo trong kỳ — mẫu số của tỷ lệ chăm sóc. */
+  alertedStudentCount: number;
+  /** Số SV cảnh báo đã được chăm sóc. */
   caredCount: number;
   uncaredCount: number;
   careRate: number | null;
   evaluationCount: number;
   careLogCount: number;
   discussionCount: number;
+  ownerCareLogCount: number;
   attendanceAlerts: CareAttendanceTotals;
 }
 export interface CareSection extends CareTotals {
@@ -81,7 +90,7 @@ export interface CareLecturer extends CareTotals {
   id: string;
   staffCode: string;
   fullName: string;
-  department: { code: string; name: string } | null;
+  department: { id: string; code: string; name: string } | null;
   sectionCount: number;
   sections: CareSection[];
 }

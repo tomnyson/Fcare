@@ -21,7 +21,12 @@ function item(overrides: Partial<PendingAttendanceAlert>): PendingAttendanceAler
     careLogCount: 0,
     isOwner: true,
     student: { id: 's1', studentCode: 'SV001', fullName: 'Trần Bình', classCode: 'GD01' },
-    classSection: { id: 'sec1', code: 'IT101', subjectName: 'Lập trình', lecturerName: 'Nguyễn An' },
+    classSection: {
+      id: 'sec1',
+      code: 'IT101',
+      subjectName: 'Lập trình',
+      lecturerName: 'Nguyễn An',
+    },
     ...overrides,
   };
 }
