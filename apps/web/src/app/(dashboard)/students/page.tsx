@@ -25,13 +25,37 @@ import { QuickEvaluationModal } from '../../../components/students/quick-evaluat
 import {
   buildStudentListQuery,
   clearFiltersPatch,
+  majorsForClass,
+  nextStudentSort,
   parseStudentFilters,
+  parseStudentSort,
+  studentCareHref,
+  studentSortPatch,
+  type StudentSort,
+  type StudentSortField,
 } from '../../../lib/student-filters';
 import type { Evaluation, Paginated, Student, StudentFilterOptions } from '../../../lib/types';
 import { useCurrentTerm } from '../../../lib/use-current-term';
 import { pageCount, parsePageParam } from '../../../lib/pagination';
 
 const PAGE_SIZE = 20;
+
+const SORT_LABELS: Record<StudentSortField, string> = {
+  absentSessions: 'số buổi vắng',
+  openAlerts: 'số cảnh báo mở',
+};
+
+/** Trạng thái + hành động cho một tiêu đề cột sắp xếp được của `DataTable`. */
+function sortableColumn(
+  sort: StudentSort,
+  field: StudentSortField,
+  setFilters: (patch: Record<string, string | null>) => void,
+) {
+  return {
+    direction: sort?.by === field ? sort.dir : null,
+    onSort: () => setFilters(studentSortPatch(nextStudentSort(sort, field))),
+  };
+}
 
 // Ngưỡng cảnh báo điểm danh tự động tính theo TỪNG lớp học phần (2 → L2, ≥ 3 → L3).
 const ABSENCE_WARNING_THRESHOLD = 2;
@@ -74,6 +98,7 @@ function StudentsPageContent() {
 
   // URL là nguồn sự thật của bộ lọc: gửi link cho đồng nghiệp là gửi đúng bộ lọc.
   const filters = parseStudentFilters(params);
+  const sort = parseStudentSort(params);
   const submittedSearch = filters.search;
   const missingMajor = filters.missingMajor;
   const page = parsePageParam(params.get('page'));
@@ -119,7 +144,7 @@ function StudentsPageContent() {
     setSelected([]);
   }
 
-  const listQuery = buildStudentListQuery(filters, page, PAGE_SIZE).toString();
+  const listQuery = buildStudentListQuery(filters, page, PAGE_SIZE, sort).toString();
   const { data, isLoading, isFetching, isError, error } = useQuery({
     queryKey: ['students', listQuery],
     queryFn: () => apiFetch<Paginated<Student>>(`/students?${listQuery}`),
@@ -138,6 +163,10 @@ function StudentsPageContent() {
   // Dùng chung cho ô lọc ngành và ô gán ngành hàng loạt: danh sách này đã theo
   // đúng bộ môn người dùng nên không còn chọn nhầm ngành bộ môn khác.
   const majorOptions = options.data?.majors ?? [];
+  // Ô lọc Ngành đi theo ô Lớp: chọn lớp CNTT thì chỉ còn ngành có SV lớp đó.
+  // Ô gán ngành hàng loạt vẫn dùng `majorOptions` đầy đủ.
+  const classMajors = options.data?.classMajors;
+  const filterMajorOptions = majorsForClass(majorOptions, classMajors, filters.classCode);
   // Lớp học phần thường rất nhiều: khi đã chọn học kỳ thì chỉ hiện lớp của kỳ
   // đó, nhưng luôn giữ lại lớp đang được chọn để bộ lọc không tự mất giá trị.
   const sectionOptions = (options.data?.sections ?? []).filter(
@@ -170,6 +199,14 @@ function StudentsPageContent() {
     chips.push({ key: 'search', label: 'Từ khóa', value: filters.search.trim() });
   if (filters.term) chips.push({ key: 'term', label: 'Học kỳ', value: filters.term });
   if (filters.classCode) chips.push({ key: 'classCode', label: 'Lớp', value: filters.classCode });
+  if (filters.departmentId)
+    chips.push({
+      key: 'departmentId',
+      label: 'Bộ môn',
+      value:
+        options.data?.departments?.find((department) => department.id === filters.departmentId)
+          ?.name ?? 'đã chọn',
+    });
   if (filters.majorId)
     chips.push({
       key: 'majorId',
@@ -268,7 +305,19 @@ function StudentsPageContent() {
             <Select
               id="student-class"
               value={filters.classCode}
-              onChange={(event) => setFilters({ classCode: event.target.value || null })}
+              onChange={(event) => {
+                const classCode = event.target.value;
+                // Ngành đang chọn không có trong lớp mới thì bỏ, tránh kết quả rỗng khó hiểu.
+                const keepMajor =
+                  !filters.majorId ||
+                  majorsForClass(majorOptions, classMajors, classCode).some(
+                    (major) => major.id === filters.majorId,
+                  );
+                setFilters({
+                  classCode: classCode || null,
+                  ...(keepMajor ? {} : { majorId: null }),
+                });
+              }}
             >
               <option value="">Mọi lớp</option>
               {(options.data?.classCodes ?? []).map((classCode) => (
@@ -289,7 +338,7 @@ function StudentsPageContent() {
               onChange={(event) => setFilters({ majorId: event.target.value || null })}
             >
               <option value="">Mọi ngành</option>
-              {majorOptions.map((major) => (
+              {filterMajorOptions.map((major) => (
                 <option key={major.id} value={major.id}>
                   {major.name}
                 </option>
@@ -456,7 +505,21 @@ function StudentsPageContent() {
         </section>
       ) : null}
 
+      {sort ? (
+        <p className="text-sm text-muted" role="status">
+          Đang gom theo <strong className="font-semibold text-ink">lớp</strong>, trong từng lớp xếp
+          theo <strong className="font-semibold text-ink">{SORT_LABELS[sort.by]}</strong>{' '}
+          {sort.dir === 'desc' ? 'từ nhiều đến ít' : 'từ ít đến nhiều'}. Chưa có dữ liệu điểm danh
+          nằm cuối mỗi lớp.
+        </p>
+      ) : null}
+
       <DataTable
+        fitViewport
+        sortable={{
+          'Số buổi vắng': sortableColumn(sort, 'absentSessions', setFilters),
+          'Cảnh báo mở': sortableColumn(sort, 'openAlerts', setFilters),
+        }}
         headers={[
           ...(showSelectColumn ? ['Chọn'] : []),
           'MSSV',
@@ -496,7 +559,15 @@ function StudentsPageContent() {
                 {student.studentCode}
               </Link>
             </Td>
-            <Td className="font-medium text-ink">{student.fullName}</Td>
+            <Td>
+              <Link
+                href={studentCareHref(student.id, filters.term)}
+                title={`Mở nhật ký chăm sóc của ${student.fullName}`}
+                className="rounded-sm font-medium text-ink underline decoration-transparent decoration-2 underline-offset-4 transition-colors hover:text-fpt-orange-600 hover:decoration-fpt-orange focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fpt-blue"
+              >
+                {student.fullName}
+              </Link>
+            </Td>
             <Td>{student.classCode}</Td>
             <Td>{student.major?.name ?? '—'}</Td>
             <Td>{student.department?.code ?? '—'}</Td>

@@ -118,27 +118,27 @@ model Staff {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  department                   Department?                    @relation(fields: [departmentId], references: [id])
-  roles                        StaffRole[]
-  consentLogs                  ConsentLog[]
-  refreshTokens                RefreshToken[]
-  classSections                ClassSection[]
-  evaluations                  Evaluation[]
-  ownedTermAnalyses            StudentTermAnalysis[]          @relation("StudentTermAnalysisOwner")
-  createdTermAnalysisVersions  StudentTermAnalysisVersion[]   @relation("StudentTermAnalysisVersionCreatedBy")
-  reviewedTermAnalysisVersions StudentTermAnalysisVersion[]   @relation("StudentTermAnalysisVersionReviewedBy")
-  dismissedTermAnalysisVersions StudentTermAnalysisVersion[]  @relation("StudentTermAnalysisVersionDismissedBy")
-  termAnalysisRecipients       StudentTermAnalysisRecipient[]
-  careLogs                     CareLog[]
-  raisedAlerts                 Alert[]                        @relation("AlertRaisedBy")
-  resolvedAlerts               Alert[]                        @relation("AlertResolvedBy")
-  notifications                Notification[]
-  auditLogs                    AuditLog[]
-  importBatches                ImportBatch[]
-  discussionMessages           DiscussionMessage[]
-  discussionReads              DiscussionRead[]
-  oauthIdentities              StaffOAuthIdentity[]
-  mailSettingsUpdated          MailSetting[]                  @relation("MailSettingUpdatedBy")
+  department                    Department?                    @relation(fields: [departmentId], references: [id])
+  roles                         StaffRole[]
+  consentLogs                   ConsentLog[]
+  refreshTokens                 RefreshToken[]
+  classSections                 ClassSection[]
+  evaluations                   Evaluation[]
+  ownedTermAnalyses             StudentTermAnalysis[]          @relation("StudentTermAnalysisOwner")
+  createdTermAnalysisVersions   StudentTermAnalysisVersion[]   @relation("StudentTermAnalysisVersionCreatedBy")
+  reviewedTermAnalysisVersions  StudentTermAnalysisVersion[]   @relation("StudentTermAnalysisVersionReviewedBy")
+  dismissedTermAnalysisVersions StudentTermAnalysisVersion[]   @relation("StudentTermAnalysisVersionDismissedBy")
+  termAnalysisRecipients        StudentTermAnalysisRecipient[]
+  careLogs                      CareLog[]
+  raisedAlerts                  Alert[]                        @relation("AlertRaisedBy")
+  resolvedAlerts                Alert[]                        @relation("AlertResolvedBy")
+  notifications                 Notification[]
+  auditLogs                     AuditLog[]
+  importBatches                 ImportBatch[]
+  discussionMessages            DiscussionMessage[]
+  discussionReads               DiscussionRead[]
+  oauthIdentities               StaffOAuthIdentity[]
+  mailSettingsUpdated           MailSetting[]                  @relation("MailSettingUpdatedBy")
 
   @@map("staff")
 }
@@ -216,18 +216,25 @@ model ConsentLog {
 }
 
 model RefreshToken {
-  id           String    @id @default(uuid())
+  id           String     @id @default(uuid())
   staffId      String
-  tokenHash    String    @unique
+  tokenHash    String     @unique
   consentLogId String?
+  /// Cách đăng nhập của phiên — xoay token vẫn giữ nguyên. GOOGLE không bị bắt đổi mật khẩu tạm.
+  authMethod   AuthMethod @default(PASSWORD)
   expiresAt    DateTime
   revokedAt    DateTime?
-  createdAt    DateTime  @default(now())
+  createdAt    DateTime   @default(now())
 
   staff      Staff       @relation(fields: [staffId], references: [id], onDelete: Cascade)
   consentLog ConsentLog? @relation(fields: [consentLogId], references: [id])
 
   @@map("refresh_tokens")
+}
+
+enum AuthMethod {
+  PASSWORD
+  GOOGLE
 }
 
 model AuditLog {
@@ -429,10 +436,10 @@ model Alert {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  student          Student                        @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  raisedBy         Staff?                         @relation("AlertRaisedBy", fields: [raisedById], references: [id])
-  resolvedBy       Staff?                         @relation("AlertResolvedBy", fields: [resolvedById], references: [id])
-  classSection     ClassSection?                  @relation(fields: [classSectionId], references: [id], onDelete: SetNull)
+  student          Student                      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  raisedBy         Staff?                       @relation("AlertRaisedBy", fields: [raisedById], references: [id])
+  resolvedBy       Staff?                       @relation("AlertResolvedBy", fields: [resolvedById], references: [id])
+  classSection     ClassSection?                @relation(fields: [classSectionId], references: [id], onDelete: SetNull)
   notifications    Notification[]
   analysisVersions StudentTermAnalysisVersion[]
   careLogs         CareLog[]
@@ -475,7 +482,9 @@ model Notification {
   @@map("notifications")
 }
 
-/** Nội dung thực sự được gửi đi: bản AI tổng hợp hay bản giảng viên tự soạn. */
+/**
+ * Nội dung thực sự được gửi đi: bản AI tổng hợp hay bản giảng viên tự soạn.
+ */
 enum AnalysisContentSource {
   AI
   LECTURER
@@ -509,42 +518,42 @@ model StudentTermAnalysis {
 }
 
 model StudentTermAnalysisVersion {
-  id              String                    @id @default(uuid())
-  analysisId      String
-  version         Int
-  status          StudentTermAnalysisStatus @default(QUEUED)
-  idempotencyKey  String                    @unique
+  id                String                    @id @default(uuid())
+  analysisId        String
+  version           Int
+  status            StudentTermAnalysisStatus @default(QUEUED)
+  idempotencyKey    String                    @unique
   // Bản do hệ thống tự sinh sau khi giảng viên lưu nhận xét: sinh xong thì hỏi
   // người vừa nhận xét có gửi hay không, không tự gửi.
-  needsSendDecision Boolean                 @default(false)
-  sourceSnapshot  Json
-  sourceHash      String
-  aiOriginal      Json?
-  editedOutput    Json?
-  model           String
-  promptVersion   String
-  inputTokens     Int?
-  outputTokens    Int?
-  reasoningTokens Int?
-  totalTokens     Int?
-  errorMessage    String?
+  needsSendDecision Boolean                   @default(false)
+  sourceSnapshot    Json
+  sourceHash        String
+  aiOriginal        Json?
+  editedOutput      Json?
+  model             String
+  promptVersion     String
+  inputTokens       Int?
+  outputTokens      Int?
+  reasoningTokens   Int?
+  totalTokens       Int?
+  errorMessage      String?
   // Nguồn nội dung đã gửi; null = chưa gửi.
-  contentSource   AnalysisContentSource?
+  contentSource     AnalysisContentSource?
   // Nội dung giảng viên tự soạn (đã lọc PII) khi chọn không dùng bản AI.
-  lecturerNote    String?
-  createdById     String
-  reviewedById    String?
+  lecturerNote      String?
+  createdById       String
+  reviewedById      String?
   // Người bấm "Không gửi" cho bản gợi ý — bản nháp vẫn còn để gửi tay sau.
-  dismissedById   String?
-  dismissedAt     DateTime?
-  alertId         String?
-  requestedAt     DateTime                  @default(now())
-  generatedAt     DateTime?
-  editedAt        DateTime?
-  reviewedAt      DateTime?
-  sentAt          DateTime?
-  createdAt       DateTime                  @default(now())
-  updatedAt       DateTime                  @updatedAt
+  dismissedById     String?
+  dismissedAt       DateTime?
+  alertId           String?
+  requestedAt       DateTime                  @default(now())
+  generatedAt       DateTime?
+  editedAt          DateTime?
+  reviewedAt        DateTime?
+  sentAt            DateTime?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
 
   analysis      StudentTermAnalysis            @relation(fields: [analysisId], references: [id], onDelete: Cascade)
   createdBy     Staff                          @relation("StudentTermAnalysisVersionCreatedBy", fields: [createdById], references: [id])
@@ -722,16 +731,16 @@ enum TermSeason {
 }
 
 model Term {
-  id                String      @id @default(uuid())
-  code              String      @unique // vd: "SP25", "SU25", "FA25"
-  name              String      // vd: "Spring 2025"
+  id                String     @id @default(uuid())
+  code              String     @unique // vd: "SP25", "SU25", "FA25"
+  name              String // vd: "Spring 2025"
   season            TermSeason
-  year              Int         // vd: 2025
+  year              Int // vd: 2025
   startDate         DateTime
   endDate           DateTime
-  isCurrentOverride Boolean     @default(false)
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
+  isCurrentOverride Boolean    @default(false)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 
   @@index([startDate, endDate])
   @@map("terms")

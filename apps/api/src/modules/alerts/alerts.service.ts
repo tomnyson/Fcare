@@ -61,6 +61,7 @@ export class AlertsService {
     // thầy A" nghĩa là một lớp học phần, không phải hai lần đăng ký rời nhau.
     const student: Prisma.StudentWhereInput = {
       ...(query.classCode ? { classCode: query.classCode } : {}),
+      ...(query.departmentId ? { departmentId: query.departmentId } : {}),
       ...(query.majorId ? { majorId: query.majorId } : {}),
       ...(query.term || query.lecturerId || query.sectionId
         ? {

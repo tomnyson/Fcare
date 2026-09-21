@@ -20,6 +20,7 @@ import {
   BulkAssignMajorDto,
   CreateStudentDto,
   ListStudentsQuery,
+  SortDirection,
   UpdateStudentDto,
 } from './dto/student.dto';
 
@@ -47,6 +48,50 @@ function withAbsenceSummary<
         : null,
     maxSectionAbsent: recorded.length > 0 ? Math.max(...recorded) : null,
   };
+}
+
+/**
+ * Gom theo lớp (A→Z) rồi xếp id theo chỉ số (buổi vắng / cảnh báo mở) trong
+ * từng lớp — giảng viên chăm sóc theo lớp nên cần thấy "ai vắng nhiều nhất lớp
+ * này". `null` = chưa có dữ liệu → luôn nằm cuối lớp dù tăng hay giảm, để "chưa
+ * điểm danh" không lẫn với "0 buổi". Hoà thì theo MSSV cho thứ tự ổn định.
+ */
+export function rankStudentIds(
+  students: readonly { id: string; studentCode: string; classCode: string }[],
+  valueOf: (studentId: string) => number | null,
+  direction: SortDirection,
+): string[] {
+  const sign = direction === 'asc' ? 1 : -1;
+  return [...students]
+    .sort((a, b) => {
+      const byClass = a.classCode.localeCompare(b.classCode);
+      if (byClass !== 0) return byClass;
+      const left = valueOf(a.id);
+      const right = valueOf(b.id);
+      if (left !== right) {
+        if (left === null) return 1;
+        if (right === null) return -1;
+        return (left - right) * sign;
+      }
+      return a.studentCode.localeCompare(b.studentCode);
+    })
+    .map((student) => student.id);
+}
+
+/** `{ classCode: majorId[] }` — lớp chỉ có SV chưa gán ngành vẫn có khóa (mảng rỗng). */
+function groupMajorsByClass(
+  rows: readonly { classCode: string; majorId: string | null }[],
+): Record<string, string[]> {
+  return rows.reduce<Record<string, string[]>>(
+    (acc, { classCode, majorId }) => {
+      const current = acc[classCode] ?? [];
+      return {
+        ...acc,
+        [classCode]: majorId ? [...current, majorId] : current,
+      };
+    },
+    {},
+  );
 }
 
 @Injectable()
@@ -102,23 +147,33 @@ export class StudentsService {
         : {}),
     };
 
+    const include = {
+      major: { select: { id: true, code: true, name: true } },
+      department: { select: { id: true, code: true, name: true } },
+      _count: {
+        select: { alerts: { where: { status: { not: 'RESOLVED' as const } } } },
+      },
+      enrollments: {
+        where: enrollmentWhere,
+        select: { absentSessions: true },
+      },
+    } satisfies Prisma.StudentInclude;
+
+    if (query.sortBy) {
+      return this.listSortedByMetric(where, enrollmentWhere, include, {
+        ...query,
+        page,
+        limit,
+      });
+    }
+
     const [items, total] = await this.prisma.$transaction([
       this.prisma.student.findMany({
         where,
         orderBy: { studentCode: 'asc' },
         skip: (page - 1) * limit,
         take: limit,
-        include: {
-          major: { select: { id: true, code: true, name: true } },
-          department: { select: { id: true, code: true, name: true } },
-          _count: {
-            select: { alerts: { where: { status: { not: 'RESOLVED' } } } },
-          },
-          enrollments: {
-            where: enrollmentWhere,
-            select: { absentSessions: true },
-          },
-        },
+        include,
       }),
       this.prisma.student.count({ where }),
     ]);
@@ -126,6 +181,85 @@ export class StudentsService {
     return {
       items: items.map(withAbsenceSummary),
       meta: { total, page, limit },
+    };
+  }
+
+  /**
+   * Sắp xếp theo số liệu gộp (tổng buổi vắng, số cảnh báo mở) — Prisma không
+   * `orderBy` được theo tổng có điều kiện, nên xếp hạng id trong phạm vi rồi mới
+   * nạp chi tiết đúng một trang. `where` đã chứa `studentScope` nên cả tập id lẫn
+   * số liệu gộp đều không vượt phạm vi người dùng (RULE 2).
+   */
+  private async listSortedByMetric(
+    where: Prisma.StudentWhereInput,
+    enrollmentWhere: Prisma.EnrollmentWhereInput,
+    include: Prisma.StudentInclude & {
+      enrollments: {
+        where: Prisma.EnrollmentWhereInput;
+        select: { absentSessions: true };
+      };
+    },
+    query: ListStudentsQuery & { page: number; limit: number },
+  ) {
+    const { page, limit } = query;
+    const [students, metric] = await Promise.all([
+      this.prisma.student.findMany({
+        where,
+        select: { id: true, studentCode: true, classCode: true },
+      }),
+      this.sortMetric(where, enrollmentWhere, query.sortBy!),
+    ]);
+
+    const rankedIds = rankStudentIds(
+      students,
+      (id) => metric.values.get(id) ?? metric.missing,
+      query.sortDir ?? 'desc',
+    );
+    const pageIds = rankedIds.slice((page - 1) * limit, page * limit);
+    const rows = await this.prisma.student.findMany({
+      where: { id: { in: pageIds } },
+      include,
+    });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const items = pageIds
+      .map((id) => byId.get(id))
+      .filter((row): row is NonNullable<typeof row> => row !== undefined);
+
+    return {
+      items: items.map(withAbsenceSummary),
+      meta: { total: rankedIds.length, page, limit },
+    };
+  }
+
+  /** studentId → chỉ số dùng để xếp; `missing` là giá trị cho SV không có dòng nào. */
+  private async sortMetric(
+    where: Prisma.StudentWhereInput,
+    enrollmentWhere: Prisma.EnrollmentWhereInput,
+    sortBy: NonNullable<ListStudentsQuery['sortBy']>,
+  ): Promise<{ values: Map<string, number | null>; missing: number | null }> {
+    if (sortBy === 'openAlerts') {
+      const rows = await this.prisma.alert.groupBy({
+        by: ['studentId'],
+        where: { status: { not: 'RESOLVED' }, student: where },
+        _count: { _all: true },
+      });
+      // Không có cảnh báo mở là 0 thật, không phải "chưa có dữ liệu".
+      return {
+        values: new Map(rows.map((row) => [row.studentId, row._count._all])),
+        missing: 0,
+      };
+    }
+    // Cùng điều kiện kỳ/lớp HP với cột "Số buổi vắng" để thứ tự khớp số hiển thị.
+    const rows = await this.prisma.enrollment.groupBy({
+      by: ['studentId'],
+      where: { ...enrollmentWhere, student: where },
+      _sum: { absentSessions: true },
+    });
+    return {
+      values: new Map(
+        rows.map((row) => [row.studentId, row._sum.absentSessions]),
+      ),
+      missing: null,
     };
   }
 
@@ -149,51 +283,73 @@ export class StudentsService {
         }
       : {};
 
-    const [classCodeRows, majors, termRows, lecturers, sectionRows] =
-      await Promise.all([
-        this.prisma.student.groupBy({
-          by: ['classCode'],
-          where: scope,
-          orderBy: { classCode: 'asc' },
-        }),
-        this.prisma.major.findMany({
-          where: majorWhere,
-          select: { id: true, code: true, name: true },
-          orderBy: { name: 'asc' },
-        }),
-        this.prisma.classSection.groupBy({
-          by: ['term'],
-          where: sections,
-          orderBy: { term: 'desc' },
-        }),
-        this.prisma.staff.findMany({
-          where: { classSections: { some: sections } },
-          // RULE 1: chỉ mã nhân viên và họ tên, tuyệt đối không thêm trường liên hệ.
-          select: { id: true, staffCode: true, fullName: true },
-          orderBy: { fullName: 'asc' },
-        }),
-        // Lớp học phần trong tầm nhìn, để lọc thẳng "sinh viên lớp này". Trần
-        // SECTION_OPTIONS_LIMIT chặn dropdown phình với vai trò toàn trường —
-        // người dùng chọn học kỳ trước rồi mới chọn lớp.
-        this.prisma.classSection.findMany({
-          where: sections,
-          select: {
-            id: true,
-            code: true,
-            term: true,
-            subject: { select: { code: true, name: true } },
-          },
-          orderBy: [{ term: 'desc' }, { code: 'asc' }],
-          take: SECTION_OPTIONS_LIMIT,
-        }),
-      ]);
+    // Bộ môn chỉ để gọi tên chip "Bộ môn" khi mở từ thẻ bộ môn ở Tổng quan —
+    // người bị scope chỉ thấy bộ môn có sinh viên trong phạm vi mình.
+    const departmentWhere: Prisma.DepartmentWhereInput = {
+      isActive: true,
+      ...(isDeptScoped(user) ? { students: { some: scope } } : {}),
+    };
+
+    const [
+      classMajorRows,
+      majors,
+      termRows,
+      lecturers,
+      sectionRows,
+      departments,
+    ] = await Promise.all([
+      // Cặp (lớp, ngành) thay vì chỉ lớp: web dùng để thu ô Ngành về đúng
+      // ngành của lớp đang chọn, cùng một truy vấn nên vẫn nằm trong scope.
+      this.prisma.student.groupBy({
+        by: ['classCode', 'majorId'],
+        where: scope,
+        orderBy: { classCode: 'asc' },
+      }),
+      this.prisma.major.findMany({
+        where: majorWhere,
+        select: { id: true, code: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.classSection.groupBy({
+        by: ['term'],
+        where: sections,
+        orderBy: { term: 'desc' },
+      }),
+      this.prisma.staff.findMany({
+        where: { classSections: { some: sections } },
+        // RULE 1: chỉ mã nhân viên và họ tên, tuyệt đối không thêm trường liên hệ.
+        select: { id: true, staffCode: true, fullName: true },
+        orderBy: { fullName: 'asc' },
+      }),
+      // Lớp học phần trong tầm nhìn, để lọc thẳng "sinh viên lớp này". Trần
+      // SECTION_OPTIONS_LIMIT chặn dropdown phình với vai trò toàn trường —
+      // người dùng chọn học kỳ trước rồi mới chọn lớp.
+      this.prisma.classSection.findMany({
+        where: sections,
+        select: {
+          id: true,
+          code: true,
+          term: true,
+          subject: { select: { code: true, name: true } },
+        },
+        orderBy: [{ term: 'desc' }, { code: 'asc' }],
+        take: SECTION_OPTIONS_LIMIT,
+      }),
+      this.prisma.department.findMany({
+        where: departmentWhere,
+        select: { id: true, code: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
 
     return {
       terms: termRows.map((row) => row.term),
-      classCodes: classCodeRows.map((row) => row.classCode),
+      classCodes: [...new Set(classMajorRows.map((row) => row.classCode))],
+      classMajors: groupMajorsByClass(classMajorRows),
       majors,
       lecturers,
       sections: sectionRows,
+      departments,
     };
   }
 

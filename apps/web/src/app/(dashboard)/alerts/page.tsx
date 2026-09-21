@@ -103,13 +103,13 @@ function AlertsPageContent() {
   const chips: Array<{ key: string; label: string; value: string }> = [];
   if (filters.search.trim())
     chips.push({ key: 'search', label: 'Từ khóa', value: filters.search.trim() });
+  if (filters.openOnly)
+    chips.push({ key: 'openOnly', label: 'Trạng thái', value: 'Chưa giải quyết' });
   if (filters.status)
     chips.push({
       key: 'status',
       label: 'Trạng thái',
-      value:
-        (ALERT_STATUS_LABELS as Record<string, string>)[filters.status] ??
-        filters.status,
+      value: (ALERT_STATUS_LABELS as Record<string, string>)[filters.status] ?? filters.status,
     });
   if (filters.level)
     chips.push({
@@ -129,6 +129,14 @@ function AlertsPageContent() {
     });
   if (filters.term) chips.push({ key: 'term', label: 'Học kỳ', value: filters.term });
   if (filters.classCode) chips.push({ key: 'classCode', label: 'Lớp', value: filters.classCode });
+  if (filters.departmentId)
+    chips.push({
+      key: 'departmentId',
+      label: 'Bộ môn',
+      value:
+        options.data?.departments?.find((department) => department.id === filters.departmentId)
+          ?.name ?? 'đã chọn',
+    });
   if (filters.majorId)
     chips.push({
       key: 'majorId',
@@ -225,7 +233,10 @@ function AlertsPageContent() {
             <Select
               id="alert-status"
               value={filters.status}
-              onChange={(event) => setFilters({ status: event.target.value || null })}
+              // openOnly thắng status ở API — chọn trạng thái cụ thể thì bỏ nó đi.
+              onChange={(event) =>
+                setFilters({ status: event.target.value || null, openOnly: null })
+              }
             >
               <option value="">Mọi trạng thái</option>
               {Object.entries(ALERT_STATUS_LABELS).map(([value, label]) => (
@@ -381,6 +392,7 @@ function AlertsPageContent() {
       </FilterBar>
 
       <DataTable
+        fitViewport
         headers={[
           'Độ khẩn',
           'Sinh viên',

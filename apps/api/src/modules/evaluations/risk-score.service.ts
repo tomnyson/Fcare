@@ -7,6 +7,10 @@ import {
 import type { AuthUser } from '../../common/types/auth-user';
 import { studentScope } from '../../common/utils/dept-scope';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  attendanceOfStudentSelect,
+  effectiveAbsentSessions,
+} from './absent-sessions';
 
 /**
  * Điểm rủi ro luôn được TÍNH LẠI từ dữ liệu nguồn, không lưu thành cột —
@@ -28,13 +32,14 @@ export class RiskScoreService {
         attitudeScore: true,
         absentSessions: true,
         criteria: { select: { criterion: true } },
+        classSection: attendanceOfStudentSelect(studentId),
       },
     });
 
     const inputs: EvaluationInput[] = rows.map((row) => ({
       academicScore: row.academicScore,
       attitudeScore: row.attitudeScore,
-      absentSessions: row.absentSessions,
+      absentSessions: effectiveAbsentSessions(row),
       criteria: row.criteria.map((mark) => mark.criterion),
     }));
 

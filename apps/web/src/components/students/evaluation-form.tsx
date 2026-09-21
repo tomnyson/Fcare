@@ -18,6 +18,11 @@ import { Button } from '@fcare/ui-kit';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { apiFetch, ApiError } from '../../lib/api';
+import {
+  absenceSourceHint,
+  initialAbsentValue,
+  parseAbsentInput,
+} from '../../lib/evaluation-absence';
 import type { ClassSection, Evaluation } from '../../lib/types';
 import { FormError, Input, Label, Select, Textarea } from '../ui/form';
 import { EvaluationGuidancePanel } from './evaluation-guidance';
@@ -141,6 +146,8 @@ interface EvaluationFormProps {
    * không tạo thêm — trước đây gửi lại là dính lỗi trùng.
    */
   ownEvaluations: Evaluation[];
+  /** Số buổi nghỉ theo dữ liệu điểm danh, theo id lớp học phần — để điền sẵn. */
+  systemAbsences?: Readonly<Record<string, number | null>>;
   onSaved: (term: string) => void;
   onCancel: () => void;
   /** ID lớp học phần chọn sẵn khi mở modal từ danh sách lớp. */
@@ -152,6 +159,7 @@ export function EvaluationForm({
   term,
   sections,
   ownEvaluations,
+  systemAbsences = {},
   onSaved,
   onCancel,
   initialSectionId,
@@ -180,11 +188,17 @@ export function EvaluationForm({
     new Set(existingInitial ? existingInitial.criteria.map((mark) => mark.criterion) : []),
   );
 
+  const [absentInput, setAbsentInput] = useState(
+    initialAbsentValue(existingInitial?.absentSessions, systemAbsences[defaultSectionId]),
+  );
+
   const [handoffStep, setHandoffStep] = useState(false);
   const [submittedNote, setSubmittedNote] = useState('');
 
   const academicScore = BAND_SCORE[academicBand];
   const attitudeScore = BAND_SCORE[attitudeBand];
+  const absentSessions = parseAbsentInput(absentInput);
+  const guidanceScores = { academicScore, attitudeScore, criteria: [...criteria], absentSessions };
   const existing = ownEvaluations.find(
     (evaluation) => evaluation.classSectionId === classSectionId,
   );
@@ -206,11 +220,7 @@ export function EvaluationForm({
         queryClient.invalidateQueries({ queryKey: ['evaluations', studentId] }),
         queryClient.invalidateQueries({ queryKey: ['risk-score', studentId, term] }),
       ]);
-      const currentGuidance = evaluationGuidance({
-        academicScore,
-        attitudeScore,
-        criteria: [...criteria],
-      });
+      const currentGuidance = evaluationGuidance(guidanceScores);
       // Nếu đề xuất mức 3 (Nguy cơ cao) hoặc 4 (Khẩn cấp), chuyển sang bước tương tác tiếp theo
       if (currentGuidance.suggestedLevel >= 3) {
         setHandoffStep(true);
@@ -233,6 +243,7 @@ export function EvaluationForm({
     setCriteria(
       new Set(current ? current.criteria.map((mark) => mark.criterion) : []),
     );
+    setAbsentInput(initialAbsentValue(current?.absentSessions, systemAbsences[id]));
   }
 
   function toggleCriterion(criterion: EvaluationCriterion) {
@@ -250,7 +261,6 @@ export function EvaluationForm({
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const absent = String(form.get('absentSessions') ?? '').trim();
     const note = String(form.get('note') ?? '').trim();
     setSubmittedNote(note);
     // PATCH chỉ nhận phần nội dung; sinh viên/lớp/học kỳ đã cố định ở bản cũ.
@@ -258,18 +268,14 @@ export function EvaluationForm({
       ...(existing ? {} : { studentId, classSectionId, term }),
       academicScore,
       attitudeScore,
-      ...(absent === '' ? {} : { absentSessions: Number(absent) }),
+      ...(absentSessions === null ? {} : { absentSessions }),
       criteria: [...criteria],
       ...(note === '' ? {} : { note }),
     });
   }
 
   if (handoffStep) {
-    const currentGuidance = evaluationGuidance({
-      academicScore,
-      attitudeScore,
-      criteria: [...criteria],
-    });
+    const currentGuidance = evaluationGuidance(guidanceScores);
     return (
       <EvaluationHandoffStep
         studentId={studentId}
@@ -341,15 +347,21 @@ export function EvaluationForm({
       <div className="max-w-56">
         <Label htmlFor="absentSessions">Số buổi đã vắng</Label>
         <Input
-          key={`absent-${classSectionId}-${existing?.id ?? 'moi'}`}
           id="absentSessions"
           name="absentSessions"
           type="number"
           min={0}
           max={100}
-          defaultValue={existing?.absentSessions ?? ''}
+          value={absentInput}
+          onChange={(event) => setAbsentInput(event.target.value)}
+          aria-describedby="absentSessions-hint"
         />
-        <p className="mt-1 text-xs text-muted">Để trống nếu chưa theo dõi chuyên cần.</p>
+        <p id="absentSessions-hint" className="mt-1 text-xs text-muted">
+          {classSectionId
+            ? absenceSourceHint(systemAbsences[classSectionId], absentInput)
+            : 'Chọn lớp học phần để lấy số buổi vắng từ dữ liệu điểm danh.'}{' '}
+          Vắng 2 buổi +2 điểm, từ 3 buổi +3 điểm rủi ro.
+        </p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -370,7 +382,7 @@ export function EvaluationForm({
       </div>
 
       <EvaluationGuidancePanel
-        scores={{ academicScore, attitudeScore, criteria: [...criteria] }}
+        scores={guidanceScores}
         showHandoffHint
       />
 

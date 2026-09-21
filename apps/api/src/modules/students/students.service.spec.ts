@@ -331,9 +331,11 @@ describe('StudentsService.filterOptions', () => {
   const LECTURER_SECTION_SCOPE = [{ lecturerId: 'l' }];
 
   function setup() {
-    const studentGroupBy = jest
-      .fn()
-      .mockResolvedValue([{ classCode: 'SE1901' }, { classCode: 'SE1902' }]);
+    const studentGroupBy = jest.fn().mockResolvedValue([
+      { classCode: 'SE1901', majorId: 'mj-1' },
+      { classCode: 'SE1901', majorId: 'mj-2' },
+      { classCode: 'SE1902', majorId: null },
+    ]);
     const majorFindMany = jest
       .fn()
       .mockResolvedValue([
@@ -355,14 +357,21 @@ describe('StudentsService.filterOptions', () => {
         subject: { code: 'COM2013', name: 'Web design' },
       },
     ]);
+    const departmentFindMany = jest
+      .fn()
+      .mockResolvedValue([
+        { id: 'dept-1', code: 'CNTT', name: 'Công nghệ thông tin' },
+      ]);
     const localPrisma = {
       student: { groupBy: studentGroupBy },
       major: { findMany: majorFindMany },
       classSection: { groupBy: sectionGroupBy, findMany: sectionFindMany },
       staff: { findMany: staffFindMany },
+      department: { findMany: departmentFindMany },
     } as unknown as PrismaService;
     return {
       service: new StudentsService(localPrisma, audit),
+      departmentFindMany,
       studentGroupBy,
       majorFindMany,
       sectionGroupBy,
@@ -371,12 +380,13 @@ describe('StudentsService.filterOptions', () => {
     };
   }
 
-  it('trả về 5 danh sách option ở dạng phẳng', async () => {
+  it('trả về 6 danh sách option ở dạng phẳng', async () => {
     const { service: local } = setup();
 
     await expect(local.filterOptions(adminUser)).resolves.toEqual({
       terms: ['SU25', 'SP25'],
       classCodes: ['SE1901', 'SE1902'],
+      classMajors: { SE1901: ['mj-1', 'mj-2'], SE1902: [] },
       majors: [{ id: 'mj-1', code: 'SE', name: 'Kỹ thuật phần mềm' }],
       lecturers: [{ id: 'gv-1', staffCode: 'GV001', fullName: 'Trần Bình' }],
       sections: [
@@ -387,7 +397,47 @@ describe('StudentsService.filterOptions', () => {
           subject: { code: 'COM2013', name: 'Web design' },
         },
       ],
+      departments: [
+        { id: 'dept-1', code: 'CNTT', name: 'Công nghệ thông tin' },
+      ],
     });
+  });
+
+  it('gom lớp và ngành trong một truy vấn scope để ô Ngành lọc theo Lớp', async () => {
+    const { service: local, studentGroupBy } = setup();
+
+    await local.filterOptions(lecturerUser);
+
+    const [args] = studentGroupBy.mock.calls[0] as [
+      { by: string[]; where: ScopedArgs['where'] },
+    ];
+    expect(args.by).toEqual(['classCode', 'majorId']);
+    expect(args.where?.AND).toEqual(LECTURER_SCOPE);
+  });
+
+  it('RULE 2: bộ môn trong option chỉ gồm bộ môn có sinh viên trong phạm vi', async () => {
+    const { service: local, departmentFindMany } = setup();
+
+    await local.filterOptions(lecturerUser);
+
+    const [args] = departmentFindMany.mock.calls[0] as [
+      { where: Record<string, unknown> },
+    ];
+    expect(args.where).toEqual({
+      isActive: true,
+      students: { some: { AND: LECTURER_SCOPE } },
+    });
+  });
+
+  it('vai trò toàn trường thấy mọi bộ môn đang hoạt động', async () => {
+    const { service: local, departmentFindMany } = setup();
+
+    await local.filterOptions(adminUser);
+
+    const [args] = departmentFindMany.mock.calls[0] as [
+      { where: Record<string, unknown> },
+    ];
+    expect(args.where).toEqual({ isActive: true });
   });
 
   it('RULE 2: danh sách lớp học phần trong bộ lọc bị giới hạn theo sectionScope', async () => {
@@ -488,5 +538,148 @@ describe('StudentsService.list — cột số buổi vắng', () => {
       { id: 's2', absentSessions: null, maxSectionAbsent: null },
       { id: 's3', absentSessions: null, maxSectionAbsent: null },
     ]);
+  });
+});
+
+describe('StudentsService.list — sắp xếp theo số buổi vắng / cảnh báo mở', () => {
+  const idsFindMany = jest.fn();
+  const enrollmentGroupBy = jest.fn();
+  const alertGroupBy = jest.fn();
+  const sortPrisma = {
+    student: { findMany: idsFindMany },
+    enrollment: { groupBy: enrollmentGroupBy },
+    alert: { groupBy: alertGroupBy },
+  } as unknown as PrismaService;
+  const sortService = new StudentsService(sortPrisma, audit);
+
+  const STUDENTS = [
+    { id: 's1', studentCode: 'SE001', classCode: 'SE1901' },
+    { id: 's2', studentCode: 'SE002', classCode: 'SE1901' },
+    { id: 's3', studentCode: 'SE003', classCode: 'SE1901' },
+    { id: 's4', studentCode: 'SE004', classCode: 'SE1901' },
+  ];
+
+  /** Lần 1 lấy toàn bộ id trong phạm vi; lần 2 nạp chi tiết trang (thứ tự DB ngẫu nhiên). */
+  function mockStudents() {
+    idsFindMany.mockReset();
+    idsFindMany.mockResolvedValueOnce(STUDENTS);
+    idsFindMany.mockImplementationOnce(
+      ({ where }: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(
+          [...where.id.in].reverse().map((id) => ({ id, enrollments: [] })),
+        ),
+    );
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockStudents();
+    enrollmentGroupBy.mockResolvedValue([
+      { studentId: 's1', _sum: { absentSessions: 2 } },
+      { studentId: 's2', _sum: { absentSessions: 7 } },
+      { studentId: 's3', _sum: { absentSessions: 2 } },
+    ]);
+    alertGroupBy.mockResolvedValue([
+      { studentId: 's2', _count: { _all: 1 } },
+      { studentId: 's4', _count: { _all: 3 } },
+    ]);
+  });
+
+  it('absentSessions desc: nhiều vắng lên đầu, hoà thì theo MSSV, chưa có dữ liệu xuống cuối', async () => {
+    const result = await sortService.list(adminUser, {
+      sortBy: 'absentSessions',
+      sortDir: 'desc',
+    });
+    expect(result.items.map((s) => s.id)).toEqual(['s2', 's1', 's3', 's4']);
+    expect(result.meta).toEqual({ total: 4, page: 1, limit: 20 });
+  });
+
+  it('absentSessions asc: chưa có dữ liệu vẫn nằm cuối', async () => {
+    const result = await sortService.list(adminUser, {
+      sortBy: 'absentSessions',
+      sortDir: 'asc',
+    });
+    expect(result.items.map((s) => s.id)).toEqual(['s1', 's3', 's2', 's4']);
+  });
+
+  it('openAlerts desc: không có cảnh báo mở tính là 0', async () => {
+    const result = await sortService.list(adminUser, {
+      sortBy: 'openAlerts',
+      sortDir: 'desc',
+    });
+    expect(result.items.map((s) => s.id)).toEqual(['s4', 's2', 's1', 's3']);
+    expect(enrollmentGroupBy).not.toHaveBeenCalled();
+  });
+
+  it('cắt trang SAU khi sắp xếp và chỉ nạp chi tiết của trang đó', async () => {
+    const result = await sortService.list(adminUser, {
+      sortBy: 'openAlerts',
+      sortDir: 'desc',
+      page: 2,
+      limit: 2,
+    });
+    expect(result.items.map((s) => s.id)).toEqual(['s1', 's3']);
+    expect(result.meta).toEqual({ total: 4, page: 2, limit: 2 });
+    const [detailArgs] = idsFindMany.mock.calls[1] as [
+      { where: { id: { in: string[] } } },
+    ];
+    expect(detailArgs.where.id.in).toEqual(['s1', 's3']);
+  });
+
+  it('số liệu gom theo đúng phạm vi sinh viên và kỳ đang lọc (RULE 2)', async () => {
+    await sortService.list(lecturerUser, {
+      sortBy: 'absentSessions',
+      term: 'FA26',
+    });
+    const [idArgs] = idsFindMany.mock.calls[0] as [
+      { where: { AND?: unknown[] } },
+    ];
+    expect(idArgs.where.AND).toEqual(LECTURER_SCOPE);
+    const [groupArgs] = enrollmentGroupBy.mock.calls[0] as [
+      {
+        by: string[];
+        where: { classSection: unknown; student: { AND?: unknown[] } };
+      },
+    ];
+    expect(groupArgs.by).toEqual(['studentId']);
+    expect(groupArgs.where.classSection).toEqual({ term: 'FA26' });
+    expect(groupArgs.where.student.AND).toEqual(LECTURER_SCOPE);
+  });
+
+  it('gom theo lớp (A→Z) trước, rồi mới xếp theo chỉ số trong từng lớp', async () => {
+    idsFindMany.mockReset();
+    idsFindMany.mockResolvedValueOnce([
+      { id: 's1', studentCode: 'SE001', classCode: 'SE1902' },
+      { id: 's2', studentCode: 'SE002', classCode: 'SE1901' },
+      { id: 's3', studentCode: 'SE003', classCode: 'SE1902' },
+      { id: 's4', studentCode: 'SE004', classCode: 'SE1901' },
+    ]);
+    idsFindMany.mockImplementationOnce(
+      ({ where }: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(where.id.in.map((id) => ({ id, enrollments: [] }))),
+    );
+    // s2=7, s4=null (lớp SE1901); s1=2, s3=2 (lớp SE1902)
+    const result = await sortService.list(adminUser, {
+      sortBy: 'absentSessions',
+      sortDir: 'desc',
+    });
+    expect(result.items.map((s) => s.id)).toEqual(['s2', 's4', 's1', 's3']);
+    const [idArgs] = idsFindMany.mock.calls[0] as [
+      { select: Record<string, boolean> },
+    ];
+    expect(idArgs.select).toEqual({
+      id: true,
+      studentCode: true,
+      classCode: true,
+    });
+  });
+
+  it('cảnh báo mở gom theo phạm vi và bỏ cảnh báo đã xử lý', async () => {
+    await sortService.list(lecturerUser, { sortBy: 'openAlerts' });
+    const [groupArgs] = alertGroupBy.mock.calls[0] as [
+      { where: { status: unknown; student: { AND?: unknown[] } } },
+    ];
+    expect(groupArgs.where.status).toEqual({ not: 'RESOLVED' });
+    expect(groupArgs.where.student.AND).toEqual(LECTURER_SCOPE);
   });
 });

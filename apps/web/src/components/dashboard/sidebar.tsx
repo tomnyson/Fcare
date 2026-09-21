@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { apiFetch } from '../../lib/api';
 import { formatNavBadge } from '../../lib/attendance-care';
+import { resetPush } from '../../lib/push/onesignal';
 import { BrandMark } from '../ui/brand-mark';
 import { ROLE_LABELS } from '../../lib/labels';
 import type { AuthUser, StatisticsOverview } from '../../lib/types';
@@ -304,6 +305,8 @@ function SidebarFooter({ user }: { user: AuthUser }) {
   const queryClient = useQueryClient();
 
   async function onLogout() {
+    // Gỡ định danh push trước — máy dùng chung không nhận cảnh báo của người trước.
+    await resetPush();
     await apiFetch('/auth/logout', { method: 'POST' }).catch(() => undefined);
     queryClient.clear();
     router.push('/login');

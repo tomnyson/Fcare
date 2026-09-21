@@ -6,6 +6,7 @@ function payloadFor(title: string) {
   return {
     id: `id-${title}`,
     alertId: 'alert-1',
+    alertLevel: 3,
     analysisVersionId: null,
     targetUrl: null,
     title,

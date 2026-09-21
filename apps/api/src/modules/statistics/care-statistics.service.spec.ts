@@ -193,15 +193,16 @@ describe('CareStatisticsService', () => {
       },
     ]);
     const report = await service.list(user, { term: 'FA26' });
+    // Nhận xét vẫn được đếm, nhưng KHÔNG tính là đã chăm sóc.
     expect(report.lecturers[0]).toMatchObject({
       studentCount: 1,
-      caredCount: 1,
+      caredCount: 0,
       evaluationCount: 1,
-      careRate: 100,
+      careRate: 0,
     });
-    expect(report.lecturers[0].sections.map((row) => row.caredCount)).toEqual([
-      1, 0,
-    ]);
+    expect(
+      report.lecturers[0].sections.map((row) => row.evaluationCount),
+    ).toEqual([1, 0]);
     expect(prisma.evaluation.findMany).toHaveBeenCalledWith(
       containing({
         where: containing({
@@ -210,6 +211,70 @@ describe('CareStatisticsService', () => {
         }),
       }),
     );
+  });
+
+  it('chỉ nhật ký chăm sóc mới tính là đã chăm sóc — nhận xét, thảo luận thì không', async () => {
+    const { service, prisma } = setup();
+    prisma.classSection.findMany.mockResolvedValue([section('A')]);
+    prisma.evaluation.findMany.mockResolvedValue([
+      {
+        id: 'e1',
+        lecturerId: 'teacher',
+        classSectionId: 'A',
+        studentId: 'student',
+        academicScore: 8,
+        attitudeScore: 2,
+        absentSessions: 0,
+        note: 'Tốt',
+        criteria: [],
+        lecturer: { staffCode: 'GV1', fullName: 'Teacher' },
+        updatedAt: term.startDate,
+      },
+    ]);
+    prisma.discussionMessage.findMany.mockResolvedValue([
+      {
+        id: 'd1',
+        studentId: 'student',
+        authorId: 'teacher',
+        body: 'Thầy cô lưu ý em này',
+        createdAt: term.startDate,
+        author: { staffCode: 'GV1', fullName: 'Teacher' },
+      },
+    ]);
+
+    const noLog = await service.list(user, { term: 'FA26' });
+    const [row] = noLog.lecturers[0].sections[0].students;
+    expect(row).toMatchObject({
+      cared: false,
+      evaluationCount: 1,
+      discussionCount: 1,
+      careLogCount: 0,
+      lastCareAt: null,
+    });
+    expect(noLog.lecturers[0]).toMatchObject({ caredCount: 0, careRate: 0 });
+
+    prisma.careLog.findMany.mockResolvedValue([
+      {
+        id: 'l1',
+        staffId: 'teacher',
+        studentId: 'student',
+        channel: 'IN_PERSON',
+        content: 'Gặp',
+        outcome: null,
+        nextAction: null,
+        staff: { staffCode: 'GV1', fullName: 'Teacher' },
+        createdAt: term.endDate,
+      },
+    ]);
+    const withLog = await service.list(user, { term: 'FA26' });
+    expect(withLog.lecturers[0].sections[0].students[0]).toMatchObject({
+      cared: true,
+      lastCareAt: term.endDate.toISOString(),
+    });
+    expect(withLog.lecturers[0]).toMatchObject({
+      caredCount: 1,
+      careRate: 100,
+    });
   });
 
   it('counts own logs once per teacher, uses inclusive dates and includes resolved alerts', async () => {
@@ -557,8 +622,9 @@ describe('CareStatisticsService', () => {
       'A',
       1,
       1,
-      1,
-      '100%',
+      // Chỉ có nhận xét, chưa có nhật ký → chưa tính là đã chăm sóc.
+      0,
+      '0%',
       1,
       0,
       0,

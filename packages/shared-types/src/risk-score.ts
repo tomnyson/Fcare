@@ -162,7 +162,7 @@ export function computeRiskScore(
     reasons.push(
       allAbsentThree
         ? `Chuyên cần: tất cả ${sessions.length} giảng viên đều ghi vắng từ 3 buổi → ${RC} điểm.`
-        : `Chuyên cần: ${RC} điểm.`,
+        : `Chuyên cần: vắng nhiều nhất ${Math.max(...sessions)} buổi → ${RC} điểm.`,
     );
   }
   for (const criterion of marked) {

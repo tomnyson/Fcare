@@ -86,7 +86,7 @@ const DETAIL_FIXED_WIDTHS = [14, 24, 20, 20, 28, 13, 24, 15, 18, 50];
 const DISCUSSION_HEADER = 'Trao đổi thảo luận giữa GV & CB';
 
 const SUMMARY_DEFINITIONS =
-  'Mỗi dòng là một lớp môn. Sĩ số SV: sinh viên của lớp môn. Lượt cảnh báo: số SV của lớp có cảnh báo trong kỳ (gắn lớp này hoặc không gắn lớp nào). Lượt chăm sóc: số SV cảnh báo đã được chăm sóc (có nhận xét tại lớp, nhật ký hoặc trao đổi nội bộ trong kỳ). Tỷ lệ chăm sóc = Lượt chăm sóc / Lượt cảnh báo (chỉ tính trên SV cảnh báo, không tính trên sĩ số). Lượt nhận xét, Lượt nhật ký, Lượt GV chăm sóc: đếm trên SV cảnh báo; Lượt nhật ký gồm nhật ký của mọi người (GV, CB), Lượt GV chăm sóc chỉ nhật ký do giảng viên đứng lớp ghi.';
+  'Mỗi dòng là một lớp môn. Sĩ số SV: sinh viên của lớp môn. Lượt cảnh báo: số SV của lớp có cảnh báo trong kỳ (gắn lớp này hoặc không gắn lớp nào). Lượt chăm sóc: số SV cảnh báo đã có ít nhất một nhật ký chăm sóc trong kỳ (nhận xét và trao đổi nội bộ không tính là chăm sóc). Tỷ lệ chăm sóc = Lượt chăm sóc / Lượt cảnh báo (chỉ tính trên SV cảnh báo, không tính trên sĩ số). Lượt nhận xét, Lượt nhật ký, Lượt GV chăm sóc: đếm trên SV cảnh báo; Lượt nhật ký gồm nhật ký của mọi người (GV, CB), Lượt GV chăm sóc chỉ nhật ký do giảng viên đứng lớp ghi.';
 const DETAIL_DEFINITIONS =
   'Chỉ gồm sinh viên có cảnh báo trong kỳ (đã hoặc chưa được chăm sóc); mỗi dòng là một sinh viên trong một lớp môn. Mỗi lần GV hoặc CB ghi nhật ký chăm sóc là một cột "Nhật ký chăm sóc lần X" (lần 1 là sớm nhất), ghi giờ, ngày, Acc người chăm sóc và nội dung. Mức cảnh báo: mức cao nhất trong kỳ tại lớp này.';
 

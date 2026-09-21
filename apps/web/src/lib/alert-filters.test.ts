@@ -33,8 +33,10 @@ describe('parseAlertFilters', () => {
       term: 'SU25',
       classCode: 'SE1901',
       majorId: 'mj-1',
+      departmentId: '',
       lecturerId: 'gv-1',
       sectionId: 'cs-1',
+      openOnly: false,
       source: 'AUTO_ATTENDANCE',
     });
   });
@@ -47,8 +49,10 @@ describe('parseAlertFilters', () => {
       term: '',
       classCode: '',
       majorId: '',
+      departmentId: '',
       lecturerId: '',
       sectionId: '',
+      openOnly: false,
       source: '',
     });
   });
@@ -101,9 +105,11 @@ describe('clearAlertFiltersPatch', () => {
     const patch = clearAlertFiltersPatch();
     expect(Object.keys(patch).sort()).toEqual([
       'classCode',
+      'departmentId',
       'lecturerId',
       'level',
       'majorId',
+      'openOnly',
       'search',
       'sectionId',
       'source',

@@ -7,6 +7,7 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -16,6 +17,12 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+
+/** Cột sắp xếp được trên bảng sinh viên — không có thì mặc định theo MSSV. */
+export const STUDENT_SORT_FIELDS = ['absentSessions', 'openAlerts'] as const;
+export type StudentSortField = (typeof STUDENT_SORT_FIELDS)[number];
+export const SORT_DIRECTIONS = ['asc', 'desc'] as const;
+export type SortDirection = (typeof SORT_DIRECTIONS)[number];
 
 export class CreateStudentDto {
   @ApiProperty({ example: 'SE190001', description: 'Mã số sinh viên' })
@@ -142,6 +149,20 @@ export class ListStudentsQuery {
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   missingMajor?: boolean;
+
+  @ApiPropertyOptional({
+    enum: STUDENT_SORT_FIELDS,
+    description:
+      'Sắp xếp theo tổng buổi vắng (trong phạm vi kỳ/lớp HP đang lọc) hoặc số cảnh báo đang mở',
+  })
+  @IsOptional()
+  @IsIn(STUDENT_SORT_FIELDS)
+  sortBy?: StudentSortField;
+
+  @ApiPropertyOptional({ enum: SORT_DIRECTIONS, default: 'desc' })
+  @IsOptional()
+  @IsIn(SORT_DIRECTIONS)
+  sortDir?: SortDirection;
 }
 
 export class BulkAssignMajorDto {

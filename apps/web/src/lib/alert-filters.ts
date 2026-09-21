@@ -12,8 +12,12 @@ export interface AlertFilters {
   term: string;
   classCode: string;
   majorId: string;
+  /** Bộ môn của sinh viên — link từ thẻ "Theo bộ môn" ở Tổng quan. */
+  departmentId: string;
   lecturerId: string;
   sectionId: string;
+  /** Chỉ cảnh báo chưa giải quyết (OPEN + ACKNOWLEDGED); API cho thắng `status`. */
+  openOnly: boolean;
   /** Nguồn cảnh báo: '' (tất cả) | 'MANUAL' | 'AUTO_ATTENDANCE'. */
   source: string;
 }
@@ -26,8 +30,10 @@ export const ALERT_FILTER_KEYS = [
   'term',
   'classCode',
   'majorId',
+  'departmentId',
   'lecturerId',
   'sectionId',
+  'openOnly',
   'source',
 ] as const;
 
@@ -39,8 +45,10 @@ export function parseAlertFilters(params: URLSearchParams): AlertFilters {
     term: params.get('term') ?? '',
     classCode: params.get('classCode') ?? '',
     majorId: params.get('majorId') ?? '',
+    departmentId: params.get('departmentId') ?? '',
     lecturerId: params.get('lecturerId') ?? '',
     sectionId: params.get('sectionId') ?? '',
+    openOnly: params.get('openOnly') === 'true',
     source: params.get('source') ?? '',
   };
 }
@@ -59,8 +67,10 @@ export function buildAlertListQuery(
     ['term', filters.term],
     ['classCode', filters.classCode],
     ['majorId', filters.majorId],
+    ['departmentId', filters.departmentId],
     ['lecturerId', filters.lecturerId],
     ['sectionId', filters.sectionId],
+    ['openOnly', filters.openOnly ? 'true' : ''],
     ['source', filters.source],
   ];
   for (const [key, value] of entries) {
@@ -78,8 +88,10 @@ export function activeAlertFilterCount(filters: AlertFilters): number {
     filters.term,
     filters.classCode,
     filters.majorId,
+    filters.departmentId,
     filters.lecturerId,
     filters.sectionId,
+    filters.openOnly ? 'true' : '',
     filters.source,
   ].filter(Boolean).length;
 }

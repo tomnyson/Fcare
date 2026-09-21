@@ -107,6 +107,7 @@ describe('StudentAnalysisSourceService.buildSnapshot', () => {
           attitudeScore: 8,
           absentSessions: 1,
           criteria: [{ criterion: 'P_PART_TIME_JOB' }],
+          classSection: { enrollments: [] },
           note: 'Nguyen Van A lien he qua email sv001@example.edu',
           updatedAt: new Date('2026-08-24T00:00:00.000Z'),
           lecturer: {
@@ -144,6 +145,7 @@ describe('StudentAnalysisSourceService.buildSnapshot', () => {
           attitudeScore: 8,
           absentSessions: 1,
           criteria: [{ criterion: 'P_PART_TIME_JOB' }],
+          classSection: { enrollments: [] },
           note: 'dia chi: 12 Nguyen Hue',
           updatedAt: new Date('2026-08-24T00:00:00.000Z'),
           lecturer: {
@@ -161,5 +163,51 @@ describe('StudentAnalysisSourceService.buildSnapshot', () => {
     expect(result.snapshot.limitations).toContain(
       'Không có dữ liệu học phần cho học kỳ trọng tâm.',
     );
+  });
+
+  it('nhan xet bo trong so buoi vang thi lay tu du lieu diem danh cua lop do', async () => {
+    const { prisma, service } = makeService();
+    const studentFindUnique = prisma.student.findUnique as jest.Mock;
+    studentFindUnique.mockResolvedValue({
+      studentCode: 'SV001',
+      fullName: 'Nguyen Van A',
+      enrollments: [],
+      evaluations: [
+        {
+          term: '2025A',
+          academicScore: 10,
+          attitudeScore: 10,
+          absentSessions: null,
+          criteria: [],
+          classSection: { enrollments: [{ absentSessions: 3 }] },
+          note: null,
+          updatedAt: new Date('2026-08-24T00:00:00.000Z'),
+          lecturer: {
+            fullName: 'Tran Thi B',
+            staffCode: 'GV001',
+            username: 'ttb',
+          },
+        },
+      ],
+      careLogs: [],
+    });
+
+    const result = await service.buildSnapshot('student-1', '2025A');
+
+    expect(result.snapshot.evaluations[0]?.absentSessions).toBe(3);
+    expect(result.snapshot.riskScore.components.RC).toBe(3);
+    const calls = studentFindUnique.mock.calls as unknown[][];
+    const args = calls[0][0] as {
+      select: {
+        evaluations: {
+          select: {
+            classSection: { select: { enrollments: { where: unknown } } };
+          };
+        };
+      };
+    };
+    expect(
+      args.select.evaluations.select.classSection.select.enrollments.where,
+    ).toEqual({ studentId: 'student-1' });
   });
 });

@@ -18,6 +18,7 @@ describe('RiskScoreService', () => {
             attitudeScore: 3,
             absentSessions: 3,
             criteria: [{ criterion: 'P_DROPOUT_INTENT' }],
+            classSection: { enrollments: [{ absentSessions: 0 }] },
           },
         ]),
       },
@@ -40,5 +41,80 @@ describe('RiskScoreService', () => {
     expect(where.student).toBeDefined();
     expect(where.studentId).toBe('sv-1');
     expect(where.term).toBe('SU25');
+  });
+
+  it('giảng viên bỏ trống số buổi vắng thì lấy số buổi nghỉ từ dữ liệu điểm danh của lớp đó', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        academicScore: 10,
+        attitudeScore: 10,
+        absentSessions: null,
+        criteria: [],
+        classSection: { enrollments: [{ absentSessions: 3 }] },
+      },
+    ]);
+    const prisma = { evaluation: { findMany } } as unknown as PrismaService;
+    const result = await new RiskScoreService(prisma).forStudentTerm(
+      user,
+      'sv-1',
+      'SU25',
+    );
+
+    expect(result.components.RC).toBe(3);
+    const calls = findMany.mock.calls as [
+      {
+        select: {
+          classSection: { select: { enrollments: { where: unknown } } };
+        };
+      },
+    ][];
+    // Chỉ lấy enrollment của đúng sinh viên này trong lớp học phần.
+    expect(calls[0][0].select.classSection.select.enrollments.where).toEqual({
+      studentId: 'sv-1',
+    });
+  });
+
+  it('số giảng viên tự ghi được ưu tiên hơn dữ liệu điểm danh', async () => {
+    const prisma = {
+      evaluation: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            academicScore: 10,
+            attitudeScore: 10,
+            absentSessions: 2,
+            criteria: [],
+            classSection: { enrollments: [{ absentSessions: 5 }] },
+          },
+        ]),
+      },
+    } as unknown as PrismaService;
+    const result = await new RiskScoreService(prisma).forStudentTerm(
+      user,
+      'sv-1',
+      'SU25',
+    );
+    expect(result.components.RC).toBe(2);
+  });
+
+  it('không có cả hai nguồn thì R_C = 0', async () => {
+    const prisma = {
+      evaluation: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            academicScore: 10,
+            attitudeScore: 10,
+            absentSessions: null,
+            criteria: [],
+            classSection: { enrollments: [] },
+          },
+        ]),
+      },
+    } as unknown as PrismaService;
+    const result = await new RiskScoreService(prisma).forStudentTerm(
+      user,
+      'sv-1',
+      'SU25',
+    );
+    expect(result.components.RC).toBe(0);
   });
 });

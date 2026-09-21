@@ -156,14 +156,20 @@ export interface ClassSectionOption {
 export interface StudentFilterOptions {
   terms: string[];
   classCodes: string[];
+  /** `{ classCode: majorId[] }` — ngành có sinh viên trong từng lớp (trong phạm vi). */
+  classMajors?: Record<string, string[]>;
   majors: Array<{ id: string; code: string; name: string }>;
   lecturers: StaffRef[];
   sections: ClassSectionOption[];
+  /** Bộ môn trong phạm vi — gọi tên chip khi mở từ thẻ bộ môn ở Tổng quan. */
+  departments?: Array<{ id: string; code: string; name: string }>;
 }
 
 export interface Enrollment {
   id: string;
   attendanceRate: number | null;
+  /** Số buổi nghỉ từ file điểm danh import; null = chưa có dữ liệu. */
+  absentSessions: number | null;
   midtermScore: number | null;
   finalScore: number | null;
   totalScore: number | null;
