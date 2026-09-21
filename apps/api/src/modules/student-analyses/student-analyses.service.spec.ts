@@ -148,6 +148,9 @@ function makeService() {
     alert: {
       create: jest.fn().mockResolvedValue({ id: 'alert-1' }),
     },
+    evaluation: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     notification: {
       findMany: jest.fn(),
       count: jest.fn(),
@@ -557,6 +560,84 @@ describe('StudentAnalysesService.sendVersion', () => {
     );
     expect(result.alertId).toBe('alert-1');
     expect(result.recipientCount).toBe(1);
+  });
+
+  it('cảnh báo gắn học kỳ + lớp học phần của nhận xét gốc', async () => {
+    const { prisma, service } = makeService();
+    prisma.studentTermAnalysisVersion.findUnique = jest
+      .fn()
+      .mockResolvedValue(makeManagedVersion());
+    (
+      prisma.studentTermAnalysisVersion.updateMany as jest.Mock
+    ).mockResolvedValue({ count: 1 });
+    (prisma.evaluation.findFirst as jest.Mock).mockResolvedValue({
+      classSectionId: 'cs-1',
+    });
+
+    await service.sendVersion(ownerUser, 'version-1', sendDto);
+
+    expect(prisma.evaluation.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          studentId: 'student-1',
+          term: '2025A',
+          lecturerId: ownerUser.id,
+        },
+      }),
+    );
+    expect(prisma.alert.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          term: '2025A',
+          classSectionId: 'cs-1',
+        }),
+      }),
+    );
+  });
+
+  it('người gửi khác người nhận xét gốc: thử lớp của người nhận xét trước, không có thì lớp người gửi', async () => {
+    const { prisma, service } = makeService();
+    prisma.studentTermAnalysisVersion.findUnique = jest
+      .fn()
+      .mockResolvedValue(makeManagedVersion({ createdById: 'gv-goc' }));
+    (
+      prisma.studentTermAnalysisVersion.updateMany as jest.Mock
+    ).mockResolvedValue({ count: 1 });
+    (prisma.evaluation.findFirst as jest.Mock)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ classSectionId: 'cs-cua-nguoi-gui' });
+
+    await service.sendVersion(adminUser, 'version-1', sendDto);
+
+    const lecturerIds = (
+      prisma.evaluation.findFirst as jest.Mock
+    ).mock.calls.map(
+      ([args]: [{ where: { lecturerId: string } }]) => args.where.lecturerId,
+    );
+    expect(lecturerIds).toEqual(['gv-goc', adminUser.id]);
+    expect(prisma.alert.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ classSectionId: 'cs-cua-nguoi-gui' }),
+      }),
+    );
+  });
+
+  it('không ai có nhận xét trong kỳ thì cảnh báo vẫn gửi, lớp để trống', async () => {
+    const { prisma, service } = makeService();
+    prisma.studentTermAnalysisVersion.findUnique = jest
+      .fn()
+      .mockResolvedValue(makeManagedVersion());
+    (
+      prisma.studentTermAnalysisVersion.updateMany as jest.Mock
+    ).mockResolvedValue({ count: 1 });
+
+    await service.sendVersion(ownerUser, 'version-1', sendDto);
+
+    expect(prisma.alert.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ term: '2025A', classSectionId: null }),
+      }),
+    );
   });
   it('chọn nội dung giảng viên thì gửi kèm lịch sử chăm sóc', async () => {
     const { prisma, service } = makeService();

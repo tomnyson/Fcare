@@ -158,3 +158,71 @@ describe('AlertsService.list — lọc nhiều tiêu chí', () => {
     expect(countArgs.where).toEqual(findArgs.where);
   });
 });
+
+/** `data` của lần gọi `prisma.alert.create` đầu tiên. */
+function createdData(create: jest.Mock): Record<string, unknown> {
+  const [args] = create.mock.calls[0] as [{ data: Record<string, unknown> }];
+  return args.data;
+}
+
+describe('AlertsService.raise — gắn lớp học phần của nhận xét', () => {
+  const student = { id: 'st', fullName: 'SV', studentCode: 'PK1' };
+  function setup(section: { id: string; term: string } | null) {
+    const create = jest.fn().mockResolvedValue({ id: 'al' });
+    const sectionFindFirst = jest.fn().mockResolvedValue(section);
+    const prisma = {
+      student: { findFirst: jest.fn().mockResolvedValue(student) },
+      classSection: { findFirst: sectionFindFirst },
+      alert: { create },
+    } as unknown as PrismaService;
+    const service = new AlertsService(
+      prisma,
+      {
+        computeRecipientIds: jest.fn().mockResolvedValue([]),
+      } as unknown as EscalationService,
+      { log: jest.fn() } as unknown as AuditService,
+      {} as NotificationDispatchService,
+      { on: jest.fn(), add: jest.fn() } as unknown as Queue<EscalationJobData>,
+    );
+    return { service, create, sectionFindFirst };
+  }
+  const dto = {
+    studentId: 'st',
+    level: 2,
+    reason: 'Sinh viên học yếu cần theo dõi',
+  };
+
+  it('lưu lớp + học kỳ khi sinh viên có học lớp đó', async () => {
+    const { service, create, sectionFindFirst } = setup({
+      id: 'cs',
+      term: 'FA26',
+    });
+    await service.raise(lecturerUser, { ...dto, classSectionId: 'cs' });
+    expect(sectionFindFirst).toHaveBeenCalledWith({
+      where: { id: 'cs', enrollments: { some: { studentId: 'st' } } },
+      select: { id: true, term: true },
+    });
+    expect(createdData(create)).toMatchObject({
+      classSectionId: 'cs',
+      term: 'FA26',
+    });
+  });
+
+  it('từ chối lớp mà sinh viên không học', async () => {
+    const { service, create } = setup(null);
+    await expect(
+      service.raise(lecturerUser, { ...dto, classSectionId: 'khac' }),
+    ).rejects.toThrow('Sinh viên không học lớp học phần này.');
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('không gửi lớp thì giữ như cũ: không truy vấn lớp, không gắn lớp', async () => {
+    const { service, create, sectionFindFirst } = setup(null);
+    await service.raise(lecturerUser, dto);
+    expect(sectionFindFirst).not.toHaveBeenCalled();
+    expect(createdData(create)).toMatchObject({
+      classSectionId: null,
+      term: null,
+    });
+  });
+});

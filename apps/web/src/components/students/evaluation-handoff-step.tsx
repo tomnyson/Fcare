@@ -7,9 +7,23 @@ import { ApiError, apiFetch } from '../../lib/api';
 import { FormError, FormSuccess, Textarea } from '../ui/form';
 import { SuggestedLevelBadge } from './evaluation-guidance';
 
+interface RaiseAlertInput {
+  studentId: string;
+  level: number;
+  reason: string;
+  classSectionId?: string;
+}
+
+/** Thân `POST /alerts`: kèm lớp học phần vừa nhận xét để cảnh báo có liên kết lớp. */
+export function raiseAlertBody({ classSectionId, ...rest }: RaiseAlertInput): RaiseAlertInput {
+  return classSectionId ? { ...rest, classSectionId } : rest;
+}
+
 interface EvaluationHandoffStepProps {
   studentId: string;
   term: string;
+  /** Lớp học phần của nhận xét vừa lưu — cảnh báo phát ra gắn lớp này. */
+  classSectionId?: string;
   suggestedLevel: number;
   criterionLabels: readonly string[];
   note?: string;
@@ -23,6 +37,7 @@ interface EvaluationHandoffStepProps {
 export function EvaluationHandoffStep({
   studentId,
   term,
+  classSectionId,
   suggestedLevel,
   criterionLabels,
   note,
@@ -62,11 +77,14 @@ export function EvaluationHandoffStep({
       // 1. Phát cảnh báo
       await apiFetch('/alerts', {
         method: 'POST',
-        body: JSON.stringify({
-          studentId,
-          level: suggestedLevel,
-          reason: reason.trim() || defaultReason,
-        }),
+        body: JSON.stringify(
+          raiseAlertBody({
+            studentId,
+            level: suggestedLevel,
+            reason: reason.trim() || defaultReason,
+            classSectionId,
+          }),
+        ),
       });
 
       // 2. Kích hoạt phân tích AI (nếu khả dụng)

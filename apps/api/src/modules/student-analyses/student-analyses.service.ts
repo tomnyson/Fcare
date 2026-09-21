@@ -684,6 +684,8 @@ export class StudentAnalysesService {
           raisedById: actorId,
           level,
           reason,
+          term: version.analysis.term,
+          classSectionId: await this.sectionOfAlert(tx, version, actorId),
         },
         select: { id: true },
       });
@@ -1118,6 +1120,29 @@ export class StudentAnalysesService {
       create: { studentId, term, ownerId: user.id },
       update: {},
     });
+  }
+
+  /**
+   * DRS tính cho cả học kỳ nên không có lớp học phần "đúng" duy nhất; cảnh báo
+   * gắn lớp của nhận xét gốc (người tạo version), không có thì lớp người bấm
+   * gửi đã nhận xét trong kỳ, còn không thì để trống.
+   */
+  private async sectionOfAlert(
+    tx: Prisma.TransactionClient,
+    version: ManagedVersion,
+    actorId: string,
+  ): Promise<string | null> {
+    const { studentId, term } = version.analysis;
+    const lecturerIds = [...new Set([version.createdById, actorId])];
+    for (const lecturerId of lecturerIds) {
+      const evaluation = await tx.evaluation.findFirst({
+        where: { studentId, term, lecturerId },
+        orderBy: { updatedAt: 'desc' },
+        select: { classSectionId: true },
+      });
+      if (evaluation) return evaluation.classSectionId;
+    }
+    return null;
   }
 
   private async withSerializableRetry<T>(

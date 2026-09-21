@@ -283,6 +283,7 @@ export function EvaluationForm({
       <EvaluationHandoffStep
         studentId={studentId}
         term={term}
+        classSectionId={classSectionId || undefined}
         suggestedLevel={currentGuidance.suggestedLevel}
         criterionLabels={currentGuidance.criterionLabels}
         note={submittedNote}

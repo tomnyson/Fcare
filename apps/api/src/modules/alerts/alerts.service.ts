@@ -151,6 +151,10 @@ export class AlertsService {
       );
     }
 
+    const section = dto.classSectionId
+      ? await this.requireEnrolledSection(dto.studentId, dto.classSectionId)
+      : null;
+
     const recipientIds = await this.escalationService.computeRecipientIds(
       dto.studentId,
       dto.level,
@@ -163,6 +167,8 @@ export class AlertsService {
         raisedById: user.id,
         level: dto.level,
         reason: dto.reason,
+        classSectionId: section?.id ?? null,
+        term: section?.term ?? null,
       },
     });
 
@@ -188,6 +194,18 @@ export class AlertsService {
     });
 
     return { ...alert, notifiedCount: recipientIds.length };
+  }
+
+  /** Lớp gắn vào cảnh báo phải là lớp sinh viên đang học — không nhận id lạ. */
+  private async requireEnrolledSection(studentId: string, sectionId: string) {
+    const section = await this.prisma.classSection.findFirst({
+      where: { id: sectionId, enrollments: { some: { studentId } } },
+      select: { id: true, term: true },
+    });
+    if (!section) {
+      throw new BadRequestException('Sinh viên không học lớp học phần này.');
+    }
+    return section;
   }
 
   private dispatchNotifications(data: EscalationJobData): Promise<void> {
