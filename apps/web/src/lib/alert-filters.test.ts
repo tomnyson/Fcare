@@ -69,10 +69,7 @@ describe('buildAlertListQuery', () => {
   });
 
   it('gửi nguồn cảnh báo để lọc riêng cảnh báo điểm danh tự động', () => {
-    const query = buildAlertListQuery(
-      parseAlertFilters(params({ source: 'AUTO_ATTENDANCE' })),
-      50,
-    );
+    const query = buildAlertListQuery(parseAlertFilters(params({ source: 'AUTO_ATTENDANCE' })), 50);
     expect(query.get('source')).toBe('AUTO_ATTENDANCE');
   });
 
@@ -84,10 +81,7 @@ describe('buildAlertListQuery', () => {
   });
 
   it('cắt khoảng trắng của ô tìm kiếm', () => {
-    const query = buildAlertListQuery(
-      parseAlertFilters(params({ search: '  an  ' })),
-      50,
-    );
+    const query = buildAlertListQuery(parseAlertFilters(params({ search: '  an  ' })), 50);
     expect(query.get('search')).toBe('an');
   });
 });
@@ -96,9 +90,7 @@ describe('activeAlertFilterCount', () => {
   it('đếm đúng số bộ lọc đang áp dụng', () => {
     expect(activeAlertFilterCount(parseAlertFilters(params()))).toBe(0);
     expect(
-      activeAlertFilterCount(
-        parseAlertFilters(params({ level: '4', term: 'SU25', search: '  ' })),
-      ),
+      activeAlertFilterCount(parseAlertFilters(params({ level: '4', term: 'SU25', search: '  ' }))),
     ).toBe(2);
     expect(activeAlertFilterCount(parseAlertFilters(params({ source: 'MANUAL' })))).toBe(1);
   });

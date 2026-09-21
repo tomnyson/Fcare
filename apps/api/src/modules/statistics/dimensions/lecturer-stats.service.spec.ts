@@ -106,7 +106,16 @@ describe('LecturerStatsService.list', () => {
     ];
     expect(evaluationArgs.where.student).toEqual({
       AND: [
-        { enrollments: { some: { classSection: { lecturerId: 'gv-1' } } } },
+        {
+          enrollments: {
+            some: {
+              classSection: {
+                lecturerId: 'gv-1',
+                subject: { departmentId: 'dept-1' },
+              },
+            },
+          },
+        },
       ],
     });
   });

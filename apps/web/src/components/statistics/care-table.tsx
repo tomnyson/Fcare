@@ -6,6 +6,7 @@ import { apiDownload, apiFetch } from '../../lib/api';
 import {
   attendanceCareState,
   buildCareQuery,
+  careDepartments,
   type AttendanceCareState,
   type CareCounts,
   type CareLecturer,
@@ -21,10 +22,11 @@ import { FilterBar, FilterField, FilterGrid } from '../ui/filter-bar';
 import { FormError, Select } from '../ui/form';
 
 const COUNT_HEADERS = [
-  'Số SV',
+  'Sĩ số',
+  'SV cảnh báo',
   'Đã chăm sóc',
   'Chưa chăm sóc',
-  'Tỷ lệ',
+  'Tỷ lệ (trên SV cảnh báo)',
   'Nhận xét',
   'Nhật ký',
   'Trao đổi',
@@ -63,6 +65,7 @@ function Counts({ row }: { row: CareCounts }) {
   return (
     <>
       <Td>{row.studentCount}</Td>
+      <Td>{row.alertedStudentCount ?? 0}</Td>
       <Td>{row.caredCount}</Td>
       <Td>{row.uncaredCount}</Td>
       <Td>{row.careRate === null ? '—' : `${row.careRate}%`}</Td>
@@ -208,12 +211,15 @@ function LecturerRow({ lecturer }: { lecturer: CareLecturer }) {
 }
 
 export function CareTable({ term }: { term: string }) {
+  const [departmentId, setDepartmentId] = useState('');
   const [lecturerId, setLecturerId] = useState('');
   const [status, setStatus] = useState<CareStatus>('all');
   const [exporting, setExporting] = useState(false);
   const [exportingDetail, setExportingDetail] = useState(false);
   const [exportError, setExportError] = useState('');
-  const query = buildCareQuery(term, lecturerId, status);
+  const filters = { departmentId, lecturerId, status };
+  const query = buildCareQuery(term, filters);
+  const hasFilter = !!departmentId || !!lecturerId || status !== 'all';
   // The unfiltered result supplies a stable teacher selector even when a filter has no matches.
   const all = useQuery({
     queryKey: ['care-statistics', term, '', 'all'],
@@ -221,17 +227,32 @@ export function CareTable({ term }: { term: string }) {
     enabled: !!term,
   });
   const filtered = useQuery({
-    queryKey: ['care-statistics', term, lecturerId, status],
+    queryKey: ['care-statistics', term, departmentId, lecturerId, status],
     queryFn: () => apiFetch<CareReport>(`/statistics/care${query}`),
-    enabled: !!term && (!!lecturerId || status !== 'all'),
+    enabled: !!term && hasFilter,
   });
-  const report = lecturerId || status !== 'all' ? filtered : all;
+  const report = hasFilter ? filtered : all;
+  const departments = careDepartments(all.data?.lecturers ?? []);
+  const lecturerOptions = (all.data?.lecturers ?? []).filter(
+    (lecturer) => !departmentId || lecturer.department?.id === departmentId,
+  );
+  const departmentCode = departments.find((dept) => dept.id === departmentId)?.code;
+  const fileSuffix = departmentCode ? `${term}-${departmentCode}` : term;
+
+  function changeDepartment(nextId: string) {
+    setDepartmentId(nextId);
+    // Giảng viên đang chọn không thuộc bộ môn mới thì bỏ chọn.
+    const keep = (all.data?.lecturers ?? []).some(
+      (lecturer) => lecturer.id === lecturerId && (!nextId || lecturer.department?.id === nextId),
+    );
+    if (!keep) setLecturerId('');
+  }
 
   async function exportReport() {
     setExporting(true);
     setExportError('');
     try {
-      await apiDownload(`/statistics/care/export.xlsx${query}`, `cham-soc-${term}.xlsx`);
+      await apiDownload(`/statistics/care/export.xlsx${query}`, `cham-soc-${fileSuffix}.xlsx`);
     } catch (error) {
       setExportError(error instanceof Error ? error.message : 'Không thể xuất báo cáo.');
     } finally {
@@ -243,8 +264,11 @@ export function CareTable({ term }: { term: string }) {
     setExportingDetail(true);
     setExportError('');
     try {
-      const detailQuery = buildCareQuery(term, lecturerId, status, 'detailed');
-      await apiDownload(`/statistics/care/export.xlsx${detailQuery}`, `cham-soc-chi-tiet-${term}.xlsx`);
+      const detailQuery = buildCareQuery(term, { ...filters, mode: 'detailed' });
+      await apiDownload(
+        `/statistics/care/export.xlsx${detailQuery}`,
+        `cham-soc-chi-tiet-${fileSuffix}.xlsx`,
+      );
     } catch (error) {
       setExportError(error instanceof Error ? error.message : 'Không thể xuất báo cáo chi tiết.');
     } finally {
@@ -263,6 +287,22 @@ export function CareTable({ term }: { term: string }) {
     <div className="space-y-4">
       <FilterBar label="Bộ lọc chăm sóc sinh viên" onSubmit={(event) => event.preventDefault()}>
         <FilterGrid>
+          {departments.length > 1 && (
+            <FilterField label="Bộ môn" htmlFor="care-department">
+              <Select
+                id="care-department"
+                value={departmentId}
+                onChange={(event) => changeDepartment(event.target.value)}
+              >
+                <option value="">Tất cả bộ môn</option>
+                {departments.map((dept) => (
+                  <option key={dept.id} value={dept.id}>
+                    {dept.name} ({dept.code})
+                  </option>
+                ))}
+              </Select>
+            </FilterField>
+          )}
           <FilterField label="Giảng viên" htmlFor="care-lecturer">
             <Select
               id="care-lecturer"
@@ -270,7 +310,7 @@ export function CareTable({ term }: { term: string }) {
               onChange={(event) => setLecturerId(event.target.value)}
             >
               <option value="">Tất cả giảng viên</option>
-              {all.data?.lecturers.map((lecturer) => (
+              {lecturerOptions.map((lecturer) => (
                 <option key={lecturer.id} value={lecturer.id}>
                   {lecturer.fullName} ({lecturer.staffCode})
                 </option>
@@ -316,7 +356,7 @@ export function CareTable({ term }: { term: string }) {
         </div>
       </div>
       <p className="text-sm text-muted">
-        Đã chăm sóc khi sinh viên có nhận xét tại lớp trong kỳ, nhật ký chăm sóc hoặc trao đổi nội bộ trong thời gian học kỳ. Tổng giảng viên đếm mỗi sinh viên một lần; cộng các lớp có thể lớn hơn tổng này. Cảnh báo là mức cao nhất trong kỳ, kể cả đã giải quyết. Số liệu bên dưới và Excel áp dụng cùng bộ lọc.
+        Chỉ liệt kê sinh viên có cảnh báo trong kỳ (gắn lớp đó hoặc không gắn lớp nào). Tỷ lệ = SV cảnh báo đã chăm sóc / SV cảnh báo, không tính trên sĩ số. Đã chăm sóc khi sinh viên có nhận xét tại lớp trong kỳ, nhật ký chăm sóc hoặc trao đổi nội bộ trong thời gian học kỳ. Tổng giảng viên đếm mỗi sinh viên một lần; cộng các lớp có thể lớn hơn tổng này. Cảnh báo là mức cao nhất trong kỳ tại lớp, kể cả đã giải quyết. Số liệu bên dưới và Excel áp dụng cùng bộ lọc.
       </p>
       {exportError && <FormError>{exportError}</FormError>}
       {all.isError && report !== all && <FormError>Không tải được danh sách giảng viên.</FormError>}

@@ -26,6 +26,29 @@ import {
 /** Trần option lớp học phần cho dropdown bộ lọc (xem `filterOptions`). */
 const SECTION_OPTIONS_LIMIT = 500;
 
+/**
+ * Thay mảng enrollments thô bằng tổng số buổi vắng (cột "Số buổi vắng" ở trang
+ * danh sách). `absentSessions = null` khi chưa có dữ liệu điểm danh nào để phân
+ * biệt với "0 buổi"; `maxSectionAbsent` là số vắng cao nhất trong một lớp học
+ * phần — ngưỡng cảnh báo tự động (2 → L2, ≥ 3 → L3) tính theo từng lớp.
+ */
+function withAbsenceSummary<
+  T extends { enrollments: { absentSessions: number | null }[] },
+>(student: T) {
+  const { enrollments, ...rest } = student;
+  const recorded = enrollments
+    .map((enrollment) => enrollment.absentSessions)
+    .filter((value): value is number => value !== null);
+  return {
+    ...rest,
+    absentSessions:
+      recorded.length > 0
+        ? recorded.reduce((sum, value) => sum + value, 0)
+        : null,
+    maxSectionAbsent: recorded.length > 0 ? Math.max(...recorded) : null,
+  };
+}
+
 @Injectable()
 export class StudentsService {
   constructor(
@@ -36,6 +59,20 @@ export class StudentsService {
   async list(user: AuthUser, query: ListStudentsQuery) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
+
+    // Kỳ, giảng viên và lớp học phần đều nằm phía ClassSection, nối qua
+    // Enrollment. Dùng CHUNG điều kiện cho bộ lọc và cho cột "Số buổi vắng" để
+    // số vắng hiển thị đúng phạm vi đang lọc (vd. chỉ kỳ FA26).
+    const hasEnrollmentFilter = Boolean(
+      query.term || query.lecturerId || query.sectionId,
+    );
+    const enrollmentWhere: Prisma.EnrollmentWhereInput = {
+      ...(query.sectionId ? { classSectionId: query.sectionId } : {}),
+      classSection: {
+        ...(query.term ? { term: query.term } : {}),
+        ...(query.lecturerId ? { lecturerId: query.lecturerId } : {}),
+      },
+    };
 
     const where: Prisma.StudentWhereInput = {
       ...(query.departmentId ? { departmentId: query.departmentId } : {}),
@@ -49,21 +86,10 @@ export class StudentsService {
       // Scope đặt SAU filter query để luôn thắng với người dùng bị giới hạn.
       ...studentScope(user),
       ...(query.classCode ? { classCode: query.classCode } : {}),
-      // Kỳ, giảng viên và lớp học phần đều nằm phía ClassSection, nối qua
-      // Enrollment. Gộp vào CÙNG một `some` để "kỳ SU25 + thầy A" nghĩa là học
-      // phần kỳ SU25 do thầy A dạy, chứ không phải hai lần đăng ký rời nhau.
-      ...(query.term || query.lecturerId || query.sectionId
-        ? {
-            enrollments: {
-              some: {
-                ...(query.sectionId ? { classSectionId: query.sectionId } : {}),
-                classSection: {
-                  ...(query.term ? { term: query.term } : {}),
-                  ...(query.lecturerId ? { lecturerId: query.lecturerId } : {}),
-                },
-              },
-            },
-          }
+      // Gộp vào CÙNG một `some` để "kỳ SU25 + thầy A" nghĩa là học phần kỳ
+      // SU25 do thầy A dạy, chứ không phải hai lần đăng ký rời nhau.
+      ...(hasEnrollmentFilter
+        ? { enrollments: { some: enrollmentWhere } }
         : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.search
@@ -88,12 +114,19 @@ export class StudentsService {
           _count: {
             select: { alerts: { where: { status: { not: 'RESOLVED' } } } },
           },
+          enrollments: {
+            where: enrollmentWhere,
+            select: { absentSessions: true },
+          },
         },
       }),
       this.prisma.student.count({ where }),
     ]);
 
-    return { items, meta: { total, page, limit } };
+    return {
+      items: items.map(withAbsenceSummary),
+      meta: { total, page, limit },
+    };
   }
 
   /**

@@ -26,17 +26,12 @@ function dayKey(iso: string): string {
  * Gom tin theo ngày (giờ địa phương) để chèn vạch ngăn ngày trong hội thoại.
  * Giữ nguyên thứ tự đầu vào — API đã trả tăng dần theo thời gian.
  */
-export function groupMessagesByDay(
-  messages: DiscussionMessage[],
-): DiscussionDayGroup[] {
+export function groupMessagesByDay(messages: DiscussionMessage[]): DiscussionDayGroup[] {
   return messages.reduce<DiscussionDayGroup[]>((groups, message) => {
     const day = dayKey(message.createdAt);
     const last = groups[groups.length - 1];
     if (last?.day === day) {
-      return [
-        ...groups.slice(0, -1),
-        { ...last, messages: [...last.messages, message] },
-      ];
+      return [...groups.slice(0, -1), { ...last, messages: [...last.messages, message] }];
     }
     return [
       ...groups,
@@ -83,7 +78,7 @@ export function latestDiscussionMessageId(
   notifications: readonly { discussionMessageId?: string | null }[] | undefined,
 ): string | null {
   return (
-    notifications?.find((notification) => notification.discussionMessageId)
-      ?.discussionMessageId ?? null
+    notifications?.find((notification) => notification.discussionMessageId)?.discussionMessageId ??
+    null
   );
 }

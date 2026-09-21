@@ -134,3 +134,46 @@ export function lecturerStatsScope(user: AuthUser): Prisma.StaffWhereInput {
   }
   return { id: user.id };
 }
+
+/** Giảng viên thuần (không phải TBM, không có vai trò toàn trường). */
+export function isPureLecturer(user: AuthUser): boolean {
+  return isDeptScoped(user) && !seesWholeDepartment(user);
+}
+
+/**
+ * Lớp học phần "thuộc bộ môn" là lớp của MÔN do bộ môn quản — không xét bộ môn
+ * của sinh viên, vì GV bộ môn Cơ bản dạy SV của mọi ngành.
+ */
+function ownDepartmentSections(user: AuthUser): Prisma.ClassSectionWhereInput {
+  return {
+    lecturerId: user.id,
+    subject: { departmentId: user.departmentId ?? NO_DEPARTMENT },
+  };
+}
+
+/**
+ * Phạm vi sinh viên cho màn THỐNG KÊ: giảng viên thuần chỉ thấy số liệu của
+ * bộ môn mình — SV học lớp mình dạy của môn thuộc bộ môn mình. Lớp dạy chéo
+ * môn bộ môn khác vẫn chăm sóc được (`studentScope`) nhưng không lên thống kê.
+ * Luôn CHẶT hơn hoặc bằng `studentScope`, không bao giờ rộng hơn.
+ */
+export function statsStudentScope(user: AuthUser): Prisma.StudentWhereInput {
+  if (!isPureLecturer(user)) {
+    return studentScope(user);
+  }
+  return {
+    AND: [
+      { enrollments: { some: { classSection: ownDepartmentSections(user) } } },
+    ],
+  };
+}
+
+/** Như `statsStudentScope` cho lớp học phần: lớp mình dạy của môn thuộc bộ môn mình. */
+export function statsSectionScope(
+  user: AuthUser,
+): Prisma.ClassSectionWhereInput {
+  if (!isPureLecturer(user)) {
+    return sectionScope(user);
+  }
+  return { AND: [ownDepartmentSections(user)] };
+}

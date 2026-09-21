@@ -12,6 +12,11 @@ interface DataTableProps {
   isRefreshing?: boolean;
   /** Số hàng skeleton; đặt bằng cỡ trang để bảng không co lại rồi bung ra. */
   skeletonRows?: number;
+  /**
+   * Bảng dài và rộng: giới hạn chiều cao theo màn hình, ghim tiêu đề cột, để
+   * thanh cuộn ngang luôn nằm trong tầm nhìn thay vì ở đáy trang.
+   */
+  fitViewport?: boolean;
 }
 
 // Bề rộng lệch nhau cho các ô skeleton để trông như dữ liệu thật chứ không
@@ -27,17 +32,20 @@ export function DataTable({
   isLoading,
   isRefreshing,
   skeletonRows = 8,
+  fitViewport = false,
 }: DataTableProps) {
   return (
     <div
       // Chỉ mờ đi khi tải lại — dữ liệu cũ vẫn đứng yên, không nhảy layout.
-      className={`overflow-x-auto rounded-[var(--radius-card)] border border-border bg-white shadow-[var(--shadow-card)] motion-safe:transition-opacity motion-safe:duration-[var(--duration-fast)] ${
+      className={`data-table-scroll ${
+        fitViewport ? 'max-h-[var(--table-fit-height)] overflow-auto' : 'overflow-x-auto'
+      } rounded-[var(--radius-card)] border border-border bg-white shadow-[var(--shadow-card)] motion-safe:transition-opacity motion-safe:duration-[var(--duration-fast)] ${
         isRefreshing && !isLoading ? 'opacity-60' : 'opacity-100'
       }`}
       aria-busy={isLoading || isRefreshing || undefined}
     >
       <table className="w-full min-w-max text-left text-sm">
-        <thead>
+        <thead className={fitViewport ? 'sticky top-0 z-10' : undefined}>
           <tr className="border-b border-border bg-fpt-blue-900 text-white">
             {headers.map((header) => (
               <th key={header} className="whitespace-nowrap px-4 py-3 text-xs font-bold uppercase tracking-wide">

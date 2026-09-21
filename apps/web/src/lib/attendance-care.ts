@@ -8,7 +8,13 @@ export interface LevelGroup {
 }
 
 /** Vai trò được xem cảnh báo điểm danh ngoài lớp mình dạy (bảng thứ hai trên dashboard). */
-const DEPARTMENT_VIEW_ROLES = ['HEAD_OF_DEPT', 'SA_OFFICER', 'SA_HEAD', 'TRAINING_OFFICER', 'ADMIN'];
+const DEPARTMENT_VIEW_ROLES = [
+  'HEAD_OF_DEPT',
+  'SA_OFFICER',
+  'SA_HEAD',
+  'TRAINING_OFFICER',
+  'ADMIN',
+];
 
 const NAV_BADGE_CAP = 99;
 

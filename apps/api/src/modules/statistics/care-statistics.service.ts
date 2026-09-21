@@ -3,7 +3,7 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
-import * as ExcelJS from 'exceljs';
+import type { RoleKey } from '@fcare/shared-types';
 import type { AuthUser } from '../../common/types/auth-user';
 import {
   lecturerStatsScope,
@@ -14,8 +14,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   attendanceKey,
   attendanceTotals,
-  formatAttendanceAlert,
-  formatOwnerCared,
   latestAttendanceAlerts,
 } from './attendance-care-stats';
 import type {
@@ -24,34 +22,14 @@ import type {
   CareStudent,
   CareTotals,
 } from './care-statistics.types';
+import { buildCareWorkbook } from './care-statistics-export';
 import type { CareStatisticsQuery } from './dto/care-statistics-query.dto';
 
-const CRITERION_LABELS: Record<string, string> = {
-  P_NOT_FIT_MAJOR: 'Không phù hợp chuyên ngành',
-  P_PART_TIME_JOB: 'Đi làm thêm nhiều',
-  P_OTHER_ACTIVITIES: 'Tham gia hoạt động khác nhiều',
-  P_FAMILY_HARDSHIP: 'Hoàn cảnh gia đình đặc biệt',
-  P_FINANCIAL_HARDSHIP: 'Khó khăn tài chính',
-  P_PSYCHOLOGICAL: 'Tâm lý không ổn định',
-  P_DROPOUT_INTENT: 'Ý định nghỉ học',
-  H_NO_QUIZ_CMS: 'Không làm Quiz / CMS',
-  H_EXAM_BAN_RISK: 'Nguy cơ cấm thi',
-  H_NO_RESPONSE: 'Không liên lạc được / không phản hồi',
-};
-
-function formatCriterion(criterion: string): string {
-  return CRITERION_LABELS[criterion] ?? criterion;
-}
-
-function formatDateVN(date: Date | string | null): string {
-  if (!date) return '—';
-  return new Date(date).toLocaleString('vi-VN', {
-    timeZone: 'Asia/Ho_Chi_Minh',
-    hour12: false,
-  });
-}
-
-function totals(students: CareStudent[]): CareTotals {
+/**
+ * `students` chỉ gồm sinh viên CÓ cảnh báo; `studentCount` là sĩ số (mọi SV
+ * đang học). Tỷ lệ chăm sóc = SV cảnh báo đã chăm sóc / SV cảnh báo.
+ */
+function totals(students: CareStudent[], studentCount: number): CareTotals {
   const unique = new Map<string, CareStudent>();
   for (const student of students) {
     const previous = unique.get(student.id);
@@ -61,6 +39,10 @@ function totals(students: CareStudent[]): CareTotals {
       evaluationCount:
         student.evaluationCount + (previous?.evaluationCount ?? 0),
       careLogCount: Math.max(student.careLogCount, previous?.careLogCount ?? 0),
+      ownerCareLogCount: Math.max(
+        student.ownerCareLogCount,
+        previous?.ownerCareLogCount ?? 0,
+      ),
       discussionCount: Math.max(
         student.discussionCount,
         previous?.discussionCount ?? 0,
@@ -70,7 +52,8 @@ function totals(students: CareStudent[]): CareTotals {
   const rows = [...unique.values()];
   const caredCount = rows.filter((student) => student.cared).length;
   return {
-    studentCount: rows.length,
+    studentCount,
+    alertedStudentCount: rows.length,
     caredCount,
     uncaredCount: rows.length - caredCount,
     careRate: rows.length
@@ -85,57 +68,40 @@ function totals(students: CareStudent[]): CareTotals {
       (sum, student) => sum + student.discussionCount,
       0,
     ),
+    ownerCareLogCount: rows.reduce(
+      (sum, student) => sum + student.ownerCareLogCount,
+      0,
+    ),
     // Cảnh báo điểm danh tính theo từng lớp nên KHÔNG gộp theo sinh viên.
     attendanceAlerts: attendanceTotals(students),
   };
 }
 
-/** Cột chung của sheet "Tổng hợp giáo viên" và "Theo lớp" (sau cột định danh). */
-const COUNT_HEADERS = [
-  'Sinh viên',
-  'Đã chăm sóc',
-  'Chưa chăm sóc',
-  'Tỷ lệ (%)',
-  'Nhận xét',
-  'Nhật ký',
-  'Trao đổi',
-  'CB điểm danh',
-  'GV lớp đã CS',
-  'GV khác CS',
-  'CB chờ GV lớp',
+function matchesStatus(student: CareStudent, query: CareStatisticsQuery) {
+  return (
+    !query.status ||
+    query.status === 'all' ||
+    student.cared === (query.status === 'cared')
+  );
+}
+
+const WHOLE_SCHOOL_CARE_ROLES: readonly RoleKey[] = [
+  'ADMIN',
+  'TRAINING_OFFICER',
 ];
-const COUNT_WIDTHS = [14, 15, 16, 14, 13, 13, 13, 14, 14, 13, 15];
-const SUMMARY_HEADERS = [
-  'Mã NV',
-  'Họ tên',
-  'Bộ môn',
-  'Số lớp',
-  ...COUNT_HEADERS,
+const CARE_STATS_ROLES: readonly RoleKey[] = [
+  ...WHOLE_SCHOOL_CARE_ROLES,
+  'HEAD_OF_DEPT',
 ];
-const SUMMARY_WIDTHS = [14, 25, 20, 12, ...COUNT_WIDTHS];
-const CLASS_HEADERS = [
-  'Mã NV',
-  'Họ tên',
-  'Lớp học phần',
-  'Môn học',
-  ...COUNT_HEADERS,
-];
-const CLASS_WIDTHS = [14, 25, 22, 28, ...COUNT_WIDTHS];
-const ATTENDANCE_STUDENT_HEADERS = [
-  'CB điểm danh',
-  'GV lớp đã CS',
-  'Nhật ký gắn CB',
-];
-const ATTENDANCE_STUDENT_WIDTHS = [22, 16, 14];
 
 @Injectable()
 export class CareStatisticsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async list(user: AuthUser, query: CareStatisticsQuery): Promise<CareReport> {
-    if (!user.roles.includes('ADMIN') && !user.roles.includes('HEAD_OF_DEPT')) {
+    if (!CARE_STATS_ROLES.some((role) => user.roles.includes(role))) {
       throw new ForbiddenException(
-        'Chỉ Admin và Trưởng bộ môn được xem thống kê chăm sóc.',
+        'Chỉ Admin, Cán bộ Đào tạo và Trưởng bộ môn được xem thống kê chăm sóc.',
       );
     }
     if (!query.term) {
@@ -156,7 +122,10 @@ export class CareStatisticsService {
       );
     }
 
-    const scopedUser: AuthUser = user.roles.includes('ADMIN')
+    // Vai toàn trường giữ nguyên phạm vi; còn lại thu về đúng vai TBM.
+    const scopedUser: AuthUser = WHOLE_SCHOOL_CARE_ROLES.some((role) =>
+      user.roles.includes(role),
+    )
       ? user
       : { ...user, roles: ['HEAD_OF_DEPT'] };
 
@@ -166,6 +135,9 @@ export class CareStatisticsService {
           { term: term.code, lecturerId: query.lecturerId ?? { not: null } },
           sectionScope(scopedUser),
           { lecturer: lecturerStatsScope(scopedUser) },
+          ...(query.departmentId
+            ? [{ lecturer: { departmentId: query.departmentId } }]
+            : []),
         ],
       },
       orderBy: [{ lecturer: { staffCode: 'asc' } }, { code: 'asc' }],
@@ -178,7 +150,7 @@ export class CareStatisticsService {
             id: true,
             staffCode: true,
             fullName: true,
-            department: { select: { code: true, name: true } },
+            department: { select: { id: true, code: true, name: true } },
           },
         },
         enrollments: {
@@ -268,7 +240,7 @@ export class CareStatisticsService {
             }),
             this.prisma.alert.findMany({
               where: { studentId: { in: studentIds }, createdAt: range },
-              select: { studentId: true, level: true },
+              select: { studentId: true, classSectionId: true, level: true },
             }),
             this.prisma.alert.findMany({
               where: {
@@ -315,23 +287,35 @@ export class CareStatisticsService {
       ]);
     }
 
-    const alertMap = new Map<string, number>();
+    const alertsByStudent = new Map<string, typeof alerts>();
     for (const alert of alerts) {
-      if (alert.level >= 1 && alert.level <= 4) {
-        alertMap.set(
-          alert.studentId,
-          Math.max(alert.level, alertMap.get(alert.studentId) ?? 0),
-        );
-      }
+      if (alert.level < 1 || alert.level > 4) continue;
+      alertsByStudent.set(alert.studentId, [
+        ...(alertsByStudent.get(alert.studentId) ?? []),
+        alert,
+      ]);
     }
 
     const lecturers = new Map<string, CareLecturer>();
+    // Toàn bộ SV cảnh báo (trước lọc trạng thái) + sĩ số không trùng theo GV.
+    const lecturerAlerted = new Map<string, CareStudent[]>();
+    const lecturerEnrolled = new Map<string, Set<string>>();
     for (const section of sections) {
       const lecturer = section.lecturer;
       if (!lecturer) continue;
 
-      const students: CareStudent[] = section.enrollments
-        .map(({ student }) => {
+      // Chỉ SV có cảnh báo trong kỳ (gắn lớp này hoặc không gắn lớp nào).
+      const alerted: CareStudent[] = section.enrollments
+        .map(({ student }) => ({
+          student,
+          sectionAlerts: (alertsByStudent.get(student.id) ?? []).filter(
+            (alert) =>
+              alert.classSectionId === null ||
+              alert.classSectionId === section.id,
+          ),
+        }))
+        .filter(({ sectionAlerts }) => sectionAlerts.length > 0)
+        .map(({ student, sectionAlerts }) => {
           const marks = evaluationMap.get(`${section.id}:${student.id}`) ?? [];
           const careLogs = logMap.get(student.id) ?? [];
           const studentDiscussions = discussionMap.get(student.id) ?? [];
@@ -354,7 +338,11 @@ export class CareStatisticsService {
             lastCareAt: dates.length
               ? new Date(Math.max(...dates)).toISOString()
               : null,
-            alertLevel: alertMap.get(student.id) ?? null,
+            alertLevel: Math.max(...sectionAlerts.map((alert) => alert.level)),
+            alertCount: sectionAlerts.length,
+            ownerCareLogCount: careLogs.filter(
+              (log) => log.staffId === lecturer.id,
+            ).length,
             attendanceAlert:
               attendanceMap.get(attendanceKey(section.id, student.id)) ?? null,
             evaluations: marks.map((m) => ({
@@ -383,38 +371,50 @@ export class CareStatisticsService {
               createdAt: d.createdAt.toISOString(),
             })),
           };
-        })
-        .filter(
-          (student) =>
-            !query.status ||
-            query.status === 'all' ||
-            student.cared === (query.status === 'cared'),
-        );
+        });
+      const students = alerted.filter((student) =>
+        matchesStatus(student, query),
+      );
 
       if (query.status && query.status !== 'all' && !students.length) continue;
 
       const entry = lecturers.get(lecturer.id) ?? {
         ...lecturer,
-        ...totals([]),
+        ...totals([], 0),
         sectionCount: 0,
         sections: [],
       };
 
+      // Tỷ lệ tính trên mọi SV cảnh báo; bộ lọc trạng thái chỉ lọc danh sách.
       entry.sections.push({
         id: section.id,
         code: section.code,
         subjectName: section.subject.name,
         students,
-        ...totals(students),
+        ...totals(alerted, section.enrollments.length),
       });
 
       lecturers.set(lecturer.id, entry);
+      lecturerAlerted.set(lecturer.id, [
+        ...(lecturerAlerted.get(lecturer.id) ?? []),
+        ...alerted,
+      ]);
+      lecturerEnrolled.set(
+        lecturer.id,
+        new Set([
+          ...(lecturerEnrolled.get(lecturer.id) ?? []),
+          ...section.enrollments.map(({ student }) => student.id),
+        ]),
+      );
     }
 
     for (const lecturer of lecturers.values()) {
       Object.assign(
         lecturer,
-        totals(lecturer.sections.flatMap((section) => section.students)),
+        totals(
+          lecturerAlerted.get(lecturer.id) ?? [],
+          lecturerEnrolled.get(lecturer.id)?.size ?? 0,
+        ),
       );
       lecturer.sectionCount = lecturer.sections.length;
     }
@@ -427,293 +427,6 @@ export class CareStatisticsService {
   }
 
   async export(user: AuthUser, query: CareStatisticsQuery): Promise<Buffer> {
-    const report = await this.list(user, query);
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'FCare';
-
-    const isDetailed = query.mode === 'detailed';
-    const definitions = isDetailed
-      ? 'BÁO CÁO CHI TIẾT CHĂM SÓC SINH VIÊN: Gồm chi tiết nhận xét của giảng viên, nhật ký chăm sóc cá nhân và toàn bộ trao đổi thảo luận giữa các giảng viên/cán bộ về sinh viên trong học kỳ.'
-      : 'BÁO CÁO TỔNG HỢP CHĂM SÓC SINH VIÊN: Đã chăm sóc: sinh viên có nhận xét tại lớp trong kỳ, nhật ký chăm sóc hoặc trao đổi nội bộ trong thời gian kỳ. Cảnh báo: mức cao nhất trong kỳ. Tổng giáo viên không đếm trùng sinh viên giữa các lớp.';
-
-    const addSheet = (
-      name: string,
-      headers: string[],
-      columnWidths?: number[],
-    ) => {
-      const sheet = workbook.addWorksheet(name);
-      sheet.addRow([`Học kỳ: ${report.term.code} — ${report.term.name}`]);
-      sheet.addRow([
-        `Thời gian học kỳ: ${formatDateVN(report.term.startDate)} — ${formatDateVN(report.term.endDate)} | Thời điểm xuất: ${formatDateVN(report.generatedAt)}`,
-      ]);
-      sheet.addRow([
-        `Bộ lọc áp dụng: Giáo viên ${query.lecturerId ? (report.lecturers.find((l) => l.id === query.lecturerId)?.fullName ?? query.lecturerId) : 'Tất cả'}; Trạng thái: ${query.status === 'cared' ? 'Đã chăm sóc' : query.status === 'uncared' ? 'Chưa chăm sóc' : 'Tất cả'}`,
-      ]);
-      sheet.addRow([definitions]);
-
-      for (let row = 1; row <= 4; row++) {
-        sheet.mergeCells(row, 1, row, headers.length);
-        sheet.getRow(row).alignment = { wrapText: true, vertical: 'middle' };
-        sheet.getRow(row).height = row === 4 ? 44 : 26;
-      }
-
-      sheet.addRow(headers).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      sheet.getRow(5).fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FF16304E' },
-      };
-      sheet.getRow(5).alignment = {
-        vertical: 'middle',
-        horizontal: 'center',
-        wrapText: true,
-      };
-      sheet.getRow(5).height = 32;
-
-      sheet.columns.forEach((column, index) => {
-        column.width = columnWidths?.[index] ?? 22;
-      });
-
-      sheet.views = [{ state: 'frozen', ySplit: 5 }];
-      sheet.autoFilter = {
-        from: { row: 5, column: 1 },
-        to: { row: 5, column: headers.length },
-      };
-      return sheet;
-    };
-
-    const counts = (entry: CareTotals) => [
-      entry.studentCount,
-      entry.caredCount,
-      entry.uncaredCount,
-      entry.careRate === null ? '—' : `${entry.careRate}%`,
-      entry.evaluationCount,
-      entry.careLogCount,
-      entry.discussionCount,
-      entry.attendanceAlerts.total,
-      entry.attendanceAlerts.caredByOwner,
-      entry.attendanceAlerts.caredByOthers,
-      entry.attendanceAlerts.pending,
-    ];
-    const attendanceCells = (student: CareStudent) => [
-      formatAttendanceAlert(student.attendanceAlert),
-      formatOwnerCared(student.attendanceAlert),
-      student.attendanceAlert?.careLogCount ?? 0,
-    ];
-
-    if (isDetailed) {
-      // ===== BẢNG CHI TIẾT NỘI DUNG CHĂM SÓC =====
-      const detailedHeaders = [
-        'Mã NV',
-        'Giảng viên phụ trách',
-        'Bộ môn',
-        'Lớp học phần',
-        'Môn học',
-        'MSSV',
-        'Họ tên sinh viên',
-        'Lớp hành chính',
-        'Trạng thái chăm sóc',
-        'Mức cảnh báo',
-        'Lần chăm sóc gần nhất',
-        'Chi tiết nhận xét của GV',
-        'Nhật ký chăm sóc',
-        'Trao đổi thảo luận giữa GV & CB',
-        ...ATTENDANCE_STUDENT_HEADERS,
-      ];
-      const detailedWidths = [
-        14,
-        24,
-        18,
-        22,
-        28,
-        14,
-        25,
-        16,
-        18,
-        15,
-        22,
-        45,
-        52,
-        52,
-        ...ATTENDANCE_STUDENT_WIDTHS,
-      ];
-      const detailedSheet = addSheet(
-        'Chi tiết nội dung chăm sóc',
-        detailedHeaders,
-        detailedWidths,
-      );
-
-      for (const lecturer of report.lecturers) {
-        for (const section of lecturer.sections) {
-          for (const student of section.students) {
-            // Định dạng chi tiết nhận xét
-            const evalParts = (student.evaluations ?? []).map((m, idx) => {
-              const critStr = m.criteria.map(formatCriterion).join(', ');
-              let text = `[Lần ${idx + 1} - ${formatDateVN(m.updatedAt)} - GV: ${m.evaluatorName} (${m.evaluatorStaffCode})]:\n- Điểm học tập: ${m.academicScore}/10 | Điểm thái độ: ${m.attitudeScore}/10 | Vắng: ${m.absentSessions ?? 0} buổi`;
-              if (critStr) text += `\n- Tiêu chí: ${critStr}`;
-              if (m.note) text += `\n- Ghi chú: ${m.note}`;
-              return text;
-            });
-            const evalDetail =
-              evalParts.length > 0
-                ? evalParts.join('\n\n---\n\n')
-                : 'Chưa có nhận xét môn học';
-
-            // Định dạng chi tiết nhật ký chăm sóc
-            const logParts = (student.careLogs ?? []).map((l, idx) => {
-              let text = `[Lần ${idx + 1} - ${formatDateVN(l.createdAt)} - Hình thức: ${l.channel} - Cán bộ: ${l.staffName} (${l.staffCode})]:\n- Nội dung: ${l.content}`;
-              if (l.outcome) text += `\n- Kết quả: ${l.outcome}`;
-              if (l.nextAction) text += `\n- Kế hoạch tiếp: ${l.nextAction}`;
-              return text;
-            });
-            const logDetail =
-              logParts.length > 0
-                ? logParts.join('\n\n---\n\n')
-                : 'Chưa có nhật ký chăm sóc';
-
-            // Định dạng chi tiết trao đổi thảo luận
-            const discParts = (student.discussions ?? []).map((d, idx) => {
-              return `[Tin ${idx + 1} - ${formatDateVN(d.createdAt)} - ${d.authorName} (${d.authorCode})]:\n${d.body}`;
-            });
-            const discDetail =
-              discParts.length > 0
-                ? discParts.join('\n\n---\n\n')
-                : 'Chưa có trao đổi nội bộ';
-
-            const row = detailedSheet.addRow([
-              lecturer.staffCode,
-              lecturer.fullName,
-              lecturer.department?.name ?? '—',
-              section.code,
-              section.subjectName,
-              student.studentCode,
-              student.fullName,
-              student.classCode || '—',
-              student.cared ? 'Đã chăm sóc' : 'Chưa chăm sóc',
-              student.alertLevel ? `Mức ${student.alertLevel}` : 'Không có',
-              formatDateVN(student.lastCareAt),
-              evalDetail,
-              logDetail,
-              discDetail,
-              ...attendanceCells(student),
-            ]);
-
-            row.alignment = { vertical: 'top', wrapText: true };
-          }
-        }
-      }
-
-      // Thêm 2 sheet tổng hợp kèm theo
-      const summarySheet = addSheet(
-        'Tổng hợp giáo viên',
-        SUMMARY_HEADERS,
-        SUMMARY_WIDTHS,
-      );
-      for (const lecturer of report.lecturers) {
-        summarySheet.addRow([
-          lecturer.staffCode,
-          lecturer.fullName,
-          lecturer.department?.name ?? '—',
-          lecturer.sectionCount,
-          ...counts(lecturer),
-        ]);
-      }
-
-      const classSheet = addSheet('Theo lớp', CLASS_HEADERS, CLASS_WIDTHS);
-      for (const lecturer of report.lecturers) {
-        for (const section of lecturer.sections) {
-          classSheet.addRow([
-            lecturer.staffCode,
-            lecturer.fullName,
-            section.code,
-            section.subjectName,
-            ...counts(section),
-          ]);
-        }
-      }
-    } else {
-      // ===== BẢNG TỔNG HỢP MẶC ĐỊNH =====
-      const summary = addSheet(
-        'Tổng hợp giáo viên',
-        SUMMARY_HEADERS,
-        SUMMARY_WIDTHS,
-      );
-
-      const classes = addSheet('Theo lớp', CLASS_HEADERS, CLASS_WIDTHS);
-
-      const students = addSheet(
-        'Chi tiết sinh viên',
-        [
-          'Mã NV',
-          'Giáo viên',
-          'Lớp học phần',
-          'MSSV',
-          'Sinh viên',
-          'Lớp hành chính',
-          'Chăm sóc',
-          'Nhận xét',
-          'Nhật ký',
-          'Trao đổi',
-          'Gần nhất',
-          'Cảnh báo',
-          ...ATTENDANCE_STUDENT_HEADERS,
-        ],
-        [
-          14,
-          25,
-          22,
-          14,
-          25,
-          16,
-          16,
-          13,
-          13,
-          13,
-          22,
-          14,
-          ...ATTENDANCE_STUDENT_WIDTHS,
-        ],
-      );
-
-      for (const lecturer of report.lecturers) {
-        summary.addRow([
-          lecturer.staffCode,
-          lecturer.fullName,
-          lecturer.department?.name ?? '—',
-          lecturer.sectionCount,
-          ...counts(lecturer),
-        ]);
-
-        for (const section of lecturer.sections) {
-          classes.addRow([
-            lecturer.staffCode,
-            lecturer.fullName,
-            section.code,
-            section.subjectName,
-            ...counts(section),
-          ]);
-
-          for (const student of section.students) {
-            students.addRow([
-              lecturer.staffCode,
-              lecturer.fullName,
-              section.code,
-              student.studentCode,
-              student.fullName,
-              student.classCode || '—',
-              student.cared ? 'Đã chăm sóc' : 'Chưa chăm sóc',
-              student.evaluationCount,
-              student.careLogCount,
-              student.discussionCount,
-              formatDateVN(student.lastCareAt),
-              student.alertLevel ? `Mức ${student.alertLevel}` : 'Không có',
-              ...attendanceCells(student),
-            ]);
-          }
-        }
-      }
-    }
-
-    return Buffer.from(await workbook.xlsx.writeBuffer());
+    return buildCareWorkbook(await this.list(user, query), query);
   }
 }

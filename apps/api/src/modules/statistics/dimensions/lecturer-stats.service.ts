@@ -3,8 +3,8 @@ import type { Prisma } from '@prisma/client';
 import type { AuthUser } from '../../../common/types/auth-user';
 import {
   lecturerStatsScope,
-  sectionScope,
-  studentScope,
+  statsSectionScope,
+  statsStudentScope,
 } from '../../../common/utils/dept-scope';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
@@ -57,7 +57,7 @@ export class LecturerStatsService {
   async list(user: AuthUser, term?: string) {
     const sectionWhere: Prisma.ClassSectionWhereInput = {
       term,
-      ...sectionScope(user),
+      ...statsSectionScope(user),
     };
 
     const [lecturers, sections, totalsBySection, evaluationGroups] =
@@ -88,7 +88,7 @@ export class LecturerStatsService {
         this.prisma.evaluation.groupBy({
           by: ['lecturerId'],
           _count: { _all: true },
-          where: { term, student: studentScope(user) },
+          where: { term, student: statsStudentScope(user) },
         }),
       ]);
 

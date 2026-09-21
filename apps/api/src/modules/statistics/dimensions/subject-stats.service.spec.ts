@@ -121,7 +121,11 @@ describe('SubjectStatsService.list', () => {
   it('RULE 2: mọi truy vấn đều mang phạm vi lớp học phần của người xem', async () => {
     const { service, sectionFindMany, enrollmentGroupBy } = setup();
     await service.list(lecturerUser, 'SU25');
-    const scoped = { term: 'SU25', AND: [{ lecturerId: 'gv-1' }] };
+    // Giảng viên chỉ thống kê lớp mình dạy CỦA bộ môn mình .
+    const scoped = {
+      term: 'SU25',
+      AND: [{ lecturerId: 'gv-1', subject: { departmentId: 'dept-1' } }],
+    };
     const [sectionArgs] = sectionFindMany.mock.calls[0] as [SectionWhereArgs];
     expect(sectionArgs.where).toEqual(scoped);
     for (const call of enrollmentGroupBy.mock.calls as [GroupByWhereArgs][]) {

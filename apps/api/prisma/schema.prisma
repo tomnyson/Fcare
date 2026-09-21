@@ -20,6 +20,9 @@ model Department {
   id        String   @id @default(uuid())
   code      String   @unique
   name      String
+  // Bộ môn cơ sở không mở: tắt để ẩn khỏi danh mục + dropdown. Môn học của bộ
+  // môn tắt cũng ẩn theo (suy ra, không lưu cờ riêng) → bật lại là hiện lại.
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

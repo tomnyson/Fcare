@@ -49,7 +49,9 @@ describe('nav-tree — dựng cây theo vai trò', () => {
   it('quản trị viên thấy đủ ba khu vực và đủ 8 danh mục Đào tạo', () => {
     const sections = buildNavSections(user(['ADMIN']));
     expect(sections.map((section) => section.id)).toEqual(['main', 'training', 'system']);
-    const trainingHrefs = hrefs(sections[1].items).filter((href) => href.startsWith('/master-data/'));
+    const trainingHrefs = hrefs(sections[1].items).filter((href) =>
+      href.startsWith('/master-data/'),
+    );
     // Lớp học phần vừa là liên kết vừa là nhóm nên xuất hiện đúng một lần.
     expect(new Set(trainingHrefs).size).toBe(8);
     expect(trainingHrefs).toContain('/master-data/terms');
@@ -90,6 +92,20 @@ describe('nav-tree — dựng cây theo vai trò', () => {
     expect(badged[0].kind === 'leaf' && badged[0].href).toBe('/alerts');
   });
 
+  it('Thống kê là nhóm có các tab con, Lớp học phần đứng đầu', () => {
+    const main = buildNavSections(user(['LECTURER']))[0].items;
+    const stats = findGroup(main, 'statistics');
+    expect(stats.href).toBe('/statistics');
+    expect(hrefs(stats.children)).toEqual([
+      '/statistics/classes',
+      '/statistics/departments',
+      '/statistics/subjects',
+      '/statistics/lecturers',
+    ]);
+    const head = findGroup(buildNavSections(user(['HEAD_OF_DEPT']))[0].items, 'statistics');
+    expect(hrefs(head.children)).toContain('/statistics/care');
+  });
+
   it('khu vực Chính chứa mục Lớp học dẫn đến /class-sections', () => {
     const main = buildNavSections(user(['LECTURER']))[0].items;
     const classLeaf = main.find((node) => node.kind === 'leaf' && node.href === '/class-sections');
@@ -122,8 +138,8 @@ describe('nav-tree — trạng thái mở/đóng', () => {
 
   it('nhóm đã gập vẫn bung ra khi điều hướng vào trang bên trong', () => {
     expect(isGroupOpen(program, '/master-data/majors', new Set(['program']))).toBe(true);
-    expect(isGroupOpen(classSections, '/master-data/department-aliases', new Set(['class-sections']))).toBe(
-      true,
-    );
+    expect(
+      isGroupOpen(classSections, '/master-data/department-aliases', new Set(['class-sections'])),
+    ).toBe(true);
   });
 });

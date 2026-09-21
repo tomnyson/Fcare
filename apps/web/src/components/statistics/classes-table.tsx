@@ -8,7 +8,7 @@ const HEADERS = [
   'Lớp học phần', 'Môn', 'Giảng viên', 'Sĩ số', 'Đạt', 'Trượt', 'Cấm thi', 'Tỷ lệ đạt',
 ];
 
-/** Bảng lớp học phần — khuôn giống hệt khối trên `/dashboard`, tách riêng để dùng lại ở `/statistics`. */
+/** Bảng "Kết quả theo lớp học phần" — tab con `/statistics/classes` của menu Thống kê. */
 export function ClassesTable({
   rows,
   isLoading,

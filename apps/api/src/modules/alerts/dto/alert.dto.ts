@@ -1,7 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AlertSource, AlertStatus } from '@prisma/client';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -58,6 +59,15 @@ export class ListAlertsQuery {
   @Min(1)
   @Max(4)
   level?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Chỉ cảnh báo chưa giải quyết (OPEN + ACKNOWLEDGED); thắng `status`',
+  })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  openOnly?: boolean;
 
   @ApiPropertyOptional({
     enum: AlertSource,

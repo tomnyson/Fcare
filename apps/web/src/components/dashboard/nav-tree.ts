@@ -1,5 +1,10 @@
-import { canViewTrainingArea, MASTER_DATA_TABS, type MasterDataTabKey } from '../../lib/master-data-tabs';
+import {
+  canViewTrainingArea,
+  MASTER_DATA_TABS,
+  type MasterDataTabKey,
+} from '../../lib/master-data-tabs';
 import { canSeeExcelMenu } from '../../lib/nav-access';
+import { statisticsTabHref, visibleStatisticsTabs } from '../../lib/statistics-view';
 import type { AuthUser } from '../../lib/types';
 import {
   IconAlerts,
@@ -69,7 +74,12 @@ function tab(key: MasterDataTabKey): NavLeaf {
   if (!found) {
     throw new Error(`Thiếu mục danh mục Đào tạo: ${key}`);
   }
-  return { kind: 'leaf', href: `/master-data/${found.key}`, label: found.label, icon: TRAINING_ICONS[key] };
+  return {
+    kind: 'leaf',
+    href: `/master-data/${found.key}`,
+    label: found.label,
+    icon: TRAINING_ICONS[key],
+  };
 }
 
 /** Nhóm Đào tạo: 4 danh mục chính, ba danh mục ánh xạ nằm dưới Lớp học phần. */
@@ -94,11 +104,7 @@ function trainingSection(): NavSection {
             label: 'Lớp học phần',
             icon: IconSections,
             href: '/master-data/class-sections',
-            children: [
-              tab('department-aliases'),
-              tab('major-aliases'),
-              tab('class-major-rules'),
-            ],
+            children: [tab('department-aliases'), tab('major-aliases'), tab('class-major-rules')],
           },
         ],
       },
@@ -116,7 +122,18 @@ export function buildNavSections(user: AuthUser): NavSection[] {
         { kind: 'leaf', href: '/students', label: 'Sinh viên', icon: IconStudents },
         { kind: 'leaf', href: '/class-sections', label: 'Lớp học', icon: IconSections },
         { kind: 'leaf', href: '/alerts', label: 'Cảnh báo', icon: IconAlerts, badge: 'openAlerts' },
-        { kind: 'leaf', href: '/statistics', label: 'Thống kê', icon: IconStatistics },
+        {
+          kind: 'group',
+          id: 'statistics',
+          label: 'Thống kê',
+          icon: IconStatistics,
+          href: '/statistics',
+          children: visibleStatisticsTabs(user.roles).map((item): NavLeaf => ({
+            kind: 'leaf',
+            href: statisticsTabHref(item.key, ''),
+            label: item.label,
+          })),
+        },
       ],
     },
   ];
@@ -127,12 +144,22 @@ export function buildNavSections(user: AuthUser): NavSection[] {
 
   const system: NavNode[] = [];
   if (canSeeExcelMenu(user.roles)) {
-    system.push({ kind: 'leaf', href: '/import-export', label: 'Import / Export', icon: IconTransfer });
+    system.push({
+      kind: 'leaf',
+      href: '/import-export',
+      label: 'Import / Export',
+      icon: IconTransfer,
+    });
   }
   if (user.roles.includes('ADMIN')) {
     system.push({ kind: 'leaf', href: '/admin/users', label: 'Người dùng', icon: IconSettings });
     system.push({ kind: 'leaf', href: '/admin/mail', label: 'Cấu hình email', icon: IconMail });
-    system.push({ kind: 'leaf', href: '/admin/backups', label: 'Sao lưu & Phục hồi', icon: IconDatabase });
+    system.push({
+      kind: 'leaf',
+      href: '/admin/backups',
+      label: 'Sao lưu & Phục hồi',
+      icon: IconDatabase,
+    });
   }
   if (system.length > 0) {
     sections.push({ id: 'system', label: 'Hệ thống', items: system });

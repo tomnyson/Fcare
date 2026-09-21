@@ -451,3 +451,42 @@ describe('StudentsService.filterOptions', () => {
     ]);
   });
 });
+
+describe('StudentsService.list — cột số buổi vắng', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('lọc enrollments theo cùng điều kiện kỳ/lớp HP với bộ lọc', async () => {
+    await service.list(adminUser, { term: 'FA26', sectionId: 'cs-1' });
+    const [args] = findMany.mock.calls[0] as [
+      { include: { enrollments: { where: unknown; select: unknown } } },
+    ];
+    expect(args.include.enrollments).toEqual({
+      where: { classSectionId: 'cs-1', classSection: { term: 'FA26' } },
+      select: { absentSessions: true },
+    });
+  });
+
+  it('cộng tổng buổi vắng, lấy max theo lớp HP và bỏ mảng enrollments thô', async () => {
+    transaction.mockResolvedValueOnce([
+      [
+        {
+          id: 's1',
+          enrollments: [
+            { absentSessions: 2 },
+            { absentSessions: null },
+            { absentSessions: 3 },
+          ],
+        },
+        { id: 's2', enrollments: [{ absentSessions: null }] },
+        { id: 's3', enrollments: [] },
+      ],
+      3,
+    ]);
+    const result = await service.list(adminUser, { term: 'FA26' });
+    expect(result.items).toEqual([
+      { id: 's1', absentSessions: 5, maxSectionAbsent: 3 },
+      { id: 's2', absentSessions: null, maxSectionAbsent: null },
+      { id: 's3', absentSessions: null, maxSectionAbsent: null },
+    ]);
+  });
+});

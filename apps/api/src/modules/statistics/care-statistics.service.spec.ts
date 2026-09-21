@@ -52,13 +52,19 @@ function setup() {
     discussionMessage: { findMany: jest.fn().mockResolvedValue([]) },
     alert: { findMany: jest.fn().mockResolvedValue([]) },
     attendance: [] as unknown[],
+    // Mặc định SV có một cảnh báo không gắn lớp → xuất hiện ở mọi lớp.
+    levelAlerts: [
+      { studentId: 'student', classSectionId: null, level: 1 },
+    ] as unknown[],
   };
   // Hai truy vấn cùng model alert: cảnh báo theo mức (không source) và
   // cảnh báo điểm danh tự động (source = AUTO_ATTENDANCE).
   prisma.alert.findMany.mockImplementation(
     ({ where }: { where: { source?: string } }) =>
       Promise.resolve(
-        where.source === 'AUTO_ATTENDANCE' ? prisma.attendance : [],
+        where.source === 'AUTO_ATTENDANCE'
+          ? prisma.attendance
+          : prisma.levelAlerts,
       ),
   );
   return {
@@ -78,6 +84,23 @@ describe('CareStatisticsService', () => {
       service.export(lecturerUser, { term: 'FA26' }),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.term.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('Cán bộ Đào tạo xem được thống kê chăm sóc toàn trường', async () => {
+    const { service, prisma } = setup();
+    const trainingUser: AuthUser = {
+      ...user,
+      roles: ['TRAINING_OFFICER'],
+      departmentId: null,
+    };
+    await expect(
+      service.list(trainingUser, { term: 'FA26' }),
+    ).resolves.toBeDefined();
+    const [sectionArgs] = prisma.classSection.findMany.mock.calls[0] as [
+      { where: { AND: unknown[] } },
+    ];
+    // Không bị thu về phạm vi bộ môn như TBM.
+    expect(sectionArgs.where.AND.slice(1)).toEqual([{}, { lecturer: {} }]);
   });
 
   it('requires a configured term', async () => {
@@ -221,8 +244,8 @@ describe('CareStatisticsService', () => {
           where.source === 'AUTO_ATTENDANCE'
             ? []
             : [
-                { studentId: 'student', level: 2 },
-                { studentId: 'student', level: 4 },
+                { studentId: 'student', classSectionId: null, level: 2 },
+                { studentId: 'student', classSectionId: null, level: 4 },
               ],
         ),
     );
@@ -251,7 +274,7 @@ describe('CareStatisticsService', () => {
         studentId: { in: ['student'] },
         createdAt: { gte: term.startDate, lte: term.endDate },
       },
-      select: { studentId: true, level: true },
+      select: { studentId: true, classSectionId: true, level: true },
     });
   });
 
@@ -275,6 +298,80 @@ describe('CareStatisticsService', () => {
     expect(
       (await service.list(user, { term: 'FA26' })).lecturers[0],
     ).toMatchObject({ studentCount: 0, careRate: null });
+  });
+
+  it('chỉ tính SV có cảnh báo: tỷ lệ trên SV cảnh báo, sĩ số vẫn là mọi SV', async () => {
+    const { service, prisma } = setup();
+    const calm = { ...student, id: 'calm', studentCode: 'SV2' };
+    const other = { ...student, id: 'other', studentCode: 'SV3' };
+    prisma.classSection.findMany.mockResolvedValue([
+      {
+        ...section('A'),
+        enrollments: [{ student }, { student: calm }, { student: other }],
+      },
+    ]);
+    prisma.levelAlerts = [
+      { studentId: 'student', classSectionId: 'A', level: 3 },
+      { studentId: 'other', classSectionId: 'A', level: 2 },
+      // Cảnh báo ở lớp khác không làm SV hiện trong lớp A.
+      { studentId: 'calm', classSectionId: 'Z', level: 4 },
+    ];
+    prisma.careLog.findMany.mockResolvedValue([
+      {
+        id: 'l1',
+        staffId: 'teacher',
+        studentId: 'student',
+        channel: 'IN_PERSON',
+        content: 'Gặp',
+        outcome: null,
+        nextAction: null,
+        staff: { staffCode: 'GV1', fullName: 'Teacher' },
+        createdAt: term.startDate,
+      },
+    ]);
+    const report = await service.list(user, { term: 'FA26' });
+    const [sectionA] = report.lecturers[0].sections;
+    expect(sectionA.students.map((row) => row.id)).toEqual([
+      'student',
+      'other',
+    ]);
+    expect(sectionA).toMatchObject({
+      studentCount: 3,
+      alertedStudentCount: 2,
+      caredCount: 1,
+      uncaredCount: 1,
+      careRate: 50,
+    });
+    expect(sectionA.students[0].alertLevel).toBe(3);
+
+    // Lọc trạng thái chỉ lọc danh sách, tỷ lệ vẫn tính trên mọi SV cảnh báo.
+    const cared = await service.list(user, { term: 'FA26', status: 'cared' });
+    expect(cared.lecturers[0].sections[0].students.map((r) => r.id)).toEqual([
+      'student',
+    ]);
+    expect(cared.lecturers[0]).toMatchObject({
+      studentCount: 3,
+      alertedStudentCount: 2,
+      careRate: 50,
+    });
+  });
+
+  it('lớp không có SV cảnh báo: tỷ lệ trống, không lên file chi tiết', async () => {
+    const { service, prisma } = setup();
+    prisma.levelAlerts = [];
+    const report = await service.list(user, { term: 'FA26' });
+    expect(report.lecturers[0]).toMatchObject({
+      studentCount: 1,
+      alertedStudentCount: 0,
+      careRate: null,
+    });
+    const buffer = await service.export(user, {
+      term: 'FA26',
+      mode: 'detailed',
+    });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+    expect(workbook.worksheets[0].rowCount).toBe(5);
   });
 
   it('gắn cảnh báo điểm danh mới nhất theo lớp và đếm GV đứng lớp đã chăm sóc', async () => {
@@ -346,34 +443,132 @@ describe('CareStatisticsService', () => {
     );
   });
 
-  it('exports three sheets using the same filtered totals and explicit metadata', async () => {
-    const { service } = setup();
-    const buffer = await service.export(user, {
-      term: 'FA26',
-      status: 'uncared',
+  it('lọc theo bộ môn của giảng viên, luôn AND với phạm vi người xem', async () => {
+    const { service, prisma } = setup();
+    await service.list(user, { term: 'FA26', departmentId: 'dept-it' });
+    expect(prisma.classSection.findMany).toHaveBeenCalledWith(
+      containing({
+        where: {
+          AND: expect.arrayContaining([
+            { lecturer: { departmentId: 'dept-it' } },
+          ]) as unknown,
+        },
+      }),
+    );
+  });
+
+  it('đếm lượt cảnh báo theo lớp môn và lượt nhật ký do chính GV đứng lớp ghi', async () => {
+    const { service, prisma } = setup();
+    prisma.careLog.findMany.mockResolvedValue([
+      {
+        id: 'l1',
+        staffId: 'teacher',
+        studentId: 'student',
+        channel: 'IN_PERSON',
+        content: 'GV gặp',
+        outcome: null,
+        nextAction: null,
+        staff: { staffCode: 'GV1', fullName: 'Teacher' },
+        createdAt: term.startDate,
+      },
+      {
+        id: 'l2',
+        staffId: 'sa',
+        studentId: 'student',
+        channel: 'ONLINE',
+        content: 'CTSV gọi',
+        outcome: null,
+        nextAction: null,
+        staff: { staffCode: 'CT1', fullName: 'SA' },
+        createdAt: term.startDate,
+      },
+    ]);
+    prisma.alert.findMany.mockImplementation(
+      ({ where }: { where: { source?: string } }) =>
+        Promise.resolve(
+          where.source === 'AUTO_ATTENDANCE'
+            ? []
+            : [
+                { studentId: 'student', classSectionId: 'A', level: 2 },
+                { studentId: 'student', classSectionId: null, level: 3 },
+                { studentId: 'student', classSectionId: 'B', level: 4 },
+              ],
+        ),
+    );
+    const report = await service.list(user, { term: 'FA26' });
+    const [sectionA, sectionB] = report.lecturers[0].sections;
+    expect(sectionA).toMatchObject({
+      alertedStudentCount: 1,
+      careLogCount: 2,
+      ownerCareLogCount: 1,
     });
+    expect(sectionA.students[0].alertCount).toBe(2);
+    expect(sectionB).toMatchObject({
+      alertedStudentCount: 1,
+      ownerCareLogCount: 1,
+    });
+    expect(sectionB.students[0].alertCount).toBe(2);
+  });
+
+  it('xuất tổng hợp: mỗi dòng một lớp môn với đúng 11 cột yêu cầu', async () => {
+    const { service, prisma } = setup();
+    prisma.evaluation.findMany.mockResolvedValue([
+      {
+        id: 'e1',
+        lecturerId: 'teacher',
+        classSectionId: 'A',
+        studentId: 'student',
+        academicScore: 5,
+        attitudeScore: 5,
+        absentSessions: 0,
+        note: null,
+        criteria: [],
+        lecturer: { staffCode: 'GV1', fullName: 'Teacher' },
+        updatedAt: term.startDate,
+      },
+    ]);
+    const buffer = await service.export(user, { term: 'FA26' });
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
     expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual([
-      'Tổng hợp giáo viên',
-      'Theo lớp',
-      'Chi tiết sinh viên',
+      'Tổng hợp theo lớp môn',
+      'Tổng hợp giảng viên',
     ]);
-    expect(workbook.worksheets[0].getCell('E6').value).toBe(1);
-    expect(workbook.worksheets[0].getCell('G6').value).toBe(1);
-    expect(workbook.worksheets[1].rowCount).toBe(7);
-    expect(workbook.worksheets[2].getCell('L6').value).toBe('Không có');
-    expect(workbook.worksheets[0].getCell('A3').value).toContain(
-      'Chưa chăm sóc',
-    );
-    // 4 cột điểm danh mới ở cuối sheet tổng hợp: CB, GV lớp đã CS, GV khác, chờ.
-    expect(workbook.worksheets[0].getCell('L5').value).toBe('CB điểm danh');
-    expect(workbook.worksheets[0].getCell('O6').value).toBe(0);
-    expect(workbook.worksheets[2].getCell('M6').value).toBe('Không có');
-    expect(workbook.worksheets[2].getCell('N6').value).toBe('—');
+    const sheet = workbook.worksheets[0];
+    expect(sheet.getRow(5).values).toEqual([
+      undefined,
+      'Acc GV',
+      'Họ tên GV',
+      'Bộ môn',
+      'Lớp môn',
+      'Sĩ số SV',
+      'Lượt cảnh báo',
+      'Lượt chăm sóc',
+      'Tỷ lệ chăm sóc',
+      'Lượt nhận xét',
+      'Lượt nhật ký',
+      'Lượt GV chăm sóc',
+    ]);
+    expect(sheet.getRow(6).values).toEqual([
+      undefined,
+      'GV1',
+      'Teacher',
+      'IT',
+      'A',
+      1,
+      1,
+      1,
+      '100%',
+      1,
+      0,
+      0,
+    ]);
+    expect(sheet.getCell('D7').value).toBe('B');
+    expect(sheet.getCell('H7').value).toBe('0%');
+    expect(sheet.rowCount).toBe(7);
   });
 
-  it('exports detailed care report with note, logs, and discussion columns when mode is detailed', async () => {
+  it('xuất chi tiết: mỗi lần chăm sóc một cột "Nhật ký chăm sóc lần X", cũ nhất trước', async () => {
     const { service, prisma } = setup();
     prisma.evaluation.findMany.mockResolvedValue([
       {
@@ -390,16 +585,28 @@ describe('CareStatisticsService', () => {
         updatedAt: term.startDate,
       },
     ]);
+    // Prisma trả mới nhất trước — file xuất phải đảo lại thành lần 1 = sớm nhất.
     prisma.careLog.findMany.mockResolvedValue([
       {
-        id: 'l1',
+        id: 'l2',
         staffId: 'teacher',
+        studentId: 'student',
+        channel: 'ONLINE',
+        content: 'Hỏi thăm lần hai',
+        outcome: null,
+        nextAction: null,
+        staff: { staffCode: 'GV1', fullName: 'Teacher' },
+        createdAt: new Date('2026-09-05T08:30:00Z'),
+      },
+      {
+        id: 'l1',
+        staffId: 'sa',
         studentId: 'student',
         channel: 'IN_PERSON',
         content: 'Gặp gỡ động viên',
-        outcome: 'Ổn định',
-        nextAction: 'Theo dõi tiếp',
-        staff: { staffCode: 'GV1', fullName: 'Teacher' },
+        outcome: null,
+        nextAction: null,
+        staff: { staffCode: 'CT1', fullName: 'SA' },
         createdAt: term.startDate,
       },
     ]);
@@ -413,6 +620,14 @@ describe('CareStatisticsService', () => {
         author: { staffCode: 'GV1', fullName: 'Teacher' },
       },
     ]);
+    prisma.alert.findMany.mockImplementation(
+      ({ where }: { where: { source?: string } }) =>
+        Promise.resolve(
+          where.source === 'AUTO_ATTENDANCE'
+            ? []
+            : [{ studentId: 'student', classSectionId: 'A', level: 4 }],
+        ),
+    );
 
     const buffer = await service.export(user, {
       term: 'FA26',
@@ -420,16 +635,54 @@ describe('CareStatisticsService', () => {
     });
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
-    expect(workbook.worksheets[0].name).toBe('Chi tiết nội dung chăm sóc');
-    expect(workbook.worksheets[0].getCell('L6').value).toContain(
-      'Cần chú ý thái độ',
+    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual([
+      'Chi tiết nội dung chăm sóc',
+    ]);
+    const sheet = workbook.worksheets[0];
+    expect(sheet.getRow(5).values).toEqual([
+      undefined,
+      'Acc GV',
+      'Họ tên GV',
+      'Bộ môn',
+      'Lớp môn',
+      'Tên môn học',
+      'Mã SV',
+      'Họ tên SV',
+      'Trạng thái',
+      'Mức cảnh báo',
+      'Nhận xét của GV (Nguyên nhân cần chăm sóc)',
+      'Nhật ký chăm sóc lần 1',
+      'Nhật ký chăm sóc lần 2',
+      'Trao đổi thảo luận giữa GV & CB',
+    ]);
+    expect(sheet.getCell('E6').value).toBe('Subject');
+    expect(sheet.getCell('H6').value).toBe('Đã chăm sóc');
+    expect(sheet.getCell('I6').value).toBe('Mức 4 - Khẩn cấp');
+    expect(sheet.getCell('J6').value).toContain('Ý định nghỉ học');
+    expect(sheet.getCell('J6').value).toContain('Cần chú ý thái độ');
+    expect(sheet.getCell('K6').value).toBe(
+      '07:00 01/09/2026 — Acc CT1 — Gặp gỡ động viên',
     );
-    expect(workbook.worksheets[0].getCell('M6').value).toContain(
-      'Gặp gỡ động viên',
+    expect(sheet.getCell('L6').value).toBe(
+      '15:30 05/09/2026 — Acc GV1 — Hỏi thăm lần hai',
     );
-    expect(workbook.worksheets[0].getCell('N6').value).toContain(
-      'Thầy cô lưu ý em này',
-    );
-    expect(workbook.worksheets[0].getCell('O5').value).toBe('CB điểm danh');
+    expect(sheet.getCell('M6').value).toContain('Thầy cô lưu ý em này');
+    // Cảnh báo chỉ gắn lớp A → SV không lên dòng của lớp B.
+    expect(sheet.rowCount).toBe(6);
+  });
+
+  it('xuất chi tiết vẫn có cột "Nhật ký chăm sóc lần 1" khi chưa ai chăm sóc', async () => {
+    const { service } = setup();
+    const buffer = await service.export(user, {
+      term: 'FA26',
+      mode: 'detailed',
+    });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+    const sheet = workbook.worksheets[0];
+    expect(sheet.getCell('H6').value).toBe('Chưa chăm sóc');
+    expect(sheet.getCell('I6').value).toBe('Mức 1 - Thấp');
+    expect(sheet.getCell('K5').value).toBe('Nhật ký chăm sóc lần 1');
+    expect(sheet.getCell('L5').value).toBe('Trao đổi thảo luận giữa GV & CB');
   });
 });

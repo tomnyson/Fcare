@@ -44,7 +44,10 @@ function LoadingCard() {
 
 function ErrorCard({ onRetry }: { onRetry: () => void }) {
   return (
-    <div role="alert" className={`${CARD} border-l-danger flex flex-wrap items-center justify-between gap-3 p-5`}>
+    <div
+      role="alert"
+      className={`${CARD} border-l-danger flex flex-wrap items-center justify-between gap-3 p-5`}
+    >
       <p className="text-sm text-ink">Không tải được danh sách cảnh báo điểm danh.</p>
       <Button type="button" variant="ghost" onClick={onRetry}>
         Thử tải lại
@@ -85,10 +88,15 @@ function OwnedPanel({
 }) {
   const students = countStudents(items);
   return (
-    <section aria-labelledby="attendance-care-title" className={`${CARD} ${TONE_BORDER[panelTone(items)]}`}>
+    <section
+      aria-labelledby="attendance-care-title"
+      className={`${CARD} ${TONE_BORDER[panelTone(items)]}`}
+    >
       <header className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-5 py-4">
         <h2 id="attendance-care-title" className="text-base font-bold text-fpt-blue-900">
-          <span className="font-[family-name:var(--font-display)] text-2xl tabular-nums">{students}</span>{' '}
+          <span className="font-[family-name:var(--font-display)] text-2xl tabular-nums">
+            {students}
+          </span>{' '}
           sinh viên cần chăm sóc sau điểm danh
         </h2>
         <p className="text-xs text-muted">

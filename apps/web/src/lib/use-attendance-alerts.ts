@@ -11,7 +11,10 @@ const STALE_MS = 30_000;
  * `all` = mọi cảnh báo điểm danh trong phạm vi được xem (TBM rà bộ môn).
  * Làm mới theo chu kỳ polling chung; SSE `alertId` sẽ invalidate sớm hơn.
  */
-export function usePendingAttendanceAlerts(term: string | null | undefined, scope: PendingScope = 'owned') {
+export function usePendingAttendanceAlerts(
+  term: string | null | undefined,
+  scope: PendingScope = 'owned',
+) {
   return useQuery({
     queryKey: ['attendance-alerts', term, scope],
     queryFn: () =>

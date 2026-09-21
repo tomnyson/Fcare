@@ -123,6 +123,12 @@ describe('AlertsService.list — lọc nhiều tiêu chí', () => {
     expect(args.where.student.AND).toEqual(LECTURER_SCOPE);
   });
 
+  it('openOnly: mọi cảnh báo chưa giải quyết (OPEN + ACKNOWLEDGED), thắng status', async () => {
+    await service.list(adminUser, { openOnly: true, status: 'RESOLVED' });
+    const [args] = findMany.mock.calls[0] as [AlertFindManyArgs];
+    expect(args.where.status).toEqual({ not: 'RESOLVED' });
+  });
+
   it('lọc theo nguồn cảnh báo và kèm lớp học phần phát cảnh báo', async () => {
     await service.list(adminUser, { source: 'AUTO_ATTENDANCE' });
     const [args] = findMany.mock.calls[0] as [

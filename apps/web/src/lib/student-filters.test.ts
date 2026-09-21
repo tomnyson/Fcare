@@ -83,11 +83,7 @@ describe('buildStudentListQuery', () => {
   });
 
   it('gửi sectionId khi lọc theo một lớp học phần', () => {
-    const query = buildStudentListQuery(
-      parseStudentFilters(params({ sectionId: 'cs-1' })),
-      1,
-      20,
-    );
+    const query = buildStudentListQuery(parseStudentFilters(params({ sectionId: 'cs-1' })), 1, 20);
     expect(query.get('sectionId')).toBe('cs-1');
   });
 
@@ -102,11 +98,7 @@ describe('buildStudentListQuery', () => {
   });
 
   it('cắt khoảng trắng thừa của từ khóa tìm kiếm', () => {
-    const query = buildStudentListQuery(
-      parseStudentFilters(params({ search: '  an  ' })),
-      1,
-      20,
-    );
+    const query = buildStudentListQuery(parseStudentFilters(params({ search: '  an  ' })), 1, 20);
     expect(query.get('search')).toBe('an');
   });
 });
