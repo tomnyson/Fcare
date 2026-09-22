@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { DataTable, Td } from '../ui/data-table';
 import { FormError, FormSuccess, Input, Select } from '../ui/form';
 import { PageHeader } from '../ui/page-header';
+import { usePagedList } from '../../lib/use-paged-list';
 import { ApiError, apiFetch } from '../../lib/api';
 import { ALERT_LEVEL_LABELS, ALERT_LEVEL_TONES } from '../../lib/labels';
 import { useMe } from '../../lib/hooks';
@@ -14,6 +15,7 @@ import type {
   SectionGradeRow,
   SectionGradesResponse,
 } from '../../lib/types';
+import { AddStudentsModal } from './add-students-modal';
 
 const RESULT_LABELS: Record<EnrollmentResult, string> = {
   IN_PROGRESS: 'Đang học',
@@ -75,8 +77,10 @@ export function SectionGradesView({ sectionId }: { sectionId: string }) {
   const { data: me } = useMe();
   const canManage = me?.user.roles.some((role) => MANAGER_ROLES.includes(role)) ?? false;
   const [draft, setDraft] = useState<SectionGradeRow[]>([]);
+  const paged = usePagedList(draft, { pageSize: 10 });
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
+  const [supplementModalOpen, setSupplementModalOpen] = useState(false);
 
   const { data, isLoading, isError, error: loadError } = useQuery({
     queryKey: ['section-grades', sectionId],
@@ -173,13 +177,22 @@ export function SectionGradesView({ sectionId }: { sectionId: string }) {
         }
         actions={
           canManage ? (
-            <Button
-              type="button"
-              disabled={save.isPending || draft.length === 0}
-              onClick={handleSave}
-            >
-              {save.isPending ? 'Đang lưu…' : 'Lưu bảng điểm'}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setSupplementModalOpen(true)}
+              >
+                + Bổ sung sinh viên
+              </Button>
+              <Button
+                type="button"
+                disabled={save.isPending || draft.length === 0}
+                onClick={handleSave}
+              >
+                {save.isPending ? 'Đang lưu…' : 'Lưu bảng điểm'}
+              </Button>
+            </div>
           ) : undefined
         }
       />
@@ -197,13 +210,24 @@ export function SectionGradesView({ sectionId }: { sectionId: string }) {
       </div>
 
       <DataTable
+        fitViewport
         headers={['MSSV', 'Họ tên', 'Cảnh báo', 'Điểm tổng kết', 'Kết quả']}
         isLoading={isLoading}
-        skeletonRows={8}
+        skeletonRows={paged.pageSize}
         isEmpty={!isLoading && !isError && draft.length === 0}
         emptyMessage="Lớp chưa có sinh viên ghi danh."
+        pagination={{
+          page: paged.page,
+          totalPages: paged.totalPages,
+          total: paged.total,
+          limit: paged.pageSize,
+          isLoading,
+          onPageChange: paged.setPage,
+          onLimitChange: paged.setPageSize,
+          label: 'Phân trang bảng điểm',
+        }}
       >
-        {draft.map((row) => (
+        {paged.pageItems.map((row) => (
           <tr key={row.enrollmentId}>
             <Td className="font-semibold text-ink">{row.studentCode}</Td>
             <Td>{row.fullName}</Td>
@@ -259,6 +283,33 @@ export function SectionGradesView({ sectionId }: { sectionId: string }) {
           </tr>
         ))}
       </DataTable>
+
+      {data?.section ? (
+        <AddStudentsModal
+          open={supplementModalOpen}
+          section={{
+            id: data.section.id,
+            code: data.section.code,
+            term: data.section.term,
+            subjectId: '',
+            lecturerId: null,
+            subject: data.section.subject
+              ? {
+                  id: '',
+                  code: data.section.subject.code,
+                  name: data.section.subject.name,
+                  credits: 0,
+                  departmentId: '',
+                }
+              : undefined,
+          }}
+          onClose={() => setSupplementModalOpen(false)}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['section-grades', sectionId] });
+            queryClient.invalidateQueries({ queryKey: ['class-sections'] });
+          }}
+        />
+      ) : null}
     </>
   );
 }
