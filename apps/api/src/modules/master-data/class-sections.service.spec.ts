@@ -456,3 +456,99 @@ describe('ClassSectionsService — phạm vi lớp học phần & cảnh báo', 
     expect(result[1].openAlertCount).toBe(1);
   });
 });
+
+describe('ClassSectionsService — bổ sung sinh viên vào lớp học phần', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('tạo sinh viên mới nếu chưa có và ghi danh vào lớp', async () => {
+    const { prisma, findUnique } = makePrisma();
+    const studentFindMany = jest.fn().mockResolvedValue([]);
+    const studentCreate = jest.fn().mockImplementation(({ data }) => ({
+      id: 'sv-new-1',
+      ...data,
+    }));
+    const enrollmentFindMany = jest.fn().mockResolvedValue([]);
+    const enrollmentCreate = jest.fn().mockResolvedValue({ id: 'enr-new-1' });
+
+    (prisma as unknown as Record<string, unknown>).student = {
+      findMany: studentFindMany,
+      create: studentCreate,
+    };
+    prisma.enrollment.findMany = enrollmentFindMany;
+    prisma.enrollment.create = enrollmentCreate;
+    prisma.$transaction = jest.fn().mockImplementation(async (callback) => {
+      if (typeof callback === 'function') {
+        return callback(prisma);
+      }
+      return Promise.all(callback);
+    });
+
+    findUnique.mockResolvedValueOnce({
+      id: 'sec-1',
+      code: 'AI21301-ITA106',
+      subjectId: 'sub-1',
+      subject: { id: 'sub-1', departmentId: 'dept-cntt' },
+    });
+
+    const service = new ClassSectionsService(prisma, audit);
+    const result = await service.addStudentsToSection(user, 'sec-1', [
+      { studentCode: 'PK04346', fullName: 'Hoàng Lê Minh Sang' },
+    ]);
+
+    expect(result.addedCount).toBe(1);
+    expect(result.existingCount).toBe(0);
+    expect(studentCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          studentCode: 'PK04346',
+          fullName: 'Hoàng Lê Minh Sang',
+          departmentId: 'dept-cntt',
+          classCode: 'AI21301',
+        }),
+      }),
+    );
+    expect(auditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'SECTION_STUDENTS_ADD',
+        entityId: 'sec-1',
+      }),
+    );
+  });
+
+  it('bỏ qua nếu sinh viên đã ghi danh sẵn trong lớp', async () => {
+    const { prisma, findUnique } = makePrisma();
+    const studentFindMany = jest.fn().mockResolvedValue([
+      { id: 'sv-1', studentCode: 'PK04346', fullName: 'Hoàng Lê Minh Sang' },
+    ]);
+    const enrollmentFindMany = jest.fn().mockResolvedValue([
+      { studentId: 'sv-1', classSectionId: 'sec-1' },
+    ]);
+    const enrollmentCreate = jest.fn();
+
+    (prisma as unknown as Record<string, unknown>).student = {
+      findMany: studentFindMany,
+    };
+    prisma.enrollment.findMany = enrollmentFindMany;
+    prisma.enrollment.create = enrollmentCreate;
+    prisma.$transaction = jest.fn().mockImplementation(async (callback) => {
+      if (typeof callback === 'function') return callback(prisma);
+      return Promise.all(callback);
+    });
+
+    findUnique.mockResolvedValueOnce({
+      id: 'sec-1',
+      code: 'AI21301-ITA106',
+      subjectId: 'sub-1',
+      subject: { id: 'sub-1', departmentId: 'dept-cntt' },
+    });
+
+    const service = new ClassSectionsService(prisma, audit);
+    const result = await service.addStudentsToSection(user, 'sec-1', [
+      { studentCode: 'PK04346', fullName: 'Hoàng Lê Minh Sang' },
+    ]);
+
+    expect(result.addedCount).toBe(0);
+    expect(result.existingCount).toBe(1);
+    expect(enrollmentCreate).not.toHaveBeenCalled();
+  });
+});

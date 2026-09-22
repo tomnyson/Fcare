@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { AlertStatus } from '@prisma/client';
+import { AlertStatus, EnrollmentResult, StudentStatus } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
 import type { AuthUser } from '../../common/types/auth-user';
 import { sectionScope, studentScope } from '../../common/utils/dept-scope';
@@ -16,6 +16,8 @@ import {
   UpdateClassSectionDto,
 } from './dto/class-section.dto';
 import { UpdateSectionGradesDto } from './dto/section-grades.dto';
+import { AddStudentItemDto } from './dto/add-students-to-section.dto';
+import { parseStudentsExcelBuffer } from './section-students-excel';
 
 @Injectable()
 export class ClassSectionsService {
@@ -328,5 +330,176 @@ export class ClassSectionsService {
     });
 
     return { updated: dto.rows.length };
+  }
+
+  async addStudentsToSection(
+    user: AuthUser,
+    sectionId: string,
+    rawStudents: AddStudentItemDto[],
+  ) {
+    if (!rawStudents || rawStudents.length === 0) {
+      throw new BadRequestException('Danh sách sinh viên không được rỗng.');
+    }
+
+    const section = await this.prisma.classSection.findUnique({
+      where: { id: sectionId },
+      include: {
+        subject: { select: { id: true, departmentId: true, code: true } },
+      },
+    });
+
+    if (!section) {
+      throw new NotFoundException('Không tìm thấy lớp học phần.');
+    }
+
+    // Chuẩn hóa và lọc trùng trong payload
+    const normalizedMap = new Map<string, string>();
+    for (const item of rawStudents) {
+      const code = item.studentCode?.trim().toUpperCase();
+      const name = item.fullName?.trim();
+      if (code && name && !normalizedMap.has(code)) {
+        normalizedMap.set(code, name);
+      }
+    }
+
+    const studentCodes = Array.from(normalizedMap.keys());
+    if (studentCodes.length === 0) {
+      throw new BadRequestException(
+        'Không tìm thấy sinh viên hợp lệ trong danh sách.',
+      );
+    }
+
+    // Xác định bộ môn mặc định và mã lớp hành chính mặc định
+    let defaultDepartmentId = section.subject?.departmentId;
+    if (!defaultDepartmentId) {
+      const firstDept = await this.prisma.department.findFirst({
+        select: { id: true },
+      });
+      defaultDepartmentId = firstDept?.id ?? '';
+    }
+
+    const defaultClassCode = section.code.split('-')[0] || 'CHUA_GAN';
+
+    // Thực hiện trong transaction
+    const result = await this.prisma.$transaction(async (tx) => {
+      // 1. Tìm các sinh viên đã có trong hệ thống
+      const existingStudents = await tx.student.findMany({
+        where: { studentCode: { in: studentCodes } },
+        select: { id: true, studentCode: true, fullName: true },
+      });
+
+      const studentMap = new Map<
+        string,
+        { id: string; studentCode: string; fullName: string; isNew: boolean }
+      >();
+      for (const s of existingStudents) {
+        studentMap.set(s.studentCode, {
+          id: s.id,
+          studentCode: s.studentCode,
+          fullName: s.fullName,
+          isNew: false,
+        });
+      }
+
+      // 2. Tạo sinh viên chưa có
+      for (const [code, name] of normalizedMap.entries()) {
+        if (!studentMap.has(code)) {
+          const created = await tx.student.create({
+            data: {
+              studentCode: code,
+              fullName: name,
+              departmentId: defaultDepartmentId,
+              classCode: defaultClassCode,
+              status: StudentStatus.STUDYING,
+            },
+            select: { id: true, studentCode: true, fullName: true },
+          });
+          studentMap.set(code, {
+            id: created.id,
+            studentCode: created.studentCode,
+            fullName: created.fullName,
+            isNew: true,
+          });
+        }
+      }
+
+      // 3. Kiểm tra các sinh viên đã ghi danh vào lớp học phần này
+      const allStudentIds = Array.from(studentMap.values()).map((s) => s.id);
+      const enrolledRecords = await tx.enrollment.findMany({
+        where: {
+          classSectionId: sectionId,
+          studentId: { in: allStudentIds },
+        },
+        select: { studentId: true },
+      });
+
+      const enrolledStudentIds = new Set(
+        enrolledRecords.map((e) => e.studentId),
+      );
+
+      const added: Array<{
+        studentCode: string;
+        fullName: string;
+        isNewStudent: boolean;
+      }> = [];
+      const existing: Array<{ studentCode: string; fullName: string }> = [];
+
+      // 4. Tạo Enrollment cho sinh viên chưa có trong lớp
+      for (const student of studentMap.values()) {
+        if (enrolledStudentIds.has(student.id)) {
+          existing.push({
+            studentCode: student.studentCode,
+            fullName: student.fullName,
+          });
+        } else {
+          await tx.enrollment.create({
+            data: {
+              studentId: student.id,
+              classSectionId: sectionId,
+              result: EnrollmentResult.IN_PROGRESS,
+            },
+          });
+          added.push({
+            studentCode: student.studentCode,
+            fullName: student.fullName,
+            isNewStudent: student.isNew,
+          });
+        }
+      }
+
+      return {
+        sectionId: section.id,
+        sectionCode: section.code,
+        addedCount: added.length,
+        existingCount: existing.length,
+        totalSubmitted: studentCodes.length,
+        added,
+        existing,
+      };
+    });
+
+    await this.audit.log({
+      staffId: user.id,
+      action: 'SECTION_STUDENTS_ADD',
+      entity: 'ClassSection',
+      entityId: sectionId,
+      metadata: {
+        sectionCode: section.code,
+        addedCount: result.addedCount,
+        existingCount: result.existingCount,
+        addedStudentCodes: result.added.map((s) => s.studentCode),
+      },
+    });
+
+    return result;
+  }
+
+  async addStudentsFromExcel(
+    user: AuthUser,
+    sectionId: string,
+    buffer: Buffer,
+  ) {
+    const students = await parseStudentsExcelBuffer(buffer);
+    return this.addStudentsToSection(user, sectionId, students);
   }
 }
