@@ -17,6 +17,7 @@ import {
 } from './dto/class-section.dto';
 import { UpdateSectionGradesDto } from './dto/section-grades.dto';
 import { AddStudentItemDto } from './dto/add-students-to-section.dto';
+import { UpdateSectionStudentDto } from './dto/update-section-student.dto';
 import { parseStudentsExcelBuffer } from './section-students-excel';
 
 @Injectable()
@@ -501,5 +502,136 @@ export class ClassSectionsService {
   ) {
     const students = await parseStudentsExcelBuffer(buffer);
     return this.addStudentsToSection(user, sectionId, students);
+  }
+
+  async removeStudentFromSection(
+    user: AuthUser,
+    sectionId: string,
+    enrollmentId: string,
+  ) {
+    const section = await this.prisma.classSection.findUnique({
+      where: { id: sectionId },
+      select: { id: true, code: true },
+    });
+    if (!section) {
+      throw new NotFoundException('Không tìm thấy lớp học phần.');
+    }
+
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: { id: enrollmentId, classSectionId: sectionId },
+      include: {
+        student: { select: { id: true, studentCode: true, fullName: true } },
+      },
+    });
+
+    if (!enrollment) {
+      throw new NotFoundException(
+        'Không tìm thấy sinh viên trong lớp học phần này.',
+      );
+    }
+
+    await this.prisma.enrollment.delete({
+      where: { id: enrollmentId },
+    });
+
+    await this.audit.log({
+      staffId: user.id,
+      action: 'SECTION_STUDENT_REMOVE',
+      entity: 'ClassSection',
+      entityId: sectionId,
+      metadata: {
+        enrollmentId,
+        studentId: enrollment.student.id,
+        studentCode: enrollment.student.studentCode,
+        fullName: enrollment.student.fullName,
+        sectionCode: section.code,
+      },
+    });
+
+    return {
+      success: true,
+      removed: true,
+      studentCode: enrollment.student.studentCode,
+      fullName: enrollment.student.fullName,
+    };
+  }
+
+  async updateStudentInSection(
+    user: AuthUser,
+    sectionId: string,
+    enrollmentId: string,
+    dto: UpdateSectionStudentDto,
+  ) {
+    const section = await this.prisma.classSection.findUnique({
+      where: { id: sectionId },
+      select: { id: true, code: true },
+    });
+    if (!section) {
+      throw new NotFoundException('Không tìm thấy lớp học phần.');
+    }
+
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: { id: enrollmentId, classSectionId: sectionId },
+      include: {
+        student: { select: { id: true, studentCode: true, fullName: true } },
+      },
+    });
+
+    if (!enrollment) {
+      throw new NotFoundException(
+        'Không tìm thấy sinh viên trong lớp học phần này.',
+      );
+    }
+
+    let updatedFullName = enrollment.student.fullName;
+    if (
+      dto.fullName &&
+      dto.fullName.trim() &&
+      dto.fullName.trim() !== enrollment.student.fullName
+    ) {
+      updatedFullName = dto.fullName.trim();
+      await this.prisma.student.update({
+        where: { id: enrollment.student.id },
+        data: { fullName: updatedFullName },
+      });
+    }
+
+    const enrollmentData: {
+      totalScore?: number | null;
+      result?: EnrollmentResult;
+    } = {};
+    if (dto.totalScore !== undefined) {
+      enrollmentData.totalScore = dto.totalScore;
+    }
+    if (dto.result !== undefined) {
+      enrollmentData.result = dto.result;
+    }
+
+    if (Object.keys(enrollmentData).length > 0) {
+      await this.prisma.enrollment.update({
+        where: { id: enrollmentId },
+        data: enrollmentData,
+      });
+    }
+
+    await this.audit.log({
+      staffId: user.id,
+      action: 'SECTION_STUDENT_UPDATE',
+      entity: 'ClassSection',
+      entityId: sectionId,
+      metadata: {
+        enrollmentId,
+        studentId: enrollment.student.id,
+        studentCode: enrollment.student.studentCode,
+        changes: dto,
+      },
+    });
+
+    return {
+      success: true,
+      updated: true,
+      studentCode: enrollment.student.studentCode,
+      fullName: updatedFullName,
+    };
   }
 }

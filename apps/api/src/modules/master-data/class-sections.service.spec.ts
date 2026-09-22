@@ -552,3 +552,73 @@ describe('ClassSectionsService — bổ sung sinh viên vào lớp học phần'
     expect(enrollmentCreate).not.toHaveBeenCalled();
   });
 });
+
+describe('ClassSectionsService — xóa & sửa sinh viên trong lớp học phần', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('xóa sinh viên ra khỏi lớp: xóa enrollment và ghi audit log', async () => {
+    const { prisma, findUnique } = makePrisma();
+    const enrollmentDelete = jest.fn().mockResolvedValue({});
+    findUnique.mockResolvedValueOnce({
+      id: 'sec-1',
+      code: 'AI21301-ITA106',
+    });
+    prisma.enrollment.findFirst = jest.fn().mockResolvedValue({
+      id: 'enr-1',
+      studentId: 'std-1',
+      classSectionId: 'sec-1',
+      student: { id: 'std-1', studentCode: 'PK04346', fullName: 'Hoàng Lê Minh Sang' },
+    });
+    prisma.enrollment.delete = enrollmentDelete;
+
+    const service = new ClassSectionsService(prisma, audit);
+    const result = await service.removeStudentFromSection(user, 'sec-1', 'enr-1');
+
+    expect(result.removed).toBe(true);
+    expect(result.studentCode).toBe('PK04346');
+    expect(enrollmentDelete).toHaveBeenCalledWith({ where: { id: 'enr-1' } });
+    expect(auditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'SECTION_STUDENT_REMOVE',
+        entityId: 'sec-1',
+      }),
+    );
+  });
+
+  it('sửa thông tin sinh viên và điểm trong lớp', async () => {
+    const { prisma, findUnique } = makePrisma();
+    findUnique.mockResolvedValueOnce({
+      id: 'sec-1',
+      code: 'AI21301-ITA106',
+    });
+    prisma.enrollment.findFirst = jest.fn().mockResolvedValue({
+      id: 'enr-1',
+      studentId: 'std-1',
+      classSectionId: 'sec-1',
+      totalScore: 5,
+      result: EnrollmentResult.IN_PROGRESS,
+      student: { id: 'std-1', studentCode: 'PK04346', fullName: 'Cũ' },
+    });
+    const studentUpdate = jest.fn().mockResolvedValue({});
+    const enrollmentUpdate = jest.fn().mockResolvedValue({});
+    (prisma as unknown as Record<string, unknown>).student = { update: studentUpdate };
+    prisma.enrollment.update = enrollmentUpdate;
+
+    const service = new ClassSectionsService(prisma, audit);
+    const result = await service.updateStudentInSection(user, 'sec-1', 'enr-1', {
+      fullName: 'Hoàng Lê Minh Sang Mới',
+      totalScore: 9,
+      result: EnrollmentResult.PASS,
+    });
+
+    expect(result.updated).toBe(true);
+    expect(studentUpdate).toHaveBeenCalledWith({
+      where: { id: 'std-1' },
+      data: { fullName: 'Hoàng Lê Minh Sang Mới' },
+    });
+    expect(enrollmentUpdate).toHaveBeenCalledWith({
+      where: { id: 'enr-1' },
+      data: expect.objectContaining({ totalScore: 9, result: EnrollmentResult.PASS }),
+    });
+  });
+});
