@@ -1,15 +1,21 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   ParseBoolPipe,
   ParseUUIDPipe,
   Patch,
   Post,
   Query,
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiQuery, ApiTags } from '@nestjs/swagger';
 import { CheckPolicies } from '../../common/decorators/check-policies.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -34,6 +40,8 @@ import {
 import { CreateMajorDto, UpdateMajorDto } from './dto/major.dto';
 import { UpdateSectionGradesDto } from './dto/section-grades.dto';
 import { CreateSubjectDto, UpdateSubjectDto } from './dto/subject.dto';
+import { AddStudentsToSectionDto } from './dto/add-students-to-section.dto';
+import { generateStudentsExcelTemplate } from './section-students-excel';
 import { MajorsService } from './majors.service';
 import {
   ClassMajorRulesService,
@@ -203,6 +211,47 @@ export class ClassSectionsController {
     @Body() dto: UpdateSectionGradesDto,
   ) {
     return this.service.updateGrades(user, id, dto);
+  }
+
+  @Get('template/students')
+  @CheckPolicies(canManage)
+  @Header(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  )
+  @Header(
+    'Content-Disposition',
+    'attachment; filename="mau-bo-sung-sinh-vien.xlsx"',
+  )
+  async downloadStudentSupplementTemplate(): Promise<StreamableFile> {
+    const buffer = await generateStudentsExcelTemplate();
+    return new StreamableFile(buffer);
+  }
+
+  @Post(':id/students')
+  @CheckPolicies(canManage)
+  addStudents(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AddStudentsToSectionDto,
+  ) {
+    return this.service.addStudentsToSection(user, id, dto.students);
+  }
+
+  @Post(':id/students/upload')
+  @CheckPolicies(canManage)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }),
+  )
+  uploadStudentsExcel(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Thiếu file Excel (field "file").');
+    }
+    return this.service.addStudentsFromExcel(user, id, file.buffer);
   }
 }
 
