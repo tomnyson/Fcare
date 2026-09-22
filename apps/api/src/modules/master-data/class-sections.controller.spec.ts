@@ -10,11 +10,15 @@ describe('ClassSectionsController — bổ sung sinh viên', () => {
     addStudentsFromExcel: jest.fn().mockResolvedValue({ addedCount: 2 }),
   };
 
-  const mockUser: AuthUser = {
+  const mockUser = {
     id: 'user-1',
+    staffCode: 'ADMIN01',
+    fullName: 'Quản trị viên',
     roles: ['ADMIN'],
     departmentId: null,
-  };
+    consented: true,
+    mustChangePassword: false,
+  } as AuthUser;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({

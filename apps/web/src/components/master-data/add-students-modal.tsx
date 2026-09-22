@@ -250,7 +250,7 @@ export function AddStudentsModal({
                           <td className="px-3 py-1.5">{row.fullName || '—'}</td>
                           <td className="px-3 py-1.5">
                             {row.isValid ? (
-                              <Badge tone="positive">Hợp lệ</Badge>
+                              <Badge tone="success">Hợp lệ</Badge>
                             ) : (
                               <span className="text-danger">{row.error}</span>
                             )}
