@@ -41,6 +41,7 @@ import { CreateMajorDto, UpdateMajorDto } from './dto/major.dto';
 import { UpdateSectionGradesDto } from './dto/section-grades.dto';
 import { CreateSubjectDto, UpdateSubjectDto } from './dto/subject.dto';
 import { AddStudentsToSectionDto } from './dto/add-students-to-section.dto';
+import { UpdateSectionStudentDto } from './dto/update-section-student.dto';
 import { generateStudentsExcelTemplate } from './section-students-excel';
 import { MajorsService } from './majors.service';
 import {
@@ -252,6 +253,27 @@ export class ClassSectionsController {
       throw new BadRequestException('Thiếu file Excel (field "file").');
     }
     return this.service.addStudentsFromExcel(user, id, file.buffer);
+  }
+
+  @Delete(':id/enrollments/:enrollmentId')
+  @CheckPolicies(canManage)
+  removeStudentFromSection(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('enrollmentId', ParseUUIDPipe) enrollmentId: string,
+  ) {
+    return this.service.removeStudentFromSection(user, id, enrollmentId);
+  }
+
+  @Patch(':id/enrollments/:enrollmentId')
+  @CheckPolicies(canManage)
+  updateStudentInSection(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('enrollmentId', ParseUUIDPipe) enrollmentId: string,
+    @Body() dto: UpdateSectionStudentDto,
+  ) {
+    return this.service.updateStudentInSection(user, id, enrollmentId, dto);
   }
 }
 

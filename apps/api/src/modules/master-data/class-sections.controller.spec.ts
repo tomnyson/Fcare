@@ -55,4 +55,32 @@ describe('ClassSectionsController — bổ sung sinh viên', () => {
     );
     expect(res).toEqual({ addedCount: 2 });
   });
+
+  it('gọi service.removeStudentFromSection khi gọi DELETE :id/enrollments/:enrollmentId', async () => {
+    (mockService as Record<string, unknown>).removeStudentFromSection = jest
+      .fn()
+      .mockResolvedValue({ removed: true });
+    const res = await controller.removeStudentFromSection(mockUser, 'sec-1', 'enr-1');
+    expect(mockService.removeStudentFromSection).toHaveBeenCalledWith(
+      mockUser,
+      'sec-1',
+      'enr-1',
+    );
+    expect(res).toEqual({ removed: true });
+  });
+
+  it('gọi service.updateStudentInSection khi gọi PATCH :id/enrollments/:enrollmentId', async () => {
+    (mockService as Record<string, unknown>).updateStudentInSection = jest
+      .fn()
+      .mockResolvedValue({ updated: true });
+    const dto = { fullName: 'Tên Mới', totalScore: 8 };
+    const res = await controller.updateStudentInSection(mockUser, 'sec-1', 'enr-1', dto);
+    expect(mockService.updateStudentInSection).toHaveBeenCalledWith(
+      mockUser,
+      'sec-1',
+      'enr-1',
+      dto,
+    );
+    expect(res).toEqual({ updated: true });
+  });
 });
