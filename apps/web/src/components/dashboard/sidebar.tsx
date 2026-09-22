@@ -9,8 +9,10 @@ import { formatNavBadge } from '../../lib/attendance-care';
 import { resetPush } from '../../lib/push/onesignal';
 import { BrandMark } from '../ui/brand-mark';
 import { ROLE_LABELS } from '../../lib/labels';
+import { isSystemPinEnabled, isSystemPinUnlocked } from '../../lib/system-pin';
 import type { AuthUser, StatisticsOverview } from '../../lib/types';
 import { IconChevron, IconLogout } from './nav-icons';
+import { SystemPinModal } from './system-pin-modal';
 import {
   buildNavSections,
   isGroupOpen,
@@ -124,12 +126,31 @@ function LeafLink({
   item,
   pathname,
   badge,
+  onPinGate,
 }: {
   item: NavLeaf;
   pathname: string;
   badge: NavBadges;
+  onPinGate?: (href: string) => void;
 }) {
   const active = isNavActive(pathname, item.href);
+
+  if (onPinGate) {
+    return (
+      <button
+        type="button"
+        aria-current={active ? 'page' : undefined}
+        onClick={() => onPinGate(item.href)}
+        className={`${rowClass(active)} ${item.icon ? '' : 'text-[12.5px]'} w-full`}
+      >
+        <ActiveBar active={active} />
+        <RowIcon item={item} active={active} />
+        <span className="truncate compact:hidden">{item.label}</span>
+        {item.badge === 'openAlerts' ? <AlertPill badge={badge} /> : null}
+      </button>
+    );
+  }
+
   return (
     <Link
       href={item.href}
@@ -160,12 +181,14 @@ function Group({
   collapsed,
   onToggle,
   badge,
+  onPinGate,
 }: {
   group: NavGroup;
   pathname: string;
   collapsed: ReadonlySet<string>;
   onToggle: (id: string) => void;
   badge: NavBadges;
+  onPinGate?: (href: string) => void;
 }) {
   const open = isGroupOpen(group, pathname, collapsed);
   const active = group.href ? isNavActive(pathname, group.href) : false;
@@ -227,6 +250,7 @@ function Group({
             collapsed={collapsed}
             onToggle={onToggle}
             badge={badge}
+            onPinGate={onPinGate}
           />
         ))}
       </ul>
@@ -240,12 +264,14 @@ function NavItem({
   collapsed,
   onToggle,
   badge,
+  onPinGate,
 }: {
   node: NavNode;
   pathname: string;
   collapsed: ReadonlySet<string>;
   onToggle: (id: string) => void;
   badge: NavBadges;
+  onPinGate?: (href: string) => void;
 }) {
   if (node.kind === 'group') {
     return (
@@ -255,12 +281,13 @@ function NavItem({
         collapsed={collapsed}
         onToggle={onToggle}
         badge={badge}
+        onPinGate={onPinGate}
       />
     );
   }
   return (
     <li>
-      <LeafLink item={node} pathname={pathname} badge={badge} />
+      <LeafLink item={node} pathname={pathname} badge={badge} onPinGate={onPinGate} />
     </li>
   );
 }
@@ -271,12 +298,14 @@ function Section({
   collapsed,
   onToggle,
   badge,
+  onPinGate,
 }: {
   section: NavSection;
   pathname: string;
   collapsed: ReadonlySet<string>;
   onToggle: (id: string) => void;
   badge: NavBadges;
+  onPinGate?: (href: string) => void;
 }) {
   return (
     <div className="mt-5 first:mt-0 compact:border-t compact:border-white/10 compact:pt-3 compact:first:border-0 compact:first:pt-0">
@@ -293,6 +322,7 @@ function Section({
             collapsed={collapsed}
             onToggle={onToggle}
             badge={badge}
+            onPinGate={onPinGate}
           />
         ))}
       </ul>
@@ -353,9 +383,27 @@ interface SidebarPanelProps {
 /** Ruột menu (logo + điều hướng + chân) — dùng chung cho sidebar và menu trượt. */
 export function SidebarPanel({ user, headerAction, priorityBrand = false }: SidebarPanelProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set<string>());
   const badge = useNavBadges();
   const sections = buildNavSections(user);
+  const pinEnabled = isSystemPinEnabled();
+
+  // State cho PIN modal
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+
+  /** Được gọi khi user click mục trong system section */
+  function handleSystemNavClick(href: string) {
+    if (!pinEnabled || isSystemPinUnlocked()) {
+      // PIN không kích hoạt hoặc đã unlock trong phiên → navigate thẳng
+      router.push(href);
+      return;
+    }
+    // Chưa unlock → mở modal PIN, lưu href chờ xác thực
+    setPendingHref(href);
+    setPinOpen(true);
+  }
 
   function onToggle(id: string) {
     setCollapsed((current) => {
@@ -396,11 +444,29 @@ export function SidebarPanel({ user, headerAction, priorityBrand = false }: Side
             collapsed={collapsed}
             onToggle={onToggle}
             badge={badge}
+            // Chỉ truyền onPinGate cho section "system"
+            onPinGate={section.id === 'system' && pinEnabled ? handleSystemNavClick : undefined}
           />
         ))}
       </nav>
 
       <SidebarFooter user={user} />
+
+      {pinEnabled ? (
+        <SystemPinModal
+          open={pinOpen}
+          targetHref={pendingHref}
+          onSuccess={(href) => {
+            setPinOpen(false);
+            setPendingHref(null);
+            router.push(href);
+          }}
+          onCancel={() => {
+            setPinOpen(false);
+            setPendingHref(null);
+          }}
+        />
+      ) : null}
     </>
   );
 }
