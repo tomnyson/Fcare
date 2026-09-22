@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class LoginDto {
   @ApiProperty({ description: 'Mã nhân viên', example: 'admin' })
@@ -13,4 +13,13 @@ export class LoginDto {
   @IsNotEmpty({ message: 'Mật khẩu không được để trống.' })
   @MaxLength(128)
   password!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Token reCAPTCHA v2 (ô tick) — bắt buộc khi API bật RECAPTCHA_SECRET_KEY',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4096)
+  recaptchaToken?: string;
 }

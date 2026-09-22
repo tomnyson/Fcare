@@ -27,6 +27,8 @@ import { ExcelModule } from './modules/excel/excel.module';
 import { HealthModule } from './modules/health/health.module';
 import { ImportsModule } from './modules/imports/imports.module';
 import { MailSettingsModule } from './modules/mail-settings/mail-settings.module';
+import { MonitoringModule } from './modules/monitoring/monitoring.module';
+import { errorCaptureHook } from './modules/monitoring/error-capture';
 import { MasterDataModule } from './modules/master-data/master-data.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
 import { StudentAnalysesModule } from './modules/student-analyses/student-analyses.module';
@@ -47,6 +49,8 @@ import { PrismaModule } from './prisma/prisma.module';
             ? undefined
             : { target: 'pino-pretty' },
         redact: ['req.headers.authorization', 'req.headers.cookie'],
+        // Bắt log error/fatal (kể cả 5xx của pino-http) cho giám sát lỗi hệ thống.
+        hooks: { logMethod: errorCaptureHook },
       },
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
@@ -88,6 +92,7 @@ import { PrismaModule } from './prisma/prisma.module';
     AdminModule,
     MailSettingsModule,
     BackupModule,
+    MonitoringModule,
   ],
   providers: [
     // Thứ tự guard: rate-limit → chống CSRF → xác thực JWT → cam kết bảo mật → phân quyền CASL.

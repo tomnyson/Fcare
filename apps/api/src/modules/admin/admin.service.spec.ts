@@ -378,3 +378,59 @@ describe('AdminService — bulkAssignEmails và overrideExisting', () => {
     expect(staffUpdate).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('AdminService — listAuditLogs', () => {
+  it('lọc theo action, staffCode, date range và phân trang đúng', async () => {
+    const mockLogs = [
+      {
+        id: 'log-1',
+        action: 'AUTH_LOGIN',
+        entity: 'Staff',
+        entityId: 'staff-1',
+        metadata: { ip: '127.0.0.1' },
+        createdAt: new Date('2026-09-20T10:00:00Z'),
+        staff: {
+          id: 'staff-1',
+          staffCode: 'GV001',
+          fullName: 'Nguyễn Văn A',
+          email: 'gv001@fe.edu.vn',
+        },
+      },
+    ];
+
+    const findMany = jest.fn().mockResolvedValue(mockLogs);
+    const count = jest.fn().mockResolvedValue(1);
+    const prisma = {
+      auditLog: { findMany, count },
+    } as unknown as PrismaService;
+
+    const service = new AdminService(prisma, audit);
+    const result = await service.listAuditLogs({
+      page: 1,
+      limit: 20,
+      action: 'AUTH_LOGIN',
+      staffCode: 'GV001',
+      from: '2026-09-20',
+      to: '2026-09-21',
+    });
+
+    expect(result.items).toEqual(mockLogs);
+    expect(result.meta).toEqual({
+      total: 1,
+      page: 1,
+      limit: 20,
+      totalPages: 1,
+    });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          action: { contains: 'AUTH_LOGIN', mode: 'insensitive' },
+          staff: { staffCode: { contains: 'GV001', mode: 'insensitive' } },
+        }),
+        skip: 0,
+        take: 20,
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+  });
+});

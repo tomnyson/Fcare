@@ -10,8 +10,17 @@
 # Nginx của aaPanel proxy 443 → 127.0.0.1:3000 (web) và /api → 127.0.0.1:3001.
 name: fcare-prod
 
+# Log stdout của container xoay vòng: tối đa 5 file × 10 MB mỗi service, không
+# để đĩa VPS đầy vì log. Lỗi cần giữ lâu hơn đã nằm trong bảng system_error_groups.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '5'
+
 services:
   postgres:
+    logging: *default-logging
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -32,6 +41,7 @@ services:
       retries: 10
 
   redis:
+    logging: *default-logging
     image: redis:7-alpine
     restart: unless-stopped
     command: ['redis-server', '--appendonly', 'yes']
@@ -48,6 +58,7 @@ services:
   # Chạy một lần rồi thoát. API chờ service này kết thúc thành công mới lên, nên
   # không bao giờ có chuyện app chạy trên schema cũ.
   migrate:
+    logging: *default-logging
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.api
@@ -60,6 +71,7 @@ services:
         condition: service_healthy
 
   api:
+    logging: *default-logging
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.api
@@ -85,6 +97,7 @@ services:
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       ONESIGNAL_APP_ID: ${ONESIGNAL_APP_ID:-}
       ONESIGNAL_REST_API_KEY: ${ONESIGNAL_REST_API_KEY:-}
+      RECAPTCHA_SECRET_KEY: ${RECAPTCHA_SECRET_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-}
       # Mail: ADMIN cấu hình SMTP thật tại /admin/mail; SMTP_* chỉ là fallback khi DB chưa có.
@@ -96,6 +109,8 @@ services:
       SMTP_FROM: ${SMTP_FROM:-fcare-noreply@fpt.edu.vn}
       # Bắt buộc để lưu mật khẩu SMTP (AES-256-GCM). Đổi khoá = phải nhập lại mật khẩu ở /admin/mail.
       SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-}
+      # Fallback khi ADMIN chưa lưu webhook ở /admin/monitoring (báo cáo lỗi thứ Hai 08:00).
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
     ports:
       - '127.0.0.1:3001:3001'
     depends_on:
@@ -119,6 +134,7 @@ services:
       start_period: 20s
 
   web:
+    logging: *default-logging
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.web
@@ -126,6 +142,7 @@ services:
         # Inline lúc build — đổi giá trị này thì phải build lại image web.
         NEXT_PUBLIC_API_URL: ${PUBLIC_WEB_ORIGIN}/api
         NEXT_PUBLIC_ONESIGNAL_APP_ID: ${ONESIGNAL_APP_ID:-}
+        NEXT_PUBLIC_RECAPTCHA_SITE_KEY: ${RECAPTCHA_SITE_KEY:-}
     restart: unless-stopped
     environment:
       NODE_ENV: production

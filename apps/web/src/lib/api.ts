@@ -1,3 +1,4 @@
+import { createSessionProbe } from './session-probe';
 import { createSessionRefresher, type RefreshResult } from './session-refresh';
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
@@ -51,6 +52,12 @@ export async function refreshSession(): Promise<RefreshResult> {
   if (result === 'ok') lastSessionRefreshAt = Date.now();
   return result;
 }
+
+/** Phiên còn sống (có refresh nếu cần)? — không bao giờ tự chuyển trang. */
+export const probeSession = createSessionProbe({
+  me: () => rawFetch('/auth/me'),
+  refresh: refreshSession,
+});
 
 export function redirectToLogin(): void {
   if (typeof window !== 'undefined') {

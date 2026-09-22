@@ -19,6 +19,9 @@ import {
   UpdateStaffDto,
 } from './dto/staff.dto';
 import { BulkStaffEmailDto } from './dto/staff-email.dto';
+import { Prisma } from '@prisma/client';
+import { ListAuditLogsQuery } from './dto/audit-log.dto';
+
 
 /**
  * Phần client đủ dùng cho việc gán email công vụ. Các delegate tùy chọn
@@ -581,5 +584,105 @@ export class AdminService {
       throw new NotFoundException('Một hoặc nhiều vai trò không tồn tại.');
     }
     return roles;
+  }
+
+  async listAuditLogs(query: ListAuditLogsQuery) {
+    const page = query.page && query.page > 0 ? query.page : 1;
+    const limit =
+      query.limit && query.limit > 0 ? Math.min(query.limit, 200) : 20;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.AuditLogWhereInput = {};
+
+    if (query.action?.trim()) {
+      where.action = {
+        contains: query.action.trim(),
+        mode: 'insensitive',
+      };
+    }
+
+    if (query.entity?.trim()) {
+      where.entity = {
+        contains: query.entity.trim(),
+        mode: 'insensitive',
+      };
+    }
+
+    if (query.staffCode?.trim()) {
+      where.staff = {
+        staffCode: {
+          contains: query.staffCode.trim(),
+          mode: 'insensitive',
+        },
+      };
+    }
+
+    if (query.search?.trim()) {
+      const search = query.search.trim();
+      where.OR = [
+        { action: { contains: search, mode: 'insensitive' } },
+        { entity: { contains: search, mode: 'insensitive' } },
+        { entityId: { contains: search, mode: 'insensitive' } },
+        {
+          staff: {
+            OR: [
+              { staffCode: { contains: search, mode: 'insensitive' } },
+              { fullName: { contains: search, mode: 'insensitive' } },
+              { email: { contains: search, mode: 'insensitive' } },
+            ],
+          },
+        },
+      ];
+    }
+
+    if (query.from || query.to) {
+      where.createdAt = {};
+      if (query.from) {
+        where.createdAt.gte = new Date(query.from);
+      }
+      if (query.to) {
+        const toDate = new Date(query.to);
+        if (query.to.length === 10) {
+          toDate.setHours(23, 59, 59, 999);
+        }
+        where.createdAt.lte = toDate;
+      }
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        select: {
+          id: true,
+          action: true,
+          entity: true,
+          entityId: true,
+          metadata: true,
+          createdAt: true,
+          staff: {
+            select: {
+              id: true,
+              staffCode: true,
+              fullName: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    return {
+      items,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 }

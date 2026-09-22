@@ -139,6 +139,7 @@ model Staff {
   discussionReads               DiscussionRead[]
   oauthIdentities               StaffOAuthIdentity[]
   mailSettingsUpdated           MailSetting[]                  @relation("MailSettingUpdatedBy")
+  monitoringSettingsUpdated     MonitoringSetting[]            @relation("MonitoringSettingUpdatedBy")
 
   @@map("staff")
 }
@@ -179,6 +180,60 @@ model MailSetting {
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
   @@map("mail_settings")
+}
+
+// ===== Giám sát lỗi hệ thống =====
+
+/// Nhóm lỗi hệ thống theo tuần (thứ Hai 00:00 giờ VN). Lỗi giống nhau cộng dồn `count`
+/// thay vì mỗi lần một dòng. `message`/`stack` ĐÃ che PII trước khi ghi (sanitize-log-text.ts).
+model SystemErrorGroup {
+  id          String            @id @default(uuid())
+  fingerprint String
+  weekStart   DateTime          @map("week_start")
+  level       SystemErrorLevel
+  source      SystemErrorSource
+  context     String?
+  route       String?
+  statusCode  Int?              @map("status_code")
+  message     String
+  stack       String?
+  count       Int               @default(1)
+  firstSeenAt DateTime          @map("first_seen_at")
+  lastSeenAt  DateTime          @map("last_seen_at")
+
+  @@unique([fingerprint, weekStart])
+  @@index([weekStart, count])
+  @@index([lastSeenAt])
+  @@map("system_error_groups")
+}
+
+enum SystemErrorLevel {
+  ERROR
+  FATAL
+}
+
+enum SystemErrorSource {
+  HTTP
+  QUEUE
+  PROCESS
+  APP
+}
+
+/// Cấu hình giám sát (singleton `id = "default"`). URL webhook Discord mã hoá AES-256-GCM,
+/// KHÔNG bao giờ trả ra API; chưa có dòng → fallback env `DISCORD_WEBHOOK_URL`.
+model MonitoringSetting {
+  id                  String    @id @default("default")
+  webhookUrlEncrypted String?   @map("webhook_url_encrypted")
+  enabled             Boolean   @default(true)
+  retentionDays       Int       @default(30) @map("retention_days")
+  lastReportAt        DateTime? @map("last_report_at")
+  lastReportOk        Boolean?  @map("last_report_ok")
+  updatedById         String?   @map("updated_by_id")
+  updatedBy           Staff?    @relation("MonitoringSettingUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  @@map("monitoring_settings")
 }
 
 model Role {

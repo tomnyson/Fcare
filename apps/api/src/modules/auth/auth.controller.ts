@@ -18,6 +18,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLinkDto, GoogleTokenDto } from './dto/google-link.dto';
 import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from './jwt.strategy';
+import { RecaptchaService } from './recaptcha.service';
 
 const REFRESH_COOKIE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -29,16 +30,26 @@ interface RequestWithCookies {
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly recaptcha: RecaptchaService,
+  ) {}
 
   @Public()
   @Post('login')
   @HttpCode(200)
   @ApiOperation({ summary: 'Đăng nhập bằng mã nhân viên + mật khẩu' })
   async login(
+    @Req() req: RequestWithCookies,
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) response: Response,
   ) {
+    const origin =
+      (req.headers?.['origin'] as string | undefined) ||
+      (req.headers?.['referer'] as string | undefined) ||
+      (req.headers?.['host'] as string | undefined);
+    // Chặn bot TRƯỚC khi đụng tới mật khẩu — không để lộ tín hiệu đúng/sai (bỏ qua trên localhost).
+    await this.recaptcha.verifyLogin(dto.recaptchaToken, origin);
     const session = await this.authService.login(dto.staffCode, dto.password);
     this.setAuthCookies(response, session.accessToken, session.refreshToken);
     return {

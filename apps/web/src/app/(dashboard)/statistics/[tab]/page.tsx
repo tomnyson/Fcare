@@ -1,15 +1,11 @@
-import { redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import { StatisticsView } from '../../../../components/statistics/statistics-view';
-import {
-  DEFAULT_STATISTICS_TAB,
-  isStatisticsTabKey,
-  statisticsTabHref,
-} from '../../../../lib/statistics-view';
+import { isStatisticsTabKey } from '../../../../lib/statistics-view';
 
 export default async function StatisticsTabPage({ params }: { params: Promise<{ tab: string }> }) {
   const { tab } = await params;
   if (!isStatisticsTabKey(tab)) {
-    redirect(statisticsTabHref(DEFAULT_STATISTICS_TAB, ''));
+    notFound();
   }
   return <StatisticsView tab={tab} />;
 }

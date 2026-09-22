@@ -7,9 +7,11 @@ import { canSeeExcelMenu } from '../../lib/nav-access';
 import { statisticsTabHref, visibleStatisticsTabs } from '../../lib/statistics-view';
 import type { AuthUser } from '../../lib/types';
 import {
+  IconActivity,
   IconAlerts,
   IconDatabase,
   IconDepartments,
+  IconHistory,
   IconMail,
   IconMajors,
   IconOverview,
@@ -159,6 +161,18 @@ export function buildNavSections(user: AuthUser): NavSection[] {
       href: '/admin/backups',
       label: 'Sao lưu & Phục hồi',
       icon: IconDatabase,
+    });
+    system.push({
+      kind: 'leaf',
+      href: '/admin/monitoring',
+      label: 'Giám sát lỗi',
+      icon: IconActivity,
+    });
+    system.push({
+      kind: 'leaf',
+      href: '/admin/audit-logs',
+      label: 'Nhật ký hành động',
+      icon: IconHistory,
     });
   }
   if (system.length > 0) {
