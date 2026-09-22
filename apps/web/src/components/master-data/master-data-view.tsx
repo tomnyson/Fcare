@@ -86,11 +86,6 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
     queryFn: () => apiFetch<Subject[]>('/subjects'),
     enabled: tab === 'subjects' || tab === 'class-sections',
   });
-  const classSections = useQuery({
-    queryKey: ['class-sections'],
-    queryFn: () => apiFetch<ClassSection[]>('/class-sections'),
-    enabled: tab === 'class-sections',
-  });
   const terms = useQuery({
     queryKey: ['terms'],
     queryFn: () => apiFetch<Term[]>('/terms'),
@@ -100,6 +95,17 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
     queryKey: ['terms', 'current'],
     queryFn: () => apiFetch<Term | null>('/terms/current'),
     enabled: tab === 'terms' || tab === 'class-sections',
+  });
+  // Chỉ fetch lớp học phần của kỳ hiện tại; nếu không có kỳ hiện tại (null) → lấy tất cả
+  const currentTermCode = currentTerm.data?.code ?? null;
+  const classSections = useQuery({
+    queryKey: ['class-sections', currentTermCode],
+    queryFn: () =>
+      apiFetch<ClassSection[]>(
+        currentTermCode ? `/class-sections?term=${encodeURIComponent(currentTermCode)}` : '/class-sections',
+      ),
+    // Chờ currentTerm đã fetch xong (data !== undefined) để tránh 2 lần fetch
+    enabled: tab === 'class-sections' && currentTerm.data !== undefined,
   });
   const isAdmin = me?.user.roles.includes('ADMIN') ?? false;
   const lecturers = useQuery({
