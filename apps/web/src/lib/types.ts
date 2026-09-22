@@ -658,3 +658,18 @@ export interface CareOverview {
   /** Luôn đủ 4 mức, Khẩn cấp → Thấp; mỗi SV tính một lần ở mức cao nhất. */
   warnedByLevel: Array<{ level: number; students: number }>;
 }
+
+export interface AddStudentItem {
+  studentCode: string;
+  fullName: string;
+}
+
+export interface AddStudentsResult {
+  sectionId: string;
+  sectionCode: string;
+  addedCount: number;
+  existingCount: number;
+  totalSubmitted: number;
+  added: Array<{ studentCode: string; fullName: string; isNewStudent: boolean }>;
+  existing: Array<{ studentCode: string; fullName: string }>;
+}
