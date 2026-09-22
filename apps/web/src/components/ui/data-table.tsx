@@ -27,6 +27,13 @@ interface DataTableProps {
    * thanh cuộn ngang luôn nằm trong tầm nhìn thay vì ở đáy trang.
    */
   fitViewport?: boolean;
+  /**
+   * Thanh phân trang (Pagination) hoặc chân bảng gắn liền đáy card.
+   */
+  pagination?: ReactNode;
+  /** Footer tuỳ biến bất kỳ */
+  footer?: ReactNode;
+  className?: string;
 }
 
 // Bề rộng lệch nhau cho các ô skeleton để trông như dữ liệu thật chứ không
@@ -44,18 +51,28 @@ export function DataTable({
   isRefreshing,
   skeletonRows = 8,
   fitViewport = false,
+  pagination,
+  footer,
+  className = '',
 }: DataTableProps) {
+  const bottomElement = pagination ?? footer;
+
   return (
-    <div
-      // Chỉ mờ đi khi tải lại — dữ liệu cũ vẫn đứng yên, không nhảy layout.
-      className={`data-table-scroll ${
-        fitViewport ? 'max-h-[var(--table-fit-height)] overflow-auto' : 'overflow-x-auto'
-      } rounded-[var(--radius-card)] border border-border bg-white shadow-[var(--shadow-card)] motion-safe:transition-opacity motion-safe:duration-[var(--duration-fast)] ${
-        isRefreshing && !isLoading ? 'opacity-60' : 'opacity-100'
-      }`}
-      aria-busy={isLoading || isRefreshing || undefined}
-    >
-      <table className="w-full min-w-max text-left text-sm">
+    <div className={`flex flex-col ${className}`}>
+      <div
+        // Chỉ mờ đi khi tải lại — dữ liệu cũ vẫn đứng yên, không nhảy layout.
+        className={`data-table-scroll ${
+          fitViewport ? 'max-h-[var(--table-fit-height)] overflow-auto' : 'overflow-x-auto'
+        } ${
+          bottomElement
+            ? 'rounded-t-[var(--radius-card)] border-b-0'
+            : 'rounded-[var(--radius-card)]'
+        } border border-border bg-white shadow-[var(--shadow-card)] motion-safe:transition-opacity motion-safe:duration-[var(--duration-fast)] ${
+          isRefreshing && !isLoading ? 'opacity-60' : 'opacity-100'
+        }`}
+        aria-busy={isLoading || isRefreshing || undefined}
+      >
+        <table className="w-full min-w-max text-left text-sm">
         <thead className={fitViewport ? 'sticky top-0 z-10' : undefined}>
           <tr className="border-b border-border bg-fpt-blue-900 text-white">
             {headers.map((header) => {
@@ -97,6 +114,8 @@ export function DataTable({
           )}
         </tbody>
       </table>
+      </div>
+      {bottomElement ? <div className="-mt-px">{bottomElement}</div> : null}
     </div>
   );
 }
