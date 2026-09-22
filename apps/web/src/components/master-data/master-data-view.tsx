@@ -26,6 +26,7 @@ import type {
 import { formatDateForInput, generateTermPreset, seasonBadgeInfo } from './term-preset-helpers';
 import { DepartmentActiveToggle } from './department-active-toggle';
 import { AddStudentsModal } from './add-students-modal';
+import { SectionStudentsRosterModal } from './section-students-roster-modal';
 
 type Entity = Department | Major | Subject | ClassSection | Term;
 
@@ -62,6 +63,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
   const [editing, setEditing] = useState<Entity | null>(null);
   const [deleting, setDeleting] = useState<Entity | null>(null);
   const [supplementingSection, setSupplementingSection] = useState<ClassSection | null>(null);
+  const [rosterSection, setRosterSection] = useState<ClassSection | null>(null);
   const [formError, setFormError] = useState('');
   const [deleteError, setDeleteError] = useState('');
 
@@ -261,14 +263,24 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
             </button>
           ) : null}
           {tab === 'class-sections' ? (
-            <button
-              type="button"
-              onClick={() => setSupplementingSection(entity as ClassSection)}
-              className="rounded-md border border-fpt-blue/40 bg-fpt-blue/10 px-2 py-1 text-xs font-semibold text-fpt-blue transition-colors hover:bg-fpt-blue/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fpt-blue"
-              title="Bổ sung sinh viên vào lớp học phần"
-            >
-              + Thêm SV
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setRosterSection(entity as ClassSection)}
+                className="rounded-md border border-fpt-orange/40 bg-fpt-orange/10 px-2 py-1 text-xs font-semibold text-fpt-orange transition-colors hover:bg-fpt-orange/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fpt-orange"
+                title="Xem danh sách sinh viên trong lớp"
+              >
+                DS Sinh viên
+              </button>
+              <button
+                type="button"
+                onClick={() => setSupplementingSection(entity as ClassSection)}
+                className="rounded-md border border-fpt-blue/40 bg-fpt-blue/10 px-2 py-1 text-xs font-semibold text-fpt-blue transition-colors hover:bg-fpt-blue/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fpt-blue"
+                title="Bổ sung sinh viên vào lớp học phần"
+              >
+                + Thêm SV
+              </button>
+            </>
           ) : null}
           <button
             type="button"
@@ -827,6 +839,12 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ['class-sections'] });
         }}
+      />
+
+      <SectionStudentsRosterModal
+        open={rosterSection !== null}
+        section={rosterSection}
+        onClose={() => setRosterSection(null)}
       />
     </>
   );

@@ -16,6 +16,8 @@ import type {
   SectionGradesResponse,
 } from '../../lib/types';
 import { AddStudentsModal } from './add-students-modal';
+import { EditSectionStudentModal } from './edit-section-student-modal';
+import { ConfirmRemoveStudentModal } from './confirm-remove-student-modal';
 
 const RESULT_LABELS: Record<EnrollmentResult, string> = {
   IN_PROGRESS: 'Đang học',
@@ -81,6 +83,8 @@ export function SectionGradesView({ sectionId }: { sectionId: string }) {
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
   const [supplementModalOpen, setSupplementModalOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<SectionGradeRow | null>(null);
+  const [removingStudent, setRemovingStudent] = useState<SectionGradeRow | null>(null);
 
   const { data, isLoading, isError, error: loadError } = useQuery({
     queryKey: ['section-grades', sectionId],
@@ -211,7 +215,14 @@ export function SectionGradesView({ sectionId }: { sectionId: string }) {
 
       <DataTable
         fitViewport
-        headers={['MSSV', 'Họ tên', 'Cảnh báo', 'Điểm tổng kết', 'Kết quả']}
+        headers={[
+          'MSSV',
+          'Họ tên',
+          'Cảnh báo',
+          'Điểm tổng kết',
+          'Kết quả',
+          ...(canManage ? ['Thao tác'] : []),
+        ]}
         isLoading={isLoading}
         skeletonRows={paged.pageSize}
         isEmpty={!isLoading && !isError && draft.length === 0}
@@ -280,6 +291,28 @@ export function SectionGradesView({ sectionId }: { sectionId: string }) {
                 ))}
               </Select>
             </Td>
+            {canManage ? (
+              <Td className="text-right">
+                <div className="flex items-center justify-end gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setEditingStudent(row)}
+                    className="rounded-md border border-fpt-blue/40 bg-fpt-blue/10 px-2.5 py-1 text-xs font-semibold text-fpt-blue transition-colors hover:bg-fpt-blue/20"
+                    title="Chỉnh sửa thông tin / điểm sinh viên"
+                  >
+                    Sửa
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRemovingStudent(row)}
+                    className="rounded-md border border-rose-300 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100"
+                    title="Xóa sinh viên khỏi lớp học phần"
+                  >
+                    Xóa
+                  </button>
+                </div>
+              </Td>
+            ) : null}
           </tr>
         ))}
       </DataTable>
@@ -310,6 +343,29 @@ export function SectionGradesView({ sectionId }: { sectionId: string }) {
           }}
         />
       ) : null}
+
+      <EditSectionStudentModal
+        open={!!editingStudent}
+        sectionId={sectionId}
+        student={editingStudent}
+        onClose={() => setEditingStudent(null)}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['section-grades', sectionId] });
+          queryClient.invalidateQueries({ queryKey: ['class-sections'] });
+        }}
+      />
+
+      <ConfirmRemoveStudentModal
+        open={!!removingStudent}
+        sectionId={sectionId}
+        sectionCode={data?.section.code}
+        student={removingStudent}
+        onClose={() => setRemovingStudent(null)}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['section-grades', sectionId] });
+          queryClient.invalidateQueries({ queryKey: ['class-sections'] });
+        }}
+      />
     </>
   );
 }
