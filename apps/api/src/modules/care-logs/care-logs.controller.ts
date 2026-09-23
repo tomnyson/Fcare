@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { AppAbility } from '../../casl/ability.factory';
 import { CheckPolicies } from '../../common/decorators/check-policies.decorator';
@@ -22,5 +31,15 @@ export class CareLogsController {
   @CheckPolicies((ability: AppAbility) => ability.can('create', 'CareLog'))
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateCareLogDto) {
     return this.careLogsService.create(user, dto);
+  }
+
+  /** Chỉ ADMIN có `delete CareLog` (manage all) — GV/TBM/CTSV không xoá được. */
+  @Delete(':id')
+  @CheckPolicies((ability: AppAbility) => ability.can('delete', 'CareLog'))
+  remove(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.careLogsService.remove(user, id);
   }
 }

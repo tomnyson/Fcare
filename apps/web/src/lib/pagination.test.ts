@@ -7,6 +7,7 @@ import {
   pageSlice,
   paginationWindow,
   parsePageParam,
+  shouldShowPagination,
 } from './pagination';
 
 describe('pageCount', () => {
@@ -101,5 +102,36 @@ describe('paginationWindow', () => {
 
   it('đang ở giữa danh sách → hiện 1 ... 9 10 11 ... 25', () => {
     expect(paginationWindow(10, 25)).toEqual([1, 'ellipsis', 9, 10, 11, 'ellipsis', 25]);
+  });
+});
+
+describe('shouldShowPagination', () => {
+  const OPTIONS = [10, 20, 50, 100];
+
+  it('ẩn khi không đủ mục cho trang nhỏ nhất (≤ 10)', () => {
+    expect(shouldShowPagination({ totalPages: 1, total: 0, pageSizeOptions: OPTIONS })).toBe(false);
+    expect(shouldShowPagination({ totalPages: 1, total: 7, pageSizeOptions: OPTIONS })).toBe(false);
+    expect(shouldShowPagination({ totalPages: 1, total: 10, pageSizeOptions: OPTIONS })).toBe(
+      false,
+    );
+  });
+
+  it('hiện khi có từ 2 trang trở lên', () => {
+    expect(shouldShowPagination({ totalPages: 2, total: 11, pageSizeOptions: OPTIONS })).toBe(true);
+  });
+
+  it('vẫn hiện khi đang chọn trang lớn (1 trang) nhưng dữ liệu vượt trang nhỏ nhất — để còn đổi lại số mục', () => {
+    expect(shouldShowPagination({ totalPages: 1, total: 30, pageSizeOptions: OPTIONS })).toBe(true);
+  });
+
+  it('không biết tổng: chỉ dựa vào số trang', () => {
+    expect(shouldShowPagination({ totalPages: 1, pageSizeOptions: OPTIONS })).toBe(false);
+    expect(shouldShowPagination({ totalPages: 3, pageSizeOptions: OPTIONS })).toBe(true);
+  });
+
+  it('ngưỡng theo lựa chọn nhỏ nhất của bảng, không cố định 10', () => {
+    expect(shouldShowPagination({ totalPages: 1, total: 20, pageSizeOptions: [25, 50] })).toBe(
+      false,
+    );
   });
 });

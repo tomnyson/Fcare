@@ -446,6 +446,11 @@ export interface StatisticsOverview {
   openAlertsByLevel: Array<{ level: number; count: number }>;
   /** Cảnh báo điểm danh ở lớp mình đứng lớp mà mình chưa chăm sóc. */
   attendancePending: number;
+  /**
+   * Lớp mình đứng trong kỳ: số lớp và lượt đăng ký (cộng sĩ số, SV học 2 lớp
+   * tính 2). `null` với vai trò toàn trường.
+   */
+  teaching: { sections: number; enrollments: number } | null;
 }
 
 export type PendingScope = 'owned' | 'all';
@@ -699,6 +704,13 @@ export interface CareOverview {
   sa: { careLogs: number; caredStudents: number; staff: CareCountRow[] };
   /** Luôn đủ 4 mức, Khẩn cấp → Thấp; mỗi SV tính một lần ở mức cao nhất. */
   warnedByLevel: Array<{ level: number; students: number }>;
+}
+
+/** Nhật ký chăm sóc của một người trong kỳ (`/statistics/care-overview/staff/:id`). */
+export interface CareStaffLogs extends Paginated<CareLog> {
+  staff: { id: string; staffCode: string; fullName: string };
+  term: CareOverview['term'];
+  caredStudents: number;
 }
 
 export interface AddStudentsResult {

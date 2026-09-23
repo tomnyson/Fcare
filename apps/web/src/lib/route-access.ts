@@ -18,6 +18,7 @@ const ROUTE_RULES: readonly RouteRule[] = [
   { prefix: '/master-data', allows: canViewTrainingArea },
   { prefix: '/terms', allows: canViewTrainingArea },
   { prefix: '/statistics/care', allows: canViewCareStatistics },
+  { prefix: '/statistics/care-staff', allows: canViewCareStatistics },
 ];
 
 function matches(pathname: string, prefix: string): boolean {

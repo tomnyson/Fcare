@@ -296,7 +296,19 @@ describe('StudentsService.list — lọc theo ngành, kỳ, giảng viên', () =
       term: 'SU25',
     });
     const [args] = findMany.mock.calls[0] as [ListFindManyArgs];
-    expect(args.where.AND).toEqual(LECTURER_SCOPE);
+    // "Lớp mình dạy" gắn vào CHÍNH lượt đăng ký đang lọc: GV khác ≠ mình → rỗng.
+    expect(args.where.AND).toEqual([
+      {
+        enrollments: {
+          some: {
+            AND: [
+              { classSection: { term: 'SU25', lecturerId: 'gv-bo-mon-khac' } },
+              { classSection: { lecturerId: 'l' } },
+            ],
+          },
+        },
+      },
+    ]);
   });
 
   it('RULE 2: ô tìm kiếm dùng OR nhưng KHÔNG được nuốt mất scope', async () => {
@@ -634,7 +646,19 @@ describe('StudentsService.list — sắp xếp theo số buổi vắng / cảnh 
     const [idArgs] = idsFindMany.mock.calls[0] as [
       { where: { AND?: unknown[] } },
     ];
-    expect(idArgs.where.AND).toEqual(LECTURER_SCOPE);
+    // SV lớp mình dạy TRONG FA26 — không lọt SV kỳ trước nay học lớp người khác.
+    expect(idArgs.where.AND).toEqual([
+      {
+        enrollments: {
+          some: {
+            AND: [
+              { classSection: { term: 'FA26' } },
+              { classSection: { lecturerId: 'l' } },
+            ],
+          },
+        },
+      },
+    ]);
     const [groupArgs] = enrollmentGroupBy.mock.calls[0] as [
       {
         by: string[];
@@ -643,7 +667,7 @@ describe('StudentsService.list — sắp xếp theo số buổi vắng / cảnh 
     ];
     expect(groupArgs.by).toEqual(['studentId']);
     expect(groupArgs.where.classSection).toEqual({ term: 'FA26' });
-    expect(groupArgs.where.student.AND).toEqual(LECTURER_SCOPE);
+    expect(groupArgs.where.student.AND).toEqual(idArgs.where.AND);
   });
 
   it('gom theo lớp (A→Z) trước, rồi mới xếp theo chỉ số trong từng lớp', async () => {

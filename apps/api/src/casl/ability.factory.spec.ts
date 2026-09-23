@@ -80,6 +80,23 @@ describe('AbilityFactory — ma trận phân quyền theo Quy định chung', ()
     ).toBe(true);
   });
 
+  it('chỉ admin được xoá lượt chăm sóc', () => {
+    expect(
+      factory.createForUser(makeUser(['ADMIN'])).can('delete', 'CareLog'),
+    ).toBe(true);
+    for (const role of [
+      'LECTURER',
+      'HEAD_OF_DEPT',
+      'TRAINING_OFFICER',
+      'SA_OFFICER',
+      'SA_HEAD',
+    ] as const) {
+      expect(
+        factory.createForUser(makeUser([role])).can('delete', 'CareLog'),
+      ).toBe(false);
+    }
+  });
+
   it('nhiều vai trò được cộng gộp quyền', () => {
     const ability = factory.createForUser(
       makeUser(['LECTURER', 'HEAD_OF_DEPT']),

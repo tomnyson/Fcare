@@ -1,6 +1,11 @@
 'use client';
 
-import { pageDisplayLabel, paginationWindow, type PaginationItem } from '../../lib/pagination';
+import {
+  pageDisplayLabel,
+  paginationWindow,
+  shouldShowPagination,
+  type PaginationItem,
+} from '../../lib/pagination';
 
 export interface PaginationProps {
   page: number;
@@ -158,8 +163,9 @@ export function Pagination({
   docked = false,
   position = 'bottom',
 }: PaginationProps) {
-  // Ẩn hẳn khi danh sách rỗng hoàn toàn hoặc 0 mục
-  if (totalPages <= 1 && (!total || total <= 0)) return null;
+  // Không đổi được số mục/trang thì ngưỡng chính là `limit` hiện tại.
+  const thresholds = onLimitChange ? pageSizeOptions : [limit];
+  if (!shouldShowPagination({ totalPages, total, pageSizeOptions: thresholds })) return null;
 
   const safeTotalPages = Math.max(1, totalPages);
   const hasRange = typeof total === 'number' && typeof limit === 'number';

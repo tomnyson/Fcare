@@ -6,10 +6,12 @@ import { useState } from 'react';
 import { apiFetch } from '../../lib/api';
 import { ALERT_LEVEL_TONES, CARE_CHANNEL_LABELS, formatDateTime } from '../../lib/labels';
 import type { CareLog } from '../../lib/types';
+import { DeleteCareLogButton } from '../care-logs/delete-care-log-button';
 import { CareLogFormModal } from './care-log-form-modal';
 
 export function CareLogsTab({ studentId }: { studentId: string }) {
   const [open, setOpen] = useState(false);
+  const [notice, setNotice] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['care-logs', studentId],
@@ -18,6 +20,15 @@ export function CareLogsTab({ studentId }: { studentId: string }) {
 
   return (
     <>
+      {notice ? (
+        <p
+          role="status"
+          className="mb-4 rounded-[var(--radius-card)] border border-border border-l-4 border-l-success bg-white p-4 text-sm"
+        >
+          {notice}
+        </p>
+      ) : null}
+
       <div className="mb-4 flex justify-end">
         <Button type="button" onClick={() => setOpen(true)}>
           + Ghi nhật ký chăm sóc
@@ -38,7 +49,9 @@ export function CareLogsTab({ studentId }: { studentId: string }) {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-semibold text-ink">
                   {log.staff?.fullName ?? '—'}
-                  <span className="ml-2 font-normal text-muted">{formatDateTime(log.createdAt)}</span>
+                  <span className="ml-2 font-normal text-muted">
+                    {formatDateTime(log.createdAt)}
+                  </span>
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   {log.alert ? (
@@ -48,6 +61,7 @@ export function CareLogsTab({ studentId }: { studentId: string }) {
                     </Badge>
                   ) : null}
                   <Badge tone="info">{CARE_CHANNEL_LABELS[log.channel]}</Badge>
+                  <DeleteCareLogButton log={log} onDeleted={setNotice} />
                 </div>
               </div>
               <p className="mt-3 text-sm text-ink">{log.content}</p>

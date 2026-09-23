@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MasterDataModule } from '../master-data/master-data.module';
 import { CareOverviewService } from './care-overview.service';
+import { CareStaffLogsService } from './care-staff-logs.service';
 import { CareStatisticsController } from './care-statistics.controller';
 import { CareStatisticsService } from './care-statistics.service';
 import { ClassStatsService } from './dimensions/class-stats.service';
@@ -17,6 +18,7 @@ import { StatisticsService } from './statistics.service';
     StatisticsService,
     CareStatisticsService,
     CareOverviewService,
+    CareStaffLogsService,
     ClassStatsService,
     DepartmentStatsService,
     SubjectStatsService,

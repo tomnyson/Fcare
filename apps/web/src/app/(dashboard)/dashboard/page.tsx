@@ -100,7 +100,7 @@ function DashboardContent() {
           value={overview?.totalStudents ?? '—'}
           accent="blue"
           isLoading={overviewLoading}
-          hint="Có đăng ký lớp học phần trong kỳ"
+          hint={totalStudentsHint(overview)}
         />
         <StatCard
           label="Cảnh báo đang mở"
@@ -198,4 +198,14 @@ export default function DashboardPage() {
       <DashboardContent />
     </Suspense>
   );
+}
+
+/**
+ * Giảng viên đối chiếu thẻ này với "Lớp tôi đang dạy": số chính là SV không
+ * trùng, dòng phụ cộng sĩ số các lớp (SV học 2 lớp của mình tính 2).
+ */
+function totalStudentsHint(overview: StatisticsOverview | undefined): string {
+  const teaching = overview?.teaching;
+  if (!teaching || teaching.sections === 0) return 'Có đăng ký lớp học phần trong kỳ';
+  return `Trong ${teaching.sections} lớp được phân công · ${teaching.enrollments} lượt SV`;
 }

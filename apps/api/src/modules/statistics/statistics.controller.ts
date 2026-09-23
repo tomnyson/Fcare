@@ -1,15 +1,19 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { AppAbility } from '../../casl/ability.factory';
 import { CheckPolicies } from '../../common/decorators/check-policies.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/auth-user';
 import { CareOverviewService } from './care-overview.service';
+import { CareStaffLogsService } from './care-staff-logs.service';
 import { ClassStatsService } from './dimensions/class-stats.service';
 import { DepartmentStatsService } from './dimensions/department-stats.service';
 import { LecturerStatsService } from './dimensions/lecturer-stats.service';
 import { SubjectStatsService } from './dimensions/subject-stats.service';
-import { StatisticsQuery } from './dto/statistics-query.dto';
+import {
+  CareStaffLogsQuery,
+  StatisticsQuery,
+} from './dto/statistics-query.dto';
 import { StatisticsService } from './statistics.service';
 
 @ApiTags('statistics')
@@ -19,6 +23,7 @@ export class StatisticsController {
   constructor(
     private readonly statisticsService: StatisticsService,
     private readonly careOverviewService: CareOverviewService,
+    private readonly careStaffLogsService: CareStaffLogsService,
     private readonly classStats: ClassStatsService,
     private readonly departmentStats: DepartmentStatsService,
     private readonly subjectStats: SubjectStatsService,
@@ -34,6 +39,16 @@ export class StatisticsController {
   @Get('care-overview')
   careOverview(@CurrentUser() user: AuthUser, @Query() query: StatisticsQuery) {
     return this.careOverviewService.overview(user, query.term || undefined);
+  }
+
+  /** Các lượt chăm sóc của một người trong kỳ — chi tiết một dòng của care-overview. */
+  @Get('care-overview/staff/:staffId')
+  careStaffLogs(
+    @CurrentUser() user: AuthUser,
+    @Param('staffId', ParseUUIDPipe) staffId: string,
+    @Query() query: CareStaffLogsQuery,
+  ) {
+    return this.careStaffLogsService.list(user, staffId, query);
   }
 
   @Get('classes')

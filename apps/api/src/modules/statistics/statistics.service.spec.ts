@@ -65,6 +65,8 @@ function setup(currentTerm: typeof FA26 | null = FA26) {
       count: jest.fn().mockResolvedValueOnce(9).mockResolvedValueOnce(5),
     },
     term: { findUnique: jest.fn().mockResolvedValue(SU26) },
+    classSection: { count: jest.fn().mockResolvedValue(7) },
+    enrollment: { count: jest.fn().mockResolvedValue(179) },
   };
   const terms = { getCurrentTerm: jest.fn().mockResolvedValue(currentTerm) };
   const service = new StatisticsService(
@@ -92,6 +94,7 @@ describe('StatisticsService.overview — chỉ thống kê trong một kỳ', ()
       studentsByStatus: [{ status: 'STUDYING', count: 12 }],
       openAlertsByLevel: [{ level: 2, count: 3 }],
       attendancePending: 2,
+      teaching: { sections: 7, enrollments: 179 },
     });
   });
 
@@ -101,7 +104,23 @@ describe('StatisticsService.overview — chỉ thống kê trong một kỳ', ()
     expect(prisma.student.count).toHaveBeenNthCalledWith(1, {
       where: {
         AND: [
-          LECTURER_SCOPE,
+          // Lớp của GV phải thuộc CHÍNH kỳ đang xem.
+          {
+            AND: [
+              {
+                enrollments: {
+                  some: {
+                    AND: [
+                      { classSection: { term: 'FA26' } },
+                      // MỌI lớp được phân công, kể cả môn bộ môn khác —
+                      // để khớp tổng các thẻ "Lớp tôi đang dạy".
+                      { classSection: { lecturerId: 'gv-chi' } },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
           { enrollments: { some: { classSection: { term: 'FA26' } } } },
         ],
       },
@@ -166,6 +185,28 @@ describe('StatisticsService.overview — chỉ thống kê trong một kỳ', ()
         where: expect.objectContaining({ term: 'FA26' }) as unknown,
       }),
     );
+  });
+
+  it('lớp đang dạy: đếm lớp và lượt đăng ký của CHÍNH mình trong kỳ đang xem', async () => {
+    const { service, prisma } = setup();
+    await service.overview(lecturer, 'SU26');
+    expect(prisma.classSection.count).toHaveBeenCalledWith({
+      where: { lecturerId: 'gv-chi', term: 'SU26' },
+    });
+    expect(prisma.enrollment.count).toHaveBeenCalledWith({
+      where: { classSection: { lecturerId: 'gv-chi', term: 'SU26' } },
+    });
+  });
+
+  it('vai trò toàn trường không có khối "lớp đang dạy"', async () => {
+    const { service, prisma } = setup();
+    const result = await service.overview({
+      ...lecturer,
+      roles: ['TRAINING_OFFICER'],
+    });
+    expect(result.teaching).toBeNull();
+    expect(prisma.classSection.count).not.toHaveBeenCalled();
+    expect(prisma.enrollment.count).not.toHaveBeenCalled();
   });
 
   it('kỳ không tồn tại → 404', async () => {

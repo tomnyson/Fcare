@@ -68,15 +68,7 @@ export function paginationWindow(currentPage: number, totalPages: number): Pagin
   }
 
   // Ở giữa: 1, ..., currentPage - 1, currentPage, currentPage + 1, ..., totalPages
-  return [
-    1,
-    'ellipsis',
-    currentPage - 1,
-    currentPage,
-    currentPage + 1,
-    'ellipsis',
-    totalPages,
-  ];
+  return [1, 'ellipsis', currentPage - 1, currentPage, currentPage + 1, 'ellipsis', totalPages];
 }
 
 /** Chuỗi hiển thị: "Đang hiển thị 1 đến 10 của 249 mục", rỗng thì "Không có mục nào". */
@@ -87,3 +79,21 @@ export function pageDisplayLabel(page: number, limit: number, total: number): st
   return `Đang hiển thị ${start} đến ${end} của ${total} mục`;
 }
 
+/**
+ * Thanh phân trang chỉ hiện khi thật sự phân trang được: có ≥ 2 trang, hoặc dữ
+ * liệu vượt số mục/trang NHỎ NHẤT (đang chọn trang lớn thì vẫn cần ô đổi số
+ * mục để quay về). Ít hơn thế — kể cả rỗng — thì thanh chỉ là nhiễu.
+ */
+export function shouldShowPagination({
+  totalPages,
+  total,
+  pageSizeOptions,
+}: {
+  totalPages: number;
+  total?: number;
+  pageSizeOptions: readonly number[];
+}): boolean {
+  if (totalPages > 1) return true;
+  if (typeof total !== 'number') return false;
+  return total > Math.min(...pageSizeOptions);
+}
