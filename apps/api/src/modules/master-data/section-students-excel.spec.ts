@@ -18,7 +18,9 @@ describe('section-students-excel', () => {
   it('bỏ qua dòng trống và dòng tiêu đề', async () => {
     const templateBuffer = await generateStudentsExcelTemplate();
     const parsed = await parseStudentsExcelBuffer(templateBuffer);
-    const hasHeader = parsed.some((p) => p.studentCode.toUpperCase() === 'MSSV');
+    const hasHeader = parsed.some(
+      (p) => p.studentCode.toUpperCase() === 'MSSV',
+    );
     expect(hasHeader).toBe(false);
   });
 });

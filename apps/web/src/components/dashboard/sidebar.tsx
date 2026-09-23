@@ -9,7 +9,7 @@ import { formatNavBadge } from '../../lib/attendance-care';
 import { resetPush } from '../../lib/push/onesignal';
 import { BrandMark } from '../ui/brand-mark';
 import { ROLE_LABELS } from '../../lib/labels';
-import { isSystemPinEnabled, isSystemPinUnlocked } from '../../lib/system-pin';
+import { isSystemPinEnabled } from '../../lib/system-pin';
 import type { AuthUser, StatisticsOverview } from '../../lib/types';
 import { IconChevron, IconLogout } from './nav-icons';
 import { SystemPinModal } from './system-pin-modal';
@@ -395,12 +395,16 @@ export function SidebarPanel({ user, headerAction, priorityBrand = false }: Side
 
   /** Được gọi khi user click mục trong system section */
   function handleSystemNavClick(href: string) {
-    if (!pinEnabled || isSystemPinUnlocked()) {
-      // PIN không kích hoạt hoặc đã unlock trong phiên → navigate thẳng
+    if (!pinEnabled) {
       router.push(href);
       return;
     }
-    // Chưa unlock → mở modal PIN, lưu href chờ xác thực
+    // Nếu đang ở chính tính năng này rồi thì không cần hỏi lại PIN
+    if (isNavActive(pathname, href)) {
+      router.push(href);
+      return;
+    }
+    // Yêu cầu nhập mã PIN mỗi lần truy cập/sử dụng tính năng
     setPendingHref(href);
     setPinOpen(true);
   }
@@ -476,7 +480,7 @@ export function Sidebar({ user }: { user: AuthUser }) {
   return (
     <aside
       data-nav="rail"
-      className="sticky top-0 flex h-[100dvh] w-64 shrink-0 flex-col self-start bg-fpt-blue-900 text-white max-md:hidden compact:w-16"
+      className="sticky top-0 z-30 flex h-[100dvh] w-64 shrink-0 flex-col self-start bg-fpt-blue-900 text-white max-md:hidden compact:w-16"
     >
       <SidebarPanel user={user} priorityBrand />
     </aside>

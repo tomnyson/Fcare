@@ -2,7 +2,7 @@ import type { PendingAttendanceAlert } from './types';
 
 export type PanelTone = 'info' | 'warning' | 'orange' | 'danger';
 
-export interface LevelGroup {
+interface LevelGroup {
   level: number;
   items: PendingAttendanceAlert[];
 }

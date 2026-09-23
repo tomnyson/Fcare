@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 
 export const RECAPTCHA_VERIFY_URL =
   'https://www.google.com/recaptcha/api/siteverify';
-export const RECAPTCHA_TIMEOUT_MS = 5_000;
+const RECAPTCHA_TIMEOUT_MS = 5_000;
 
 interface SiteVerifyResponse {
   success?: boolean;

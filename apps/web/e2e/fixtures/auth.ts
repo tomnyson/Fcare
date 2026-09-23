@@ -5,12 +5,12 @@ import { trackImportCalls } from './rate-limit';
  * Tài khoản demo trong seed dev (xem README.md — mọi tài khoản dùng chung mật
  * khẩu `Fcare@123`). Ghi đè bằng biến môi trường khi chạy trên DB khác.
  */
-export const ADMIN_CODE = process.env.E2E_ADMIN_CODE ?? 'admin';
-export const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'Fcare@123';
+const ADMIN_CODE = process.env.E2E_ADMIN_CODE ?? 'admin';
+const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'Fcare@123';
 export const LECTURER_CODE = process.env.E2E_LECTURER_CODE ?? 'gv.binh';
-export const LECTURER_PASSWORD = process.env.E2E_LECTURER_PASSWORD ?? 'Fcare@123';
-export const SA_OFFICER_CODE = process.env.E2E_SA_OFFICER_CODE ?? 'ctsv.lan';
-export const SA_OFFICER_PASSWORD = process.env.E2E_SA_OFFICER_PASSWORD ?? 'Fcare@123';
+const LECTURER_PASSWORD = process.env.E2E_LECTURER_PASSWORD ?? 'Fcare@123';
+const SA_OFFICER_CODE = process.env.E2E_SA_OFFICER_CODE ?? 'ctsv.lan';
+const SA_OFFICER_PASSWORD = process.env.E2E_SA_OFFICER_PASSWORD ?? 'Fcare@123';
 
 /**
  * Đăng nhập rồi KÝ CAM KẾT. Consent gate (`ConsentGuard`, mã `CONSENT_REQUIRED`)

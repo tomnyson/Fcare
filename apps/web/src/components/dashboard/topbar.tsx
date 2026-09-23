@@ -13,12 +13,15 @@ import {
   useNotificationStream,
 } from '../../lib/use-notification-stream';
 import { ANALYSIS_RISK_LABELS } from '../students/student-analysis-helpers';
+import { LoadingSpinner } from '../ui/loading-spinner';
+import { useNavigationLoading } from '../ui/navigation-progress-bar';
 import { MobileNav } from './mobile-nav';
 import { PushSettings } from './push-settings';
 
 export function Topbar({ user }: { user: AuthUser }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { isNavigating } = useNavigationLoading();
   const [open, setOpen] = useState(false);
   useNotificationStream();
   useDiscussionPollingFallback();
@@ -53,6 +56,17 @@ export function Topbar({ user }: { user: AuthUser }) {
         <p className="truncate text-sm font-semibold text-fpt-blue-900 max-sm:hidden">
           Xin chào, {user.fullName}
         </p>
+
+        {isNavigating ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 rounded-full border border-fpt-orange/30 bg-fpt-orange-50 px-2.5 py-1 text-xs font-semibold text-fpt-orange"
+          >
+            <LoadingSpinner size="xs" tone="orange" label="Đang chuyển trang…" />
+            <span className="max-xs:hidden">Đang chuyển trang…</span>
+          </div>
+        ) : null}
       </div>
 
       <div className="flex items-center gap-3">

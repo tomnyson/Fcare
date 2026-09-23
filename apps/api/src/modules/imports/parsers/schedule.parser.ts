@@ -9,8 +9,8 @@ import type {
 } from '../types';
 import { locateHeaders, requireHeaders } from './header-locator';
 
-export const BL_SHEET = 'BL1+BL2';
-export const TOOL_SHEET = 'Lịch tool';
+const BL_SHEET = 'BL1+BL2';
+const TOOL_SHEET = 'Lịch tool';
 const BL_HEADER_ROW = 8;
 const TOOL_HEADER_ROW = 1;
 

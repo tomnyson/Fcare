@@ -8,7 +8,7 @@ import { FormError, FormSuccess, Textarea } from '../ui/form';
 import { Modal } from '../ui/modal';
 import { parseStudentInputText, type ParsedStudentRow } from './student-input-parser';
 
-export interface AddStudentsModalProps {
+interface AddStudentsModalProps {
   section: ClassSection | null;
   open: boolean;
   onClose: () => void;

@@ -1,24 +1,7 @@
 import { describe, expect, it, beforeEach, vi, afterEach } from 'vitest';
 
-// Mock sessionStorage
-const sessionStorageMock = (() => {
-  let store: Record<string, string> = {};
-  return {
-    getItem: (key: string) => store[key] ?? null,
-    setItem: (key: string, val: string) => { store[key] = val; },
-    removeItem: (key: string) => { delete store[key]; },
-    clear: () => { store = {}; },
-  };
-})();
-
-Object.defineProperty(globalThis, 'sessionStorage', {
-  value: sessionStorageMock,
-  writable: true,
-});
-
 describe('system-pin utilities', () => {
   beforeEach(() => {
-    sessionStorageMock.clear();
     vi.unstubAllEnvs();
   });
 
@@ -59,17 +42,5 @@ describe('system-pin utilities', () => {
       expect(verifySystemPin('000000')).toBe(false);
     });
   });
-
-  describe('isSystemPinUnlocked / unlockSystemPin', () => {
-    it('ban đầu chưa unlock', async () => {
-      const { isSystemPinUnlocked } = await import('./system-pin');
-      expect(isSystemPinUnlocked()).toBe(false);
-    });
-
-    it('sau khi unlock thì trả về true', async () => {
-      const { unlockSystemPin, isSystemPinUnlocked } = await import('./system-pin');
-      unlockSystemPin();
-      expect(isSystemPinUnlocked()).toBe(true);
-    });
-  });
 });
+

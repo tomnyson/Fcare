@@ -7,7 +7,7 @@ import * as ExcelJS from 'exceljs';
  * sẽ bị xoá sạch trước khi parser chạm tới — không được đưa CCCD/SĐT/email/địa
  * chỉ vào hệ thống.
  */
-export const FORBIDDEN_HEADER_PATTERN =
+const FORBIDDEN_HEADER_PATTERN =
   /(cccd|cmnd|căn cước|can cuoc|điện thoại|dien thoai|sđt|sdt|phone|mobile|email|địa chỉ|dia chi|address)/i;
 
 /**
@@ -44,14 +44,6 @@ export async function loadFirstWorksheet(
   return worksheet;
 }
 
-export function readHeaderRow(worksheet: ExcelJS.Worksheet): string[] {
-  const headers: string[] = [];
-  worksheet.getRow(1).eachCell({ includeEmpty: false }, (cell) => {
-    headers.push(cell.text.trim());
-  });
-  return headers;
-}
-
 export async function loadWorkbook(buffer: Buffer): Promise<ExcelJS.Workbook> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
@@ -72,7 +64,7 @@ export function getWorksheet(
 }
 
 /** Số thứ tự cột → chữ cái Excel (9 → "I") để admin mở file là thấy ngay. */
-export function columnLetter(column: number): string {
+function columnLetter(column: number): string {
   let letter = '';
   let remaining = column;
   while (remaining > 0) {

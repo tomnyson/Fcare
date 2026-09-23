@@ -56,7 +56,7 @@ function withAbsenceSummary<
  * này". `null` = chưa có dữ liệu → luôn nằm cuối lớp dù tăng hay giảm, để "chưa
  * điểm danh" không lẫn với "0 buổi". Hoà thì theo MSSV cho thứ tự ổn định.
  */
-export function rankStudentIds(
+function rankStudentIds(
   students: readonly { id: string; studentCode: string; classCode: string }[],
   valueOf: (studentId: string) => number | null,
   direction: SortDirection,

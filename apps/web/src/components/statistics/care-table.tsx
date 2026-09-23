@@ -18,6 +18,7 @@ import {
 import { Badge } from '@fcare/ui-kit';
 import { ALERT_LEVEL_TONES } from '../../lib/labels';
 import { DataTable, Td } from '../ui/data-table';
+import { usePagedList } from '../../lib/use-paged-list';
 import { FilterBar, FilterField, FilterGrid } from '../ui/filter-bar';
 import { FormError, Select } from '../ui/form';
 
@@ -95,9 +96,11 @@ function AttendanceCell({ alert }: { alert: CareStudentAttendanceAlert | null | 
 
 function SectionRow({ section }: { section: CareSection }) {
   const [open, setOpen] = useState(false);
+  const pagedStudents = usePagedList(section.students, { pageSize: 10 });
+
   return (
     <>
-      <tr>
+      <tr className="hover:bg-surface-secondary/40">
         <Td>
           <button
             type="button"
@@ -127,9 +130,17 @@ function SectionRow({ section }: { section: CareSection }) {
                 'Cảnh báo',
                 'CB điểm danh',
               ]}
+              pagination={{
+                page: pagedStudents.page,
+                totalPages: pagedStudents.totalPages,
+                total: pagedStudents.total,
+                limit: pagedStudents.pageSize,
+                onPageChange: pagedStudents.setPage,
+                onLimitChange: pagedStudents.setPageSize,
+              }}
               isEmpty={section.students.length === 0}
             >
-              {section.students.map((student) => (
+              {pagedStudents.pageItems.map((student) => (
                 <tr key={student.id}>
                   <Td>{student.studentCode}</Td>
                   <Td>{student.fullName}</Td>
@@ -174,6 +185,8 @@ function SectionRow({ section }: { section: CareSection }) {
 
 function LecturerRow({ lecturer }: { lecturer: CareLecturer }) {
   const [open, setOpen] = useState(false);
+  const pagedSections = usePagedList(lecturer.sections, { pageSize: 10 });
+
   return (
     <>
       <tr>
@@ -197,9 +210,17 @@ function LecturerRow({ lecturer }: { lecturer: CareLecturer }) {
           <td colSpan={HEADERS.length} className="bg-surface p-4">
             <DataTable
               headers={['Lớp học phần', 'Môn học', ...COUNT_HEADERS]}
+              pagination={{
+                page: pagedSections.page,
+                totalPages: pagedSections.totalPages,
+                total: pagedSections.total,
+                limit: pagedSections.pageSize,
+                onPageChange: pagedSections.setPage,
+                onLimitChange: pagedSections.setPageSize,
+              }}
               isEmpty={lecturer.sections.length === 0}
             >
-              {lecturer.sections.map((section) => (
+              {pagedSections.pageItems.map((section) => (
                 <SectionRow key={section.id} section={section} />
               ))}
             </DataTable>
@@ -238,6 +259,11 @@ export function CareTable({ term }: { term: string }) {
   );
   const departmentCode = departments.find((dept) => dept.id === departmentId)?.code;
   const fileSuffix = departmentCode ? `${term}-${departmentCode}` : term;
+  const lecturers = report.data?.lecturers ?? [];
+  const paged = usePagedList(lecturers, {
+    pageSize: 10,
+    resetKey: `${term}|${departmentId}|${lecturerId}|${status}`,
+  });
 
   function changeDepartment(nextId: string) {
     setDepartmentId(nextId);
@@ -276,12 +302,13 @@ export function CareTable({ term }: { term: string }) {
     }
   }
 
-  if (!term)
+  if (!term) {
     return (
       <p role="status" className="rounded-md border border-border bg-white p-5 text-sm text-muted">
         Chọn một học kỳ cụ thể để xem mức độ chăm sóc sinh viên.
       </p>
     );
+  }
 
   return (
     <div className="space-y-4">
@@ -368,13 +395,25 @@ export function CareTable({ term }: { term: string }) {
         </FormError>
       ) : (
         <DataTable
+          fitViewport
           headers={HEADERS}
           isLoading={report.isLoading}
           isRefreshing={report.isFetching}
-          isEmpty={!report.data?.lecturers.length}
+          skeletonRows={paged.pageSize}
+          isEmpty={!lecturers.length}
           emptyMessage="Không có giảng viên hoặc sinh viên phù hợp với bộ lọc trong kỳ này."
+          pagination={{
+            page: paged.page,
+            totalPages: paged.totalPages,
+            total: paged.total,
+            limit: paged.pageSize,
+            isLoading: report.isLoading,
+            onPageChange: paged.setPage,
+            onLimitChange: paged.setPageSize,
+            label: 'Phân trang thống kê chăm sóc',
+          }}
         >
-          {report.data?.lecturers.map((lecturer) => (
+          {paged.pageItems.map((lecturer) => (
             <LecturerRow key={lecturer.id} lecturer={lecturer} />
           ))}
         </DataTable>

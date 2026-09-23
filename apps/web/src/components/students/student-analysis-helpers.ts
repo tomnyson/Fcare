@@ -30,11 +30,11 @@ export function uniqueTermsFromEnrollments(enrollments: Enrollment[]): string[] 
     .sort((left, right) => right.localeCompare(left));
 }
 
-export function toLineBlock(values: string[]): string {
+function toLineBlock(values: string[]): string {
   return values.join('\n');
 }
 
-export function fromLineBlock(value: string): string[] {
+function fromLineBlock(value: string): string[] {
   return value
     .split('\n')
     .map((item) => item.trim())

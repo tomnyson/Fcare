@@ -25,17 +25,6 @@ export interface PaginatedAuditLogs {
   };
 }
 
-export interface AuditLogFilters {
-  search: string;
-  staffCode: string;
-  action: string;
-  entity: string;
-  from: string;
-  to: string;
-  page: number;
-  limit: number;
-}
-
 export const ACTION_PRESETS: ReadonlyArray<{ key: string; label: string; group: string }> = [
   // Auth
   { key: 'AUTH_LOGIN', label: 'Đăng nhập', group: 'Xác thực' },
@@ -49,6 +38,7 @@ export const ACTION_PRESETS: ReadonlyArray<{ key: string; label: string; group: 
   { key: 'CARE_LOG_DELETE', label: 'Xóa nhật ký chăm sóc', group: 'Chăm sóc' },
   { key: 'ALERT_RAISED', label: 'Phát cảnh báo sinh viên', group: 'Cảnh báo' },
   { key: 'ALERT_RESOLVED', label: 'Xử lý cảnh báo', group: 'Cảnh báo' },
+  { key: 'ALERT_DELETED', label: 'Xoá cảnh báo sinh viên', group: 'Cảnh báo' },
   { key: 'ATTENDANCE_REVIEW', label: 'Duyệt điểm danh', group: 'Cảnh báo' },
 
   // Excel & Import
@@ -95,57 +85,6 @@ export function getActionCategory(action: string): ActionCategory {
   if (upper.startsWith('BACKUP_') || upper.startsWith('MONITORING_') || upper.startsWith('MAIL_'))
     return 'system';
   return 'other';
-}
-
-export function getActionBadgeStyle(category: ActionCategory): {
-  bg: string;
-  text: string;
-  border: string;
-} {
-  switch (category) {
-    case 'auth':
-      return {
-        bg: 'bg-blue-50 dark:bg-blue-950/40',
-        text: 'text-blue-700 dark:text-blue-300',
-        border: 'border-blue-200 dark:border-blue-800',
-      };
-    case 'care':
-      return {
-        bg: 'bg-emerald-50 dark:bg-emerald-950/40',
-        text: 'text-emerald-700 dark:text-emerald-300',
-        border: 'border-emerald-200 dark:border-emerald-800',
-      };
-    case 'alert':
-      return {
-        bg: 'bg-amber-50 dark:bg-amber-950/40',
-        text: 'text-amber-700 dark:text-amber-300',
-        border: 'border-amber-200 dark:border-amber-800',
-      };
-    case 'excel':
-      return {
-        bg: 'bg-teal-50 dark:bg-teal-950/40',
-        text: 'text-teal-700 dark:text-teal-300',
-        border: 'border-teal-200 dark:border-teal-800',
-      };
-    case 'admin':
-      return {
-        bg: 'bg-indigo-50 dark:bg-indigo-950/40',
-        text: 'text-indigo-700 dark:text-indigo-300',
-        border: 'border-indigo-200 dark:border-indigo-800',
-      };
-    case 'system':
-      return {
-        bg: 'bg-rose-50 dark:bg-rose-950/40',
-        text: 'text-rose-700 dark:text-rose-300',
-        border: 'border-rose-200 dark:border-rose-800',
-      };
-    default:
-      return {
-        bg: 'bg-slate-50 dark:bg-slate-900/40',
-        text: 'text-slate-700 dark:text-slate-300',
-        border: 'border-slate-200 dark:border-slate-700',
-      };
-  }
 }
 
 export function formatAuditDateTime(dateStr: string): string {

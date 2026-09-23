@@ -60,7 +60,7 @@ export function isoDateCell(cell: ExcelJS.Cell): string | null {
   return parseJsDateString(String(cell.text ?? ''));
 }
 
-export interface AbsenceCount {
+interface AbsenceCount {
   absentSessions: number;
   totalSessions: number;
 }
@@ -98,7 +98,7 @@ export function attendanceRateFrom(absence: AbsenceCount): number | null {
   return Math.round((attended / absence.totalSessions) * 1000) / 10;
 }
 
-export interface DataSheet {
+interface DataSheet {
   worksheet: ExcelJS.Worksheet;
   headers: Map<string, number>;
 }

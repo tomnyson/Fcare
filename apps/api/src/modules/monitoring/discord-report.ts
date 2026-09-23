@@ -109,7 +109,7 @@ function reportLink(webOrigin: string, weekStart: Date): string {
   return `${webOrigin.replace(/\/+$/, '')}/admin/monitoring?week=${formatWeekParam(weekStart)}`;
 }
 
-export interface ReportTotals {
+interface ReportTotals {
   totalEvents: number;
   groupCount: number;
   newGroupCount: number;

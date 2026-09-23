@@ -32,7 +32,9 @@ export class ListAuditLogsQuery {
   @Max(200)
   limit: number = 20;
 
-  @ApiPropertyOptional({ description: 'Tìm kiếm nhanh (mã NV, họ tên, action, entity)' })
+  @ApiPropertyOptional({
+    description: 'Tìm kiếm nhanh (mã NV, họ tên, action, entity)',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(100)

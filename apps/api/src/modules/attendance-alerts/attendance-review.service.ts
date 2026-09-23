@@ -25,7 +25,7 @@ import {
   type OpenAttendanceAlert,
 } from './attendance-review.decision';
 
-export interface AttendanceReviewOptions {
+interface AttendanceReviewOptions {
   /** Lượt import vừa commit (để audit gắn vào ImportBatch). */
   batchId?: string;
   /** Người bấm commit / gọi rà soát tay; null khi hệ thống tự chạy. */

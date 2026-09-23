@@ -7,6 +7,7 @@ import {
   groupLocation,
   isDiscordWebhookUrl,
   parseMonitoringFilters,
+  parseMonitoringTab,
   toMonitoringFormValues,
   validateMonitoringSettings,
   weekParamOf,
@@ -26,6 +27,19 @@ const view: MonitoringSettingsView = {
 };
 
 const HOOK = 'https://discord.com/api/webhooks/123/abc_DEF-x';
+
+describe('parseMonitoringTab', () => {
+  it('nhận tab settings khi truyền settings', () => {
+    expect(parseMonitoringTab('settings')).toBe('settings');
+  });
+
+  it('mặc định là logs khi null hoặc giá trị khác', () => {
+    expect(parseMonitoringTab(null)).toBe('logs');
+    expect(parseMonitoringTab(undefined)).toBe('logs');
+    expect(parseMonitoringTab('invalid')).toBe('logs');
+    expect(parseMonitoringTab('logs')).toBe('logs');
+  });
+});
 
 describe('parseMonitoringFilters', () => {
   it('đọc tuần, mức, trang hợp lệ', () => {

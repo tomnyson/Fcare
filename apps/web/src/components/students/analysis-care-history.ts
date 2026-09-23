@@ -1,7 +1,7 @@
 import type { CareChannel } from '../../lib/types';
 
 /** Số lượt chăm sóc gửi kèm — khớp trần MAX_ENTRIES của digest phía API. */
-export const CARE_HISTORY_PREVIEW_LIMIT = 5;
+const CARE_HISTORY_PREVIEW_LIMIT = 5;
 
 export interface CareHistoryEntry {
   createdAt: string;

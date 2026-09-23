@@ -426,7 +426,7 @@ describe('AdminService — listAuditLogs', () => {
         where: expect.objectContaining({
           action: { contains: 'AUTH_LOGIN', mode: 'insensitive' },
           staff: { staffCode: { contains: 'GV001', mode: 'insensitive' } },
-        }),
+        }) as unknown,
         skip: 0,
         take: 20,
         orderBy: { createdAt: 'desc' },

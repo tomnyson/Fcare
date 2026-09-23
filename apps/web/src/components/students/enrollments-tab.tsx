@@ -6,6 +6,7 @@ import { DataTable, Td } from '../ui/data-table';
 import { apiFetch } from '../../lib/api';
 import { ENROLLMENT_RESULT_LABELS } from '../../lib/labels';
 import type { Enrollment } from '../../lib/types';
+import { usePagedList } from '../../lib/use-paged-list';
 
 const RESULT_TONES = { PASS: 'success', FAIL: 'danger', IN_PROGRESS: 'info' } as const;
 
@@ -27,6 +28,8 @@ export function EnrollmentsTab({ studentId, onEvaluate, canEvaluate }: Enrollmen
     queryFn: () => apiFetch<Enrollment[]>(`/enrollments?studentId=${studentId}`),
   });
 
+  const paged = usePagedList(data ?? [], { pageSize: 10 });
+
   return (
     <DataTable
       headers={['Lớp học phần', 'Môn', 'Học kỳ', 'Chuyên cần', 'Giữa kỳ', 'Cuối kỳ', 'Tổng kết', 'Cấm thi', 'Kết quả', 'Nhận xét']}
@@ -34,8 +37,17 @@ export function EnrollmentsTab({ studentId, onEvaluate, canEvaluate }: Enrollmen
       skeletonRows={5}
       isEmpty={!isLoading && (data?.length ?? 0) === 0}
       emptyMessage="Sinh viên chưa đăng ký lớp học phần nào."
+      pagination={{
+        page: paged.page,
+        totalPages: paged.totalPages,
+        total: paged.total,
+        limit: paged.pageSize,
+        onPageChange: paged.setPage,
+        onLimitChange: paged.setPageSize,
+        isLoading,
+      }}
     >
-      {(data ?? []).map((enrollment) => (
+      {paged.pageItems.map((enrollment) => (
         <tr key={enrollment.id}>
           <Td className="font-semibold text-ink">{enrollment.classSection?.code ?? '—'}</Td>
           <Td>{enrollment.classSection?.subject?.name ?? '—'}</Td>

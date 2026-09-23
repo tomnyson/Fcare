@@ -17,7 +17,7 @@ import { MonitoringSettingsService } from './monitoring-settings.service';
 export const ERROR_SINK = Symbol('ERROR_SINK');
 const FLUSH_INTERVAL_MS = 10_000;
 
-export interface AggregatedGroup {
+interface AggregatedGroup {
   fingerprint: string;
   weekStart: Date;
   level: SystemErrorLevel;
@@ -166,8 +166,8 @@ export class ErrorCollectorService implements OnModuleInit, OnModuleDestroy {
 
       const alertable: AlertGroup[] = [];
       for (let i = 0; i < groups.length; i++) {
-        const group = groups[i]!;
-        const saved = results[i]!;
+        const group = groups[i];
+        const saved = results[i];
         // firstSeenAt == lastSeenAt sau upsert → group mới được tạo lần đầu.
         const isFirstSeen =
           saved.firstSeenAt.getTime() === saved.lastSeenAt.getTime();
@@ -216,4 +216,3 @@ export class ErrorCollectorService implements OnModuleInit, OnModuleDestroy {
     });
   }
 }
-

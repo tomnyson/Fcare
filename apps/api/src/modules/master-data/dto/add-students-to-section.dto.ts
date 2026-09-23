@@ -16,7 +16,10 @@ export class AddStudentItemDto {
   @MaxLength(30)
   studentCode!: string;
 
-  @ApiProperty({ example: 'Hoàng Lê Minh Sang', description: 'Họ và tên sinh viên' })
+  @ApiProperty({
+    example: 'Hoàng Lê Minh Sang',
+    description: 'Họ và tên sinh viên',
+  })
   @IsString()
   @IsNotEmpty({ message: 'Họ và tên không được để trống' })
   @MaxLength(100)

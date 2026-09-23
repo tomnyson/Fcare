@@ -13,7 +13,7 @@ import { AddStudentsModal } from './add-students-modal';
 import { ConfirmRemoveStudentModal } from './confirm-remove-student-modal';
 import { EditSectionStudentModal } from './edit-section-student-modal';
 
-export interface SectionStudentsRosterModalProps {
+interface SectionStudentsRosterModalProps {
   open: boolean;
   section: ClassSection | null;
   onClose: () => void;

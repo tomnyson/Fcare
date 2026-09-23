@@ -97,7 +97,7 @@ export function useAnalysisSend({
 }
 
 /** Đổi mã lỗi nghiệp vụ thành câu người dùng đọc được. */
-export function sendErrorMessage(err: unknown): string {
+function sendErrorMessage(err: unknown): string {
   if (!(err instanceof ApiError)) {
     return 'Không thể gửi cảnh báo.';
   }

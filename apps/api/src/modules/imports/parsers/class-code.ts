@@ -1,9 +1,9 @@
 /** Lớp hành chính: hai chữ cái ngành + hai chữ số khoá + ba chữ số, vd "SD20301". */
 const ADMIN_CLASS_PATTERN = /^([A-Z]{2})(\d{2})\d{3}$/;
 
-export type ClassKind = 'ADMIN' | 'SECTION';
+type ClassKind = 'ADMIN' | 'SECTION';
 
-export interface ParsedClassCode {
+interface ParsedClassCode {
   kind: ClassKind;
   raw: string;
   /** Hai chữ số khoá — chỉ có ở lớp hành chính. */

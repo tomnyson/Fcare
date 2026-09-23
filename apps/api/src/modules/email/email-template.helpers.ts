@@ -1,10 +1,10 @@
-export interface BaseEmailStudent {
+interface BaseEmailStudent {
   fullName: string;
   studentCode: string;
   classCode?: string | null;
 }
 
-export interface AlertEmailData {
+interface AlertEmailData {
   student: BaseEmailStudent;
   level: number;
   reason: string;
@@ -12,7 +12,7 @@ export interface AlertEmailData {
   actionUrl: string;
 }
 
-export interface CareLogEmailData {
+interface CareLogEmailData {
   student: BaseEmailStudent;
   channel?: string | null;
   content: string;
@@ -22,7 +22,7 @@ export interface CareLogEmailData {
   actionUrl: string;
 }
 
-export interface DiscussionEmailData {
+interface DiscussionEmailData {
   student: BaseEmailStudent;
   authorName: string;
   messagePreview: string;

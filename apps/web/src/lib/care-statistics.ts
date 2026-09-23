@@ -82,7 +82,7 @@ export function canViewCareStatistics(roles: readonly string[]): boolean {
   );
 }
 
-export interface CareFilters {
+interface CareFilters {
   lecturerId?: string;
   departmentId?: string;
   status?: CareStatus;

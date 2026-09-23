@@ -60,7 +60,9 @@ describe('aggregateBatch', () => {
 
 describe('ErrorCollectorService', () => {
   function build() {
-    const upsert = jest.fn().mockResolvedValue({ firstSeenAt: T1, lastSeenAt: T1 });
+    const upsert = jest
+      .fn()
+      .mockResolvedValue({ firstSeenAt: T1, lastSeenAt: T1 });
     const prisma = {
       systemErrorGroup: { upsert },
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
@@ -69,14 +71,24 @@ describe('ErrorCollectorService', () => {
     // Stub các dependency mới — không được gọi trong các test hiện tại.
     const webhook = { send: jest.fn().mockResolvedValue(undefined) } as never;
     const settings = {
-      getEffectiveConfig: jest.fn().mockResolvedValue({ webhookUrl: null, enabled: true, retentionDays: 30 }),
+      getEffectiveConfig: jest.fn().mockResolvedValue({
+        webhookUrl: null,
+        enabled: true,
+        retentionDays: 30,
+      }),
     } as never;
     const config = { get: jest.fn().mockReturnValue('test') } as never;
     return {
       prisma,
       sink,
       upsert,
-      service: new ErrorCollectorService(prisma, sink, webhook, settings, config),
+      service: new ErrorCollectorService(
+        prisma,
+        sink,
+        webhook,
+        settings,
+        config,
+      ),
     };
   }
 

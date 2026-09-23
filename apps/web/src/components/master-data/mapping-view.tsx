@@ -8,6 +8,7 @@ import { DataTable, Td } from '../ui/data-table';
 import { FormError, Input, Label, Select } from '../ui/form';
 import { Modal } from '../ui/modal';
 import { PageHeader } from '../ui/page-header';
+import { usePagedList } from '../../lib/use-paged-list';
 import { ApiError, apiFetch } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
 import { canManageMasterData, MASTER_DATA_TABS } from '../../lib/master-data-tabs';
@@ -119,6 +120,7 @@ export function MappingView({ tab }: { tab: MappingTabKey }) {
     enabled: !wantsDepartment,
   });
   const targets = wantsDepartment ? departments.data : majors.data;
+  const paged = usePagedList(items.data ?? [], { pageSize: 10, resetKey: tab });
 
   function closeForm() {
     setCreating(false);
@@ -203,17 +205,28 @@ export function MappingView({ tab }: { tab: MappingTabKey }) {
       ) : null}
 
       <DataTable
+        fitViewport
         headers={[
           mapping.keyLabel,
           mapping.targetLabel,
           ...(canManage ? ['Thao tác'] : []),
         ]}
         isLoading={items.isLoading}
-        skeletonRows={6}
+        skeletonRows={paged.pageSize}
         isEmpty={!items.isLoading && !items.isError && (items.data?.length ?? 0) === 0}
         emptyMessage="Chưa có ánh xạ nào."
+        pagination={{
+          page: paged.page,
+          totalPages: paged.totalPages,
+          total: paged.total,
+          limit: paged.pageSize,
+          isLoading: items.isLoading,
+          onPageChange: paged.setPage,
+          onLimitChange: paged.setPageSize,
+          label: 'Phân trang ánh xạ',
+        }}
       >
-        {(items.data ?? []).map((row) => {
+        {paged.pageItems.map((row) => {
           const target = wantsDepartment ? row.department : row.major;
           return (
             <tr key={row.id} className="transition-colors hover:bg-fpt-orange-50/40">

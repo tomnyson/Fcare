@@ -12,6 +12,7 @@ import { PageHeader } from '../../../../components/ui/page-header';
 import { apiDownload, apiFetch, ApiError } from '../../../../lib/api';
 import { useMe } from '../../../../lib/hooks';
 import { ROLE_LABELS } from '../../../../lib/labels';
+import { usePagedList } from '../../../../lib/use-paged-list';
 import type { Department, StaffMember } from '../../../../lib/types';
 
 interface CreateStaffResult {
@@ -364,6 +365,10 @@ function AdminUsersPageContent() {
   });
 
   const rows = staff ?? [];
+  const paged = usePagedList(rows, {
+    pageSize: 10,
+    resetKey: `${search}|${departmentFilter}|${missingDepartment}`,
+  });
   const showSelectColumn = missingDepartment;
   const allSelected = rows.length > 0 && selected.length === rows.length;
   const needsDepartment = newRoles.some((role) => DEPT_SCOPED_ROLES.includes(role));
@@ -602,7 +607,7 @@ function AdminUsersPageContent() {
           'Thao tác',
         ]}
         isLoading={isLoading}
-        skeletonRows={6}
+        skeletonRows={paged.pageSize}
         fitViewport
         isEmpty={!isLoading && !staffIsError && rows.length === 0}
         emptyMessage={
@@ -610,8 +615,18 @@ function AdminUsersPageContent() {
             ? 'Mọi nhân viên đều đã có bộ môn.'
             : 'Không có nhân viên nào khớp bộ lọc.'
         }
+        pagination={{
+          page: paged.page,
+          totalPages: paged.totalPages,
+          total: paged.total,
+          limit: paged.pageSize,
+          isLoading,
+          onPageChange: paged.setPage,
+          onLimitChange: paged.setPageSize,
+          label: 'Phân trang người dùng',
+        }}
       >
-        {rows.map((member) => (
+        {paged.pageItems.map((member) => (
           <tr key={member.id} className="transition-colors hover:bg-fpt-orange-50/40">
             {showSelectColumn ? (
               <Td>

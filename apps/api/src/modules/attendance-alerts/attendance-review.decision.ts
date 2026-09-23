@@ -6,7 +6,7 @@ export interface OpenAttendanceAlert {
   absentSessions: number | null;
 }
 
-export type ReviewAction =
+type ReviewAction =
   | { type: 'skip' }
   | { type: 'create'; level: 2 | 3 }
   | { type: 'upgrade'; level: 3 }

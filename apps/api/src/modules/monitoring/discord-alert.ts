@@ -40,9 +40,7 @@ function neutralize(text: string): string {
 }
 
 function vnTime(date: Date): string {
-  return new Date(date.getTime() + VN_OFFSET_MS)
-    .toISOString()
-    .slice(11, 19);
+  return new Date(date.getTime() + VN_OFFSET_MS).toISOString().slice(11, 19);
 }
 
 /**

@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { execSync } from 'child_process';
 import {
   BackupMetadata,
   BackupOverviewStats,
@@ -47,6 +48,23 @@ export class BackupService implements OnModuleInit {
 
   onModuleInit(): void {
     this.ensureStorageDir();
+  }
+
+  /**
+   * Audit trong module này luôn là fire-and-forget hoặc chạy sát lúc reset
+   * schema. Nếu để promise reject trôi (ví dụ kết nối bị `pg_terminate_backend`
+   * cắt), crash handler toàn cục sẽ tắt API giữa lúc phục hồi. Audit hỏng
+   * chỉ được phép cảnh báo, không bao giờ được làm đổ tiến trình.
+   */
+  private async safeAudit(
+    entry: Parameters<AuditService['log']>[0],
+  ): Promise<void> {
+    try {
+      await this.audit.log(entry);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Không ghi được audit ${entry.action}: ${msg}`);
+    }
   }
 
   /**
@@ -114,7 +132,7 @@ export class BackupService implements OnModuleInit {
     const configPath = this.getScheduleConfigPath();
     fs.writeFileSync(configPath, JSON.stringify(updated, null, 2), 'utf8');
 
-    void this.audit.log({
+    void this.safeAudit({
       action: 'DB_BACKUP_CONFIG_UPDATED',
       entity: 'BackupSchedule',
       staffId,
@@ -263,7 +281,9 @@ export class BackupService implements OnModuleInit {
 
       fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2), 'utf8');
 
-      void this.audit.log({
+      // Chờ audit xong: restoreBackup gọi ngay resetDatabase() sau bước này,
+      // insert còn dang dở sẽ bị pg_terminate_backend cắt ngang.
+      await this.safeAudit({
         action: 'DB_BACKUP_CREATED',
         entity: 'Backup',
         entityId: backupId,
@@ -339,7 +359,7 @@ export class BackupService implements OnModuleInit {
 
       fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2), 'utf8');
 
-      void this.audit.log({
+      void this.safeAudit({
         action: 'DB_BACKUP_CREATED',
         entity: 'Backup',
         entityId: backupId,
@@ -403,7 +423,7 @@ export class BackupService implements OnModuleInit {
       targetId: id,
     };
 
-    void this.audit.log({
+    void this.safeAudit({
       action: 'DB_RESTORE_INITIATED',
       entity: 'Backup',
       entityId: id,
@@ -430,22 +450,31 @@ export class BackupService implements OnModuleInit {
       });
       this.isLocked = true;
 
-      // 2. Tạm ngắt kết nối Prisma Client
+      // 2. Xóa sạch schema public cũ trước khi nạp để đảm bảo ghi đè 100% dữ liệu, không để lại rác hay trùng lặp
+      this.logger.log(
+        'Xóa sạch toàn bộ schema public cũ để ghi đè hoàn toàn dữ liệu...',
+      );
+      await this.resetDatabase();
+
+      // 3. Tạm ngắt kết nối Prisma Client
       this.logger.log('Ngắt kết nối Prisma Client để chuẩn bị phục hồi...');
       await this.prisma.$disconnect();
 
-      // 3. Thực thi khôi phục từ tệp dump
+      // 4. Thực thi khôi phục từ tệp dump
       this.logger.log(`Bắt đầu nạp dữ liệu từ ${targetBackup.filepath}...`);
       await this.pgRunner.restoreFromFile(targetBackup.filepath);
 
-      // 4. Kết nối lại Prisma Client
+      // 5. Kết nối lại Prisma Client
       this.logger.log('Kết nối lại Prisma Client...');
       await this.prisma.$connect();
 
-      // 5. Kiểm tra truy vấn xác nhận
+      // 6. Kiểm tra truy vấn xác nhận
       await this.prisma.$queryRaw`SELECT 1`;
 
-      void this.audit.log({
+      // 7. Đồng bộ Prisma Migrations nếu bản backup cũ hơn codebase hiện tại
+      this.applyPendingMigrations();
+
+      void this.safeAudit({
         action: 'DB_RESTORE_COMPLETED',
         entity: 'Backup',
         entityId: id,
@@ -468,6 +497,27 @@ export class BackupService implements OnModuleInit {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Phục hồi database thất bại: ${msg}`);
 
+      // Nếu có preRestoreSnapshot, kích hoạt cơ chế rollback an toàn
+      if (preRestoreSnapshot && fs.existsSync(preRestoreSnapshot.filepath)) {
+        this.logger.warn(
+          `Đang kích hoạt rollback tự động về Pre-Restore Snapshot: ${preRestoreSnapshot.filename}...`,
+        );
+        try {
+          await this.resetDatabase();
+          await this.prisma.$disconnect();
+          await this.pgRunner.restoreFromFile(preRestoreSnapshot.filepath);
+          await this.prisma.$connect();
+          this.applyPendingMigrations();
+          this.logger.log(
+            `Đã rollback thành công về bản snapshot an toàn: ${preRestoreSnapshot.filename}`,
+          );
+        } catch (rollbackErr) {
+          this.logger.error(
+            `Rollback tự động thất bại: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
+          );
+        }
+      }
+
       // Đảm bảo Prisma được kết nối lại ngay cả khi lỗi
       try {
         await this.prisma.$connect();
@@ -475,7 +525,7 @@ export class BackupService implements OnModuleInit {
         // ignore
       }
 
-      void this.audit.log({
+      void this.safeAudit({
         action: 'DB_RESTORE_FAILED',
         entity: 'Backup',
         entityId: id,
@@ -496,6 +546,74 @@ export class BackupService implements OnModuleInit {
   }
 
   /**
+   * Xóa sạch toàn bộ schema public trước khi phục hồi để đảm bảo
+   * ghi đè 100% dữ liệu, loại bỏ hoàn toàn nguy cơ dữ liệu trùng lặp hoặc rác cũ.
+   */
+  async resetDatabase(): Promise<void> {
+    this.logger.log(
+      'Đang dọn sạch schema public để chuẩn bị nạp dữ liệu bản sao lưu...',
+    );
+
+    // Đóng pool hiện tại trước: pg_terminate_backend bên dưới giết mọi backend
+    // khác, kể cả các kết nối rảnh trong pool của chính API. Nếu để pool cũ,
+    // câu DROP tiếp theo có thể rơi vào một kết nối vừa bị cắt (57P01).
+    await this.prisma.$disconnect();
+
+    // Gom terminate + drop + create vào MỘT câu lệnh để Prisma chạy trên đúng
+    // một kết nối mới (pid được loại trừ khỏi danh sách bị terminate).
+    await this.prisma.$executeRawUnsafe(`
+      DO $$
+      BEGIN
+        PERFORM pg_terminate_backend(pid)
+        FROM pg_stat_activity
+        WHERE datname = current_database()
+          AND pid <> pg_backend_pid();
+
+        DROP SCHEMA public CASCADE;
+        CREATE SCHEMA public;
+        GRANT ALL ON SCHEMA public TO CURRENT_USER;
+        GRANT ALL ON SCHEMA public TO public;
+      END
+      $$;
+    `);
+    this.logger.log('Đã tạo mới schema public hoàn toàn sạch sẽ.');
+  }
+
+  /**
+   * Đồng bộ các Prisma Migrations sau khi phục hồi,
+   * phòng trường hợp bản sao lưu được tạo từ phiên bản migration cũ hơn codebase hiện tại.
+   */
+  applyPendingMigrations(): void {
+    this.logger.log(
+      'Kiểm tra và áp dụng Prisma Migrations còn thiếu sau phục hồi...',
+    );
+    const cwd = path.resolve(process.cwd());
+    try {
+      const output = execSync('pnpm exec prisma migrate deploy', {
+        cwd,
+        env: { ...process.env },
+        encoding: 'utf8',
+      });
+      this.logger.log(`Prisma migrate deploy: ${output.trim()}`);
+    } catch {
+      try {
+        const output = execSync('npx prisma migrate deploy', {
+          cwd,
+          env: { ...process.env },
+          encoding: 'utf8',
+        });
+        this.logger.log(`npx prisma migrate deploy: ${output.trim()}`);
+      } catch (fallbackErr: unknown) {
+        const msg =
+          fallbackErr instanceof Error
+            ? fallbackErr.message
+            : String(fallbackErr);
+        this.logger.warn(`Cảnh báo khi chạy prisma migrate deploy: ${msg}`);
+      }
+    }
+  }
+
+  /**
    * Xóa một bản sao lưu và metadata tương ứng
    */
   async deleteBackup(id: string, staffId?: string): Promise<void> {
@@ -509,7 +627,7 @@ export class BackupService implements OnModuleInit {
       fs.unlinkSync(metaPath);
     }
 
-    void this.audit.log({
+    void this.safeAudit({
       action: 'DB_BACKUP_DELETED',
       entity: 'Backup',
       entityId: id,

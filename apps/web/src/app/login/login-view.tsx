@@ -24,8 +24,13 @@ const SECURITY_NOTES = [
 
 const AFTER_LOGIN_PATH = '/dashboard';
 
+export interface LoginViewProps {
+  checkSession: boolean;
+  recaptchaEnabled?: boolean;
+}
+
 /** `checkSession`: trình duyệt có cookie phiên → hỏi API trước, còn phiên thì vào thẳng dashboard. */
-export function LoginView({ checkSession }: { checkSession: boolean }) {
+export function LoginView({ checkSession, recaptchaEnabled = recaptcha.enabled }: LoginViewProps) {
   const router = useRouter();
   const [checking, setChecking] = useState(checkSession);
   const googleBtnRef = useRef<HTMLDivElement>(null);
@@ -56,6 +61,11 @@ export function LoginView({ checkSession }: { checkSession: boolean }) {
     };
   }, [checkSession, router]);
 
+  // Effect khởi tạo GSI chỉ chạy một lần; giữ handler mới nhất qua ref để
+  // callback của Google không dính closure cũ mà không phải re-init widget.
+  const onGoogleCredentialRef = useRef<(credential: string) => Promise<void>>(async () => {});
+  onGoogleCredentialRef.current = onGoogleCredential;
+
   useEffect(() => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) return;
@@ -78,7 +88,7 @@ export function LoginView({ checkSession }: { checkSession: boolean }) {
         google.accounts.id.initialize({
           client_id: clientId,
           callback: (response: { credential: string }) => {
-            void onGoogleCredential(response.credential);
+            void onGoogleCredentialRef.current(response.credential);
           },
           auto_select: false,
           cancel_on_tap_outside: true,
@@ -127,13 +137,10 @@ export function LoginView({ checkSession }: { checkSession: boolean }) {
     setError('');
     setSubmitting(true);
     try {
-      const result = await apiFetch<LoginResult | GoogleVerifyResult>(
-        '/auth/google/verify',
-        {
-          method: 'POST',
-          body: JSON.stringify({ idToken: credential }),
-        },
-      );
+      const result = await apiFetch<LoginResult | GoogleVerifyResult>('/auth/google/verify', {
+        method: 'POST',
+        body: JSON.stringify({ idToken: credential }),
+      });
 
       if ('user' in result && result.user) {
         router.push(result.mustChangePassword ? '/change-password' : '/consent');
@@ -184,7 +191,7 @@ export function LoginView({ checkSession }: { checkSession: boolean }) {
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (recaptcha.enabled && !recaptchaToken) {
+    if (recaptchaEnabled && !recaptchaToken) {
       setError('Vui lòng tick ô "Tôi không phải người máy" trước khi đăng nhập.');
       return;
     }
@@ -199,7 +206,7 @@ export function LoginView({ checkSession }: { checkSession: boolean }) {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Không thể kết nối máy chủ.');
       setSubmitting(false);
-      if (recaptcha.enabled) {
+      if (recaptchaEnabled) {
         // Google chỉ nhận mỗi token một lần — lần thử sau phải tick lại.
         setRecaptchaToken(null);
         setRecaptchaReset((count) => count + 1);
@@ -251,11 +258,7 @@ export function LoginView({ checkSession }: { checkSession: boolean }) {
 
         {/* Form liên kết tài khoản Google */}
         {!checking && linkingChallenge ? (
-          <form
-            onSubmit={onLinkSubmit}
-            className="w-full max-w-sm space-y-5"
-            noValidate
-          >
+          <form onSubmit={onLinkSubmit} className="w-full max-w-sm space-y-5" noValidate>
             <div>
               <h2 className="font-[family-name:var(--font-display)] text-2xl font-bold text-fpt-blue-900">
                 Liên kết tài khoản Google
@@ -365,7 +368,7 @@ export function LoginView({ checkSession }: { checkSession: boolean }) {
             />
           </div>
 
-          {recaptcha.enabled ? (
+          {recaptchaEnabled ? (
             <RecaptchaCheckbox onTokenChange={setRecaptchaToken} resetSignal={recaptchaReset} />
           ) : null}
 

@@ -9,10 +9,12 @@ import {
   type SystemErrorLevel,
 } from '../../lib/system-monitoring';
 import { Skeleton } from '../ui/skeleton';
+import { Pagination } from '../ui/pagination';
+import { usePagedList } from '../../lib/use-paged-list';
 
 const LEVEL_PILL: Record<SystemErrorLevel, string> = {
-  ERROR: 'bg-fpt-orange-50 text-fpt-orange-600',
-  FATAL: 'bg-danger/10 text-danger',
+  ERROR: 'bg-fpt-orange-50 text-fpt-orange-600 border border-fpt-orange/30',
+  FATAL: 'bg-danger/10 text-danger border border-danger/30 font-bold',
 };
 
 const HEADERS = ['Mức', 'Nơi xảy ra', 'Thông điệp', 'Số lần', 'Lần cuối', ''];
@@ -29,7 +31,9 @@ function formatDateTime(value: string): string {
 function LevelPill({ level }: { level: SystemErrorLevel }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold ${LEVEL_PILL[level]}`}
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+        LEVEL_PILL[level]
+      }`}
     >
       {LEVEL_LABEL[level]}
     </span>
@@ -37,33 +41,78 @@ function LevelPill({ level }: { level: SystemErrorLevel }) {
 }
 
 function StackPanel({ group }: { group: ErrorGroupView }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    const text = [
+      `[${group.level}] ${group.message}`,
+      `Nguồn: ${SOURCE_LABEL[group.source]}`,
+      group.context ? `Context: ${group.context}` : null,
+      group.route ? `Route: ${group.route}` : null,
+      group.statusCode ? `Status Code: ${group.statusCode}` : null,
+      `Lần đầu trong tuần: ${formatDateTime(group.firstSeenAt)}`,
+      `Lần cuối: ${formatDateTime(group.lastSeenAt)}`,
+      `Số lần: ${group.count}`,
+      group.stack ? `\nStack Trace:\n${group.stack}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+    }
+  }
+
   return (
-    <div className="space-y-3 bg-fpt-blue-900/[0.03] px-4 py-4">
-      <dl className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted">
-        <div className="flex gap-1.5">
-          <dt>Nguồn</dt>
-          <dd className="font-semibold text-ink">{SOURCE_LABEL[group.source]}</dd>
-        </div>
-        {group.context ? (
-          <div className="flex gap-1.5">
-            <dt>Context</dt>
-            <dd className="font-semibold break-all text-ink">{group.context}</dd>
+    <div className="space-y-3 border-t border-border/80 bg-fpt-blue-900/[0.03] px-5 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <dl className="flex flex-wrap items-center gap-x-6 gap-y-1.5 text-xs text-muted">
+          <div className="flex items-center gap-1.5">
+            <dt className="font-medium">Nguồn:</dt>
+            <dd className="font-semibold text-ink">{SOURCE_LABEL[group.source]}</dd>
           </div>
-        ) : null}
-        <div className="flex gap-1.5">
-          <dt>Lần đầu trong tuần</dt>
-          <dd className="font-semibold text-ink tabular-nums">
-            {formatDateTime(group.firstSeenAt)}
-          </dd>
-        </div>
-      </dl>
-      <p className="text-sm break-words text-ink">{group.message}</p>
+          {group.route ? (
+            <div className="flex items-center gap-1.5">
+              <dt className="font-medium">Route:</dt>
+              <dd className="rounded bg-border/40 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-ink">
+                {group.route}
+              </dd>
+            </div>
+          ) : null}
+          {group.context ? (
+            <div className="flex items-center gap-1.5">
+              <dt className="font-medium">Context:</dt>
+              <dd className="font-semibold break-all text-ink">{group.context}</dd>
+            </div>
+          ) : null}
+          <div className="flex items-center gap-1.5">
+            <dt className="font-medium">Lần đầu trong tuần:</dt>
+            <dd className="font-semibold text-ink tabular-nums">
+              {formatDateTime(group.firstSeenAt)}
+            </dd>
+          </div>
+        </dl>
+
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-2.5 py-1 text-xs font-semibold text-ink shadow-xs transition-colors duration-[var(--duration-fast)] hover:border-fpt-orange/40 hover:bg-surface hover:text-fpt-orange focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fpt-orange"
+          title="Sao chép toàn bộ thông tin lỗi và stack trace"
+        >
+          {copied ? '✓ Đã sao chép log' : '📋 Sao chép log & stack'}
+        </button>
+      </div>
+
+      <p className="text-sm font-medium break-words text-ink">{group.message}</p>
       {group.stack ? (
-        <pre className="max-h-80 overflow-auto rounded-md bg-fpt-blue-900 p-4 font-mono text-xs leading-relaxed whitespace-pre text-white/90">
+        <pre className="max-h-80 overflow-auto rounded-lg bg-fpt-blue-900 p-4 font-mono text-xs leading-relaxed whitespace-pre text-white/90 selection:bg-fpt-orange/40">
           {group.stack}
         </pre>
       ) : (
-        <p className="text-xs text-muted italic">Lỗi này không kèm stack trace.</p>
+        <p className="text-xs italic text-muted">Lỗi này không kèm stack trace.</p>
       )}
     </div>
   );
@@ -72,9 +121,8 @@ function StackPanel({ group }: { group: ErrorGroupView }) {
 interface ErrorGroupsTableProps {
   groups: ErrorGroupView[];
   isLoading: boolean;
-  isRefreshing: boolean;
+  isRefreshing?: boolean;
   skeletonRows: number;
-  /** Có bộ lọc đang bật → gợi ý bỏ lọc thay vì chúc mừng "không có lỗi". */
   filtered: boolean;
   onClearFilters: () => void;
 }
@@ -88,6 +136,7 @@ export function ErrorGroupsTable({
   onClearFilters,
 }: ErrorGroupsTableProps) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const paged = usePagedList(groups, { pageSize: 10 });
 
   if (!isLoading && groups.length === 0) {
     return (
@@ -118,28 +167,40 @@ export function ErrorGroupsTable({
 
   return (
     <div
-      className={`overflow-x-auto rounded-[var(--radius-card)] border border-border bg-white shadow-[var(--shadow-card)] motion-safe:transition-opacity motion-safe:duration-[var(--duration-fast)] ${
+      className={`rounded-[var(--radius-card)] border border-border bg-white shadow-[var(--shadow-card)] motion-safe:transition-opacity motion-safe:duration-[var(--duration-fast)] ${
         isRefreshing && !isLoading ? 'opacity-60' : 'opacity-100'
       }`}
       aria-busy={isLoading || isRefreshing || undefined}
     >
-      <table className="w-full min-w-[44rem] text-left text-sm">
-        <thead>
-          <tr className="bg-fpt-blue-900 text-white">
-            {HEADERS.map((header, index) => (
-              <th
-                key={header || `col-${index}`}
-                scope="col"
-                className={`px-4 py-3 text-xs font-bold tracking-wide whitespace-nowrap uppercase ${
-                  header === 'Số lần' ? 'text-right' : ''
-                }`}
-              >
-                {header || <span className="sr-only">Chi tiết</span>}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
+      <Pagination
+        page={paged.page}
+        totalPages={paged.totalPages}
+        total={paged.total}
+        limit={paged.pageSize}
+        onPageChange={paged.setPage}
+        onLimitChange={paged.setPageSize}
+        isLoading={isLoading}
+        position="top"
+        docked
+      />
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[44rem] text-left text-sm">
+          <thead>
+            <tr className="bg-fpt-blue-900 text-white">
+              {HEADERS.map((header, index) => (
+                <th
+                  key={header || `col-${index}`}
+                  scope="col"
+                  className={`px-4 py-3 text-xs font-bold tracking-wide whitespace-nowrap uppercase ${
+                    header === 'Số lần' ? 'text-right' : ''
+                  }`}
+                >
+                  {header || <span className="sr-only">Chi tiết</span>}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
           {isLoading
             ? Array.from({ length: skeletonRows }, (_, row) => (
                 <tr key={`skeleton-${row}`}>
@@ -150,7 +211,7 @@ export function ErrorGroupsTable({
                   ))}
                 </tr>
               ))
-            : groups.map((group) => {
+            : paged.pageItems.map((group) => {
                 const open = openId === group.id;
                 const panelId = `error-group-${group.id}`;
                 return (
@@ -205,6 +266,18 @@ export function ErrorGroupsTable({
               })}
         </tbody>
       </table>
+      </div>
+      <Pagination
+        page={paged.page}
+        totalPages={paged.totalPages}
+        total={paged.total}
+        limit={paged.pageSize}
+        onPageChange={paged.setPage}
+        onLimitChange={paged.setPageSize}
+        isLoading={isLoading}
+        position="bottom"
+        docked
+      />
     </div>
   );
 }

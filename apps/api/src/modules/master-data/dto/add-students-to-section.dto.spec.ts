@@ -1,6 +1,6 @@
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
-import { AddStudentsToSectionDto, AddStudentItemDto } from './add-students-to-section.dto';
+import { AddStudentsToSectionDto } from './add-students-to-section.dto';
 
 describe('AddStudentsToSectionDto', () => {
   it('hợp lệ khi có danh sách sinh viên đúng định dạng', async () => {

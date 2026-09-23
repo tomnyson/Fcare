@@ -35,7 +35,7 @@ const PURGE_BATCH = 5000;
 const WEEKS_LISTED = 12;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export interface ListGroupsQuery {
+interface ListGroupsQuery {
   week?: string;
   level?: SystemErrorLevel;
   source?: SystemErrorSource;

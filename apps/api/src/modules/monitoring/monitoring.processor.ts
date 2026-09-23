@@ -41,11 +41,13 @@ export class MonitoringProcessor extends WorkerHost {
       if (deleted > 0) {
         this.logger.log(`Đã dọn ${deleted} nhóm lỗi quá ${retentionDays} ngày`);
       }
-      const auditDeleted = await this.report.purgeExpiredAuditLogs(AUDIT_RETENTION_DAYS);
+      const auditDeleted =
+        await this.report.purgeExpiredAuditLogs(AUDIT_RETENTION_DAYS);
       if (auditDeleted > 0) {
-        this.logger.log(`Đã dọn ${auditDeleted} audit log quá ${AUDIT_RETENTION_DAYS} ngày`);
+        this.logger.log(
+          `Đã dọn ${auditDeleted} audit log quá ${AUDIT_RETENTION_DAYS} ngày`,
+        );
       }
     }
   }
 }
-

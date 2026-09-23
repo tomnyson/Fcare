@@ -1,6 +1,7 @@
 'use client';
 
 import { DataTable, Td } from '../ui/data-table';
+import { usePagedList } from '../../lib/use-paged-list';
 import type { LecturerStatistics } from '../../lib/types';
 
 const HEADERS = [
@@ -15,14 +16,28 @@ export function LecturersTable({
   rows: LecturerStatistics[];
   isLoading: boolean;
 }) {
+  const paged = usePagedList(rows, { pageSize: 10 });
+
   return (
     <DataTable
+      fitViewport
       headers={HEADERS}
       isLoading={isLoading}
+      skeletonRows={paged.pageSize}
       isEmpty={rows.length === 0}
       emptyMessage="Chưa có giảng viên nào có lớp trong phạm vi của bạn ở kỳ này."
+      pagination={{
+        page: paged.page,
+        totalPages: paged.totalPages,
+        total: paged.total,
+        limit: paged.pageSize,
+        isLoading,
+        onPageChange: paged.setPage,
+        onLimitChange: paged.setPageSize,
+        label: 'Phân trang giảng viên',
+      }}
     >
-      {rows.map((row) => (
+      {paged.pageItems.map((row) => (
         <tr key={row.id}>
           <Td className="font-semibold">{row.staffCode}</Td>
           <Td>{row.fullName}</Td>

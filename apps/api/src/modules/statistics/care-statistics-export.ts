@@ -98,7 +98,7 @@ function formatDateVN(date: Date | string): string {
 }
 
 /** `HH:mm dd/MM/yyyy` theo giờ Việt Nam. */
-export function formatTimeDate(date: Date | string): string {
+function formatTimeDate(date: Date | string): string {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat('en-GB', {
       timeZone: TIME_ZONE,

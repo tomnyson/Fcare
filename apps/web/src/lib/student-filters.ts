@@ -3,7 +3,7 @@
  * nghiệp là gửi đúng bộ lọc — nên toàn bộ logic đọc/ghi tham số nằm ở đây để
  * kiểm thử được mà không cần dựng component.
  */
-export interface StudentFilters {
+interface StudentFilters {
   search: string;
   status: string;
   classCode: string;
@@ -17,7 +17,7 @@ export interface StudentFilters {
 }
 
 /** Khóa query string của từng bộ lọc, dùng chung cho đọc URL và xóa lọc. */
-export const STUDENT_FILTER_KEYS = [
+const STUDENT_FILTER_KEYS = [
   'search',
   'status',
   'classCode',

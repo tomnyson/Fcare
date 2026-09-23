@@ -519,7 +519,9 @@ model Notification {
   createdAt           DateTime  @default(now())
 
   recipient         Staff                         @relation(fields: [recipientId], references: [id], onDelete: Cascade)
-  alert             Alert?                        @relation(fields: [alertId], references: [id], onDelete: SetNull)
+  // Cascade: ADMIN xoá cảnh báo thì thông báo đã phát (mang tên + mã SV + lý do)
+  // phải chết theo, không để lại dòng mồ côi không còn cách dọn.
+  alert             Alert?                        @relation(fields: [alertId], references: [id], onDelete: Cascade)
   analysisVersion   StudentTermAnalysisVersion?   @relation(fields: [analysisVersionId], references: [id], onDelete: SetNull)
   // HIGH-A: Cascade chứ KHÔNG SetNull. `discussion_messages.studentId` là
   // Cascade, nên xoá sinh viên là xoá tin; SetNull sẽ để lại dòng thông báo

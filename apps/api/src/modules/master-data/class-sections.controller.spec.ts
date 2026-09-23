@@ -49,7 +49,11 @@ describe('ClassSectionsController — bổ sung sinh viên', () => {
       buffer: Buffer.from('test'),
       originalname: 'test.xlsx',
     } as Express.Multer.File;
-    const res = await controller.uploadStudentsExcel(mockUser, 'sec-1', mockFile);
+    const res = await controller.uploadStudentsExcel(
+      mockUser,
+      'sec-1',
+      mockFile,
+    );
     expect(mockService.addStudentsFromExcel).toHaveBeenCalledWith(
       mockUser,
       'sec-1',
@@ -59,7 +63,11 @@ describe('ClassSectionsController — bổ sung sinh viên', () => {
   });
 
   it('gọi service.removeStudentFromSection khi gọi DELETE :id/enrollments/:enrollmentId', async () => {
-    const res = await controller.removeStudentFromSection(mockUser, 'sec-1', 'enr-1');
+    const res = await controller.removeStudentFromSection(
+      mockUser,
+      'sec-1',
+      'enr-1',
+    );
     expect(mockService.removeStudentFromSection).toHaveBeenCalledWith(
       mockUser,
       'sec-1',
@@ -70,7 +78,12 @@ describe('ClassSectionsController — bổ sung sinh viên', () => {
 
   it('gọi service.updateStudentInSection khi gọi PATCH :id/enrollments/:enrollmentId', async () => {
     const dto = { fullName: 'Tên Mới', totalScore: 8 };
-    const res = await controller.updateStudentInSection(mockUser, 'sec-1', 'enr-1', dto);
+    const res = await controller.updateStudentInSection(
+      mockUser,
+      'sec-1',
+      'enr-1',
+      dto,
+    );
     expect(mockService.updateStudentInSection).toHaveBeenCalledWith(
       mockUser,
       'sec-1',

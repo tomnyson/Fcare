@@ -5,8 +5,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
  * Định dạng lưu: `v1:<iv b64>:<authTag b64>:<ciphertext b64>`.
  * Khoá lấy từ env `SETTINGS_ENCRYPTION_KEY` (32 byte, hex 64 ký tự).
  */
-export type SecretCipherErrorCode =
-  'KEY_MISSING' | 'BAD_FORMAT' | 'AUTH_FAILED';
+type SecretCipherErrorCode = 'KEY_MISSING' | 'BAD_FORMAT' | 'AUTH_FAILED';
 
 export class SecretCipherError extends Error {
   constructor(

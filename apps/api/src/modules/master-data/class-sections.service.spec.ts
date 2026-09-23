@@ -22,6 +22,9 @@ interface MockHandles {
   alertGroupBy: jest.Mock;
 }
 
+type TransactionArg =
+  ((tx: PrismaService) => Promise<unknown>) | Promise<unknown>[];
+
 function makePrisma(): MockHandles {
   const findMany = jest.fn().mockResolvedValue([]);
   const findUnique = jest.fn();
@@ -463,10 +466,12 @@ describe('ClassSectionsService — bổ sung sinh viên vào lớp học phần'
   it('tạo sinh viên mới nếu chưa có và ghi danh vào lớp', async () => {
     const { prisma, findUnique } = makePrisma();
     const studentFindMany = jest.fn().mockResolvedValue([]);
-    const studentCreate = jest.fn().mockImplementation(({ data }) => ({
-      id: 'sv-new-1',
-      ...data,
-    }));
+    const studentCreate = jest
+      .fn()
+      .mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+        id: 'sv-new-1',
+        ...data,
+      }));
     const enrollmentFindMany = jest.fn().mockResolvedValue([]);
     const enrollmentCreate = jest.fn().mockResolvedValue({ id: 'enr-new-1' });
 
@@ -476,12 +481,11 @@ describe('ClassSectionsService — bổ sung sinh viên vào lớp học phần'
     };
     prisma.enrollment.findMany = enrollmentFindMany;
     prisma.enrollment.create = enrollmentCreate;
-    prisma.$transaction = jest.fn().mockImplementation(async (callback) => {
-      if (typeof callback === 'function') {
-        return callback(prisma);
-      }
-      return Promise.all(callback);
-    });
+    prisma.$transaction = jest
+      .fn()
+      .mockImplementation((arg: TransactionArg) =>
+        typeof arg === 'function' ? arg(prisma) : Promise.all(arg),
+      );
 
     findUnique.mockResolvedValueOnce({
       id: 'sec-1',
@@ -504,7 +508,7 @@ describe('ClassSectionsService — bổ sung sinh viên vào lớp học phần'
           fullName: 'Hoàng Lê Minh Sang',
           departmentId: 'dept-cntt',
           classCode: 'AI21301',
-        }),
+        }) as unknown,
       }),
     );
     expect(auditLog).toHaveBeenCalledWith(
@@ -517,12 +521,14 @@ describe('ClassSectionsService — bổ sung sinh viên vào lớp học phần'
 
   it('bỏ qua nếu sinh viên đã ghi danh sẵn trong lớp', async () => {
     const { prisma, findUnique } = makePrisma();
-    const studentFindMany = jest.fn().mockResolvedValue([
-      { id: 'sv-1', studentCode: 'PK04346', fullName: 'Hoàng Lê Minh Sang' },
-    ]);
-    const enrollmentFindMany = jest.fn().mockResolvedValue([
-      { studentId: 'sv-1', classSectionId: 'sec-1' },
-    ]);
+    const studentFindMany = jest
+      .fn()
+      .mockResolvedValue([
+        { id: 'sv-1', studentCode: 'PK04346', fullName: 'Hoàng Lê Minh Sang' },
+      ]);
+    const enrollmentFindMany = jest
+      .fn()
+      .mockResolvedValue([{ studentId: 'sv-1', classSectionId: 'sec-1' }]);
     const enrollmentCreate = jest.fn();
 
     (prisma as unknown as Record<string, unknown>).student = {
@@ -530,10 +536,11 @@ describe('ClassSectionsService — bổ sung sinh viên vào lớp học phần'
     };
     prisma.enrollment.findMany = enrollmentFindMany;
     prisma.enrollment.create = enrollmentCreate;
-    prisma.$transaction = jest.fn().mockImplementation(async (callback) => {
-      if (typeof callback === 'function') return callback(prisma);
-      return Promise.all(callback);
-    });
+    prisma.$transaction = jest
+      .fn()
+      .mockImplementation((arg: TransactionArg) =>
+        typeof arg === 'function' ? arg(prisma) : Promise.all(arg),
+      );
 
     findUnique.mockResolvedValueOnce({
       id: 'sec-1',
@@ -567,12 +574,20 @@ describe('ClassSectionsService — xóa & sửa sinh viên trong lớp học ph�
       id: 'enr-1',
       studentId: 'std-1',
       classSectionId: 'sec-1',
-      student: { id: 'std-1', studentCode: 'PK04346', fullName: 'Hoàng Lê Minh Sang' },
+      student: {
+        id: 'std-1',
+        studentCode: 'PK04346',
+        fullName: 'Hoàng Lê Minh Sang',
+      },
     });
     prisma.enrollment.delete = enrollmentDelete;
 
     const service = new ClassSectionsService(prisma, audit);
-    const result = await service.removeStudentFromSection(user, 'sec-1', 'enr-1');
+    const result = await service.removeStudentFromSection(
+      user,
+      'sec-1',
+      'enr-1',
+    );
 
     expect(result.removed).toBe(true);
     expect(result.studentCode).toBe('PK04346');
@@ -601,15 +616,22 @@ describe('ClassSectionsService — xóa & sửa sinh viên trong lớp học ph�
     });
     const studentUpdate = jest.fn().mockResolvedValue({});
     const enrollmentUpdate = jest.fn().mockResolvedValue({});
-    (prisma as unknown as Record<string, unknown>).student = { update: studentUpdate };
+    (prisma as unknown as Record<string, unknown>).student = {
+      update: studentUpdate,
+    };
     prisma.enrollment.update = enrollmentUpdate;
 
     const service = new ClassSectionsService(prisma, audit);
-    const result = await service.updateStudentInSection(user, 'sec-1', 'enr-1', {
-      fullName: 'Hoàng Lê Minh Sang Mới',
-      totalScore: 9,
-      result: EnrollmentResult.PASS,
-    });
+    const result = await service.updateStudentInSection(
+      user,
+      'sec-1',
+      'enr-1',
+      {
+        fullName: 'Hoàng Lê Minh Sang Mới',
+        totalScore: 9,
+        result: EnrollmentResult.PASS,
+      },
+    );
 
     expect(result.updated).toBe(true);
     expect(studentUpdate).toHaveBeenCalledWith({
@@ -618,7 +640,10 @@ describe('ClassSectionsService — xóa & sửa sinh viên trong lớp học ph�
     });
     expect(enrollmentUpdate).toHaveBeenCalledWith({
       where: { id: 'enr-1' },
-      data: expect.objectContaining({ totalScore: 9, result: EnrollmentResult.PASS }),
+      data: expect.objectContaining({
+        totalScore: 9,
+        result: EnrollmentResult.PASS,
+      }) as unknown,
     });
   });
 });

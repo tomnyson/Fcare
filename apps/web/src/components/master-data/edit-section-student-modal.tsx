@@ -7,7 +7,7 @@ import type { EnrollmentResult, SectionGradeRow } from '../../lib/types';
 import { FormError, FormSuccess, Input, Label, Select } from '../ui/form';
 import { Modal } from '../ui/modal';
 
-export interface EditSectionStudentModalProps {
+interface EditSectionStudentModalProps {
   open: boolean;
   sectionId: string;
   student: SectionGradeRow | null;

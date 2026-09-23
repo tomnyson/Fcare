@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createRecaptchaClient,
+  isLocalhostDomain,
   RECAPTCHA_NORMAL_WIDTH,
   RecaptchaUnavailableError,
 } from './recaptcha';
@@ -111,5 +112,31 @@ describe('createRecaptchaClient (v2 checkbox)', () => {
     expect(client.enabled).toBe(false);
     await expect(client.mount({} as HTMLElement, 400, handlers)).resolves.toBeNull();
     expect(loadScript).not.toHaveBeenCalled();
+  });
+});
+
+describe('isLocalhostDomain', () => {
+  it('nhận diện đúng các định dạng localhost khác nhau', () => {
+    expect(isLocalhostDomain('localhost')).toBe(true);
+    expect(isLocalhostDomain('localhost:3000')).toBe(true);
+    expect(isLocalhostDomain('127.0.0.1')).toBe(true);
+    expect(isLocalhostDomain('127.0.0.1:3000')).toBe(true);
+    expect(isLocalhostDomain('::1')).toBe(true);
+    expect(isLocalhostDomain('[::1]:3000')).toBe(true);
+    expect(isLocalhostDomain('http://localhost:3000')).toBe(true);
+    expect(isLocalhostDomain('https://127.0.0.1:8080')).toBe(true);
+  });
+
+  it('trả về false cho tên miền production hoặc staging', () => {
+    expect(isLocalhostDomain('fcare.fpt.edu.vn')).toBe(false);
+    expect(isLocalhostDomain('fcare.fpt.edu.vn:443')).toBe(false);
+    expect(isLocalhostDomain('https://fcare.fpt.edu.vn')).toBe(false);
+    expect(isLocalhostDomain('example.com')).toBe(false);
+  });
+
+  it('xử lý chuỗi rỗng hoặc undefined khi không có window', () => {
+    expect(isLocalhostDomain('')).toBe(false);
+    expect(isLocalhostDomain(null)).toBe(false);
+    expect(isLocalhostDomain(undefined)).toBe(false);
   });
 });

@@ -15,7 +15,7 @@ export function attendanceOfStudentSelect(studentId: string) {
   } as const;
 }
 
-export interface EvaluationAbsenceRow {
+interface EvaluationAbsenceRow {
   absentSessions: number | null;
   classSection: { enrollments: { absentSessions: number | null }[] };
 }

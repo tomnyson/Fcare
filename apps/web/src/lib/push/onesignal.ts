@@ -10,7 +10,7 @@ export function isPushConfigured(): boolean {
 }
 
 /** Khởi tạo SDK đúng một lần mỗi tab; thiếu cấu hình hoặc lỗi → false, không ném. */
-export function initPush(): Promise<boolean> {
+function initPush(): Promise<boolean> {
   if (!isPushConfigured() || typeof window === 'undefined') {
     return Promise.resolve(false);
   }

@@ -3,7 +3,7 @@ interface ProcessLike {
   on(event: 'unhandledRejection', listener: (reason: unknown) => void): unknown;
 }
 
-export interface CrashHandlerOptions {
+interface CrashHandlerOptions {
   proc: ProcessLike;
   /**
    * Logger context `Process` — hook pino gom vào giám sát với nguồn PROCESS.

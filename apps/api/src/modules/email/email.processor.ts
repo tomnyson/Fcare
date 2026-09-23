@@ -5,7 +5,7 @@ import { EmailService } from './email.service';
 
 export const EMAIL_NOTIFICATION_QUEUE = 'email-notifications';
 
-export type EmailJobData =
+type EmailJobData =
   | { type: 'alert'; alertId: string; recipientIds: string[] }
   | { type: 'care_log'; careLogId: string; authorStaffId: string }
   | { type: 'discussion'; discussionMessageId: string; recipientIds: string[] };

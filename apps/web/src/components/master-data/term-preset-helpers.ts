@@ -1,6 +1,6 @@
 import type { TermSeason } from '../../lib/types';
 
-export interface TermPreset {
+interface TermPreset {
   code: string;
   name: string;
   season: TermSeason;

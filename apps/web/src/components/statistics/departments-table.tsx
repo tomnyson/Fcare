@@ -1,6 +1,7 @@
 'use client';
 
 import { DataTable, Td } from '../ui/data-table';
+import { usePagedList } from '../../lib/use-paged-list';
 import { STUDENT_STATUS_LABELS } from '../../lib/labels';
 import type { DepartmentStatistics, StudentStatus } from '../../lib/types';
 
@@ -29,14 +30,28 @@ export function DepartmentsTable({
   rows: DepartmentStatistics[];
   isLoading: boolean;
 }) {
+  const paged = usePagedList(rows, { pageSize: 10 });
+
   return (
     <DataTable
+      fitViewport
       headers={HEADERS}
       isLoading={isLoading}
+      skeletonRows={paged.pageSize}
       isEmpty={rows.length === 0}
       emptyMessage="Chưa có bộ môn nào trong phạm vi của bạn ở kỳ này."
+      pagination={{
+        page: paged.page,
+        totalPages: paged.totalPages,
+        total: paged.total,
+        limit: paged.pageSize,
+        isLoading,
+        onPageChange: paged.setPage,
+        onLimitChange: paged.setPageSize,
+        label: 'Phân trang bộ môn',
+      }}
     >
-      {rows.map((row) => {
+      {paged.pageItems.map((row) => {
         const statusCounts = new Map(row.studentsByStatus.map((group) => [group.status, group.count]));
         return (
           <tr key={row.id}>

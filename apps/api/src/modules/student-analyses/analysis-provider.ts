@@ -24,8 +24,8 @@ export interface AcademicAnalysisProvider {
 }
 
 /** Gia tri hop le cho bien moi truong AI_PROVIDER. */
-export const ANALYSIS_PROVIDER_KEYS = ['openai', 'deepseek'] as const;
-export type AnalysisProviderKey = (typeof ANALYSIS_PROVIDER_KEYS)[number];
+const ANALYSIS_PROVIDER_KEYS = ['openai', 'deepseek'] as const;
+type AnalysisProviderKey = (typeof ANALYSIS_PROVIDER_KEYS)[number];
 
 /**
  * Doc AI_PROVIDER thanh mot lua chon da biet. Gia tri la va khong lam sap ung

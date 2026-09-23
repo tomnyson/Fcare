@@ -8,7 +8,6 @@ import { DataTable, Td } from '../../../../components/ui/data-table';
 import { FormError, Input, Label, Select } from '../../../../components/ui/form';
 import { Modal } from '../../../../components/ui/modal';
 import { PageHeader } from '../../../../components/ui/page-header';
-import { Pagination } from '../../../../components/ui/pagination';
 import { apiFetch } from '../../../../lib/api';
 import {
   ACTION_PRESETS,
@@ -46,7 +45,8 @@ function AuditLogsPageContent() {
 
   // State from URL
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
-  const limit = 20;
+  const limitParam = parseInt(searchParams.get('limit') ?? '10', 10);
+  const limit = [10, 20, 50, 100].includes(limitParam) ? limitParam : 10;
   const search = searchParams.get('search') ?? '';
   const action = searchParams.get('action') ?? '';
   const staffCode = searchParams.get('staffCode') ?? '';
@@ -305,7 +305,21 @@ function AuditLogsPageContent() {
             ? 'Không tìm thấy nhật ký hành động nào khớp với điều kiện lọc.'
             : 'Chưa có nhật ký hành động nào trong hệ thống.'
         }
-        skeletonRows={8}
+        skeletonRows={limit}
+        pagination={
+          logsData?.meta
+            ? {
+                page,
+                totalPages,
+                total: logsData.meta.total,
+                limit,
+                isLoading,
+                onPageChange: (newPage) => applyFilters({ page: newPage }),
+                onLimitChange: (newLimit) => applyFilters({ limit: newLimit, page: 1 }),
+                label: 'Phân trang nhật ký hành động',
+              }
+            : undefined
+        }
       >
         {items.map((item) => {
           const actionLabel = getActionLabel(item.action);
@@ -376,19 +390,6 @@ function AuditLogsPageContent() {
           );
         })}
       </DataTable>
-
-      {/* Pagination */}
-      {logsData?.meta ? (
-        <Pagination
-          page={page}
-          totalPages={totalPages}
-          limit={limit}
-          total={logsData.meta.total}
-          isLoading={isLoading}
-          onPageChange={(newPage) => applyFilters({ page: newPage })}
-          label="Phân trang nhật ký hành động"
-        />
-      ) : null}
 
       {/* Metadata Detail Modal */}
       {selectedLog ? (

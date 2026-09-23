@@ -7,7 +7,7 @@ import type { SectionGradeRow } from '../../lib/types';
 import { FormError } from '../ui/form';
 import { Modal } from '../ui/modal';
 
-export interface ConfirmRemoveStudentModalProps {
+interface ConfirmRemoveStudentModalProps {
   open: boolean;
   sectionId: string;
   sectionCode?: string;

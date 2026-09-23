@@ -91,4 +91,47 @@ describe('Pagination Component', () => {
 
     expect(html).toBe('');
   });
+
+  it('position="top" → hiển thị selector "Hiển thị ... mục mỗi trang" và cụm nút trang', () => {
+    const html = renderToStaticMarkup(
+      h(Pagination, {
+        page: 1,
+        totalPages: 26,
+        total: 253,
+        limit: 10,
+        position: 'top',
+        onPageChange: noop,
+        onLimitChange: noop,
+      }),
+    );
+
+    expect(html).toContain('Hiển thị');
+    expect(html).toContain('mục mỗi trang');
+    expect(html).toContain('<select');
+    expect(html).toContain('value="10"');
+    expect(html).toContain('>26<');
+    expect(html).toContain('Trước');
+    expect(html).toContain('Sau');
+  });
+
+  it('position="both" → render cả 2 đầu (trên có selector, dưới có nhãn đếm)', () => {
+    const html = renderToStaticMarkup(
+      h(Pagination, {
+        page: 1,
+        totalPages: 26,
+        total: 253,
+        limit: 10,
+        position: 'both',
+        onPageChange: noop,
+        onLimitChange: noop,
+      }),
+    );
+
+    expect(html).toContain('Hiển thị');
+    expect(html).toContain('mục mỗi trang');
+    expect(html).toContain('Đang hiển thị 1 đến 10 của 253 mục');
+    // Cả 2 đầu đều có nút Trước
+    const matches = html.match(/Trước/g);
+    expect(matches?.length).toBe(2);
+  });
 });

@@ -37,7 +37,25 @@ export interface RecaptchaClient {
   reset: (widgetId: number) => void;
 }
 
-export function isLocalhostDomain(): boolean {
+export function isLocalhostDomain(hostOrUrl?: string | null): boolean {
+  if (hostOrUrl) {
+    const trimmed = hostOrUrl.trim().toLowerCase();
+    if (trimmed === 'localhost' || trimmed === '127.0.0.1' || trimmed === '::1') return true;
+    try {
+      const url =
+        trimmed.startsWith('http://') || trimmed.startsWith('https://')
+          ? new URL(trimmed)
+          : new URL(`http://${trimmed}`);
+      const host = url.hostname.replace(/^\[/, '').replace(/\]$/, '').toLowerCase();
+      return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+    } catch {
+      const clean = trimmed
+        .replace(/^https?:\/\//, '')
+        .replace(/^\[/, '')
+        .split(/[\]:/]/)[0];
+      return clean === 'localhost' || clean === '127.0.0.1' || clean === '::1';
+    }
+  }
   if (typeof window === 'undefined') return false;
   const host = window.location.hostname.toLowerCase();
   return host === 'localhost' || host === '127.0.0.1' || host === '::1';
@@ -47,7 +65,7 @@ interface RecaptchaDeps {
   siteKey: string;
   loadScript: (src: string) => Promise<void>;
   getGrecaptcha: () => Grecaptcha | undefined;
-  isLocalhost?: () => boolean;
+  isLocalhost?: (hostOrUrl?: string | null) => boolean;
 }
 
 export function createRecaptchaClient({

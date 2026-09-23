@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { verifySystemPin, unlockSystemPin } from '../../lib/system-pin';
+import { createPortal } from 'react-dom';
+import { verifySystemPin } from '../../lib/system-pin';
 
 export interface SystemPinModalProps {
   open: boolean;
@@ -15,10 +16,15 @@ const PIN_LENGTH = 6;
 const MAX_ATTEMPTS = 5;
 
 export function SystemPinModal({ open, targetHref, onSuccess, onCancel }: SystemPinModalProps) {
+  const [mounted, setMounted] = useState(false);
   const [digits, setDigits] = useState<string[]>(Array(PIN_LENGTH).fill(''));
   const [error, setError] = useState('');
   const [attempts, setAttempts] = useState(0);
   const inputRefs = useRef<Array<HTMLInputElement | null>>(Array(PIN_LENGTH).fill(null));
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Reset khi modal mở
   useEffect(() => {
@@ -30,7 +36,7 @@ export function SystemPinModal({ open, targetHref, onSuccess, onCancel }: System
     }
   }, [open]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
   function handleKeyDown(index: number, e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Escape') {
@@ -74,15 +80,14 @@ export function SystemPinModal({ open, targetHref, onSuccess, onCancel }: System
     } else {
       // Nhập đủ PIN — auto submit
       const pin = [...next].join('');
-      submitPin(pin, next);
+      submitPin(pin);
     }
   }
 
-  function submitPin(pin: string, currentDigits: string[]) {
+  function submitPin(pin: string) {
     if (pin.length < PIN_LENGTH) return;
 
     if (verifySystemPin(pin)) {
-      unlockSystemPin();
       setError('');
       if (targetHref) {
         onSuccess(targetHref);
@@ -105,7 +110,7 @@ export function SystemPinModal({ open, targetHref, onSuccess, onCancel }: System
 
   const isBlocked = attempts >= MAX_ATTEMPTS;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-fpt-blue-900/60 p-4 backdrop-blur-sm"
       onClick={onCancel}
@@ -148,7 +153,9 @@ export function SystemPinModal({ open, targetHref, onSuccess, onCancel }: System
           {digits.map((digit, i) => (
             <input
               key={i}
-              ref={(el) => { inputRefs.current[i] = el; }}
+              ref={(el) => {
+                inputRefs.current[i] = el;
+              }}
               type="text"
               inputMode="numeric"
               maxLength={1}
@@ -170,9 +177,7 @@ export function SystemPinModal({ open, targetHref, onSuccess, onCancel }: System
         </div>
 
         {/* Error message */}
-        {error && (
-          <p className="mb-4 text-center text-sm font-medium text-rose-600">{error}</p>
-        )}
+        {error && <p className="mb-4 text-center text-sm font-medium text-rose-600">{error}</p>}
 
         {/* Actions */}
         <div className="flex justify-center">
@@ -193,6 +198,7 @@ export function SystemPinModal({ open, targetHref, onSuccess, onCancel }: System
           để đóng
         </p>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

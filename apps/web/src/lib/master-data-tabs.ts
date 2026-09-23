@@ -52,7 +52,7 @@ export function canViewTrainingArea(roles: readonly RoleKey[]): boolean {
  * apps/api/src/casl/ability.factory.ts). Các vai trò khác mở được màn hình
  * danh mục nhưng chỉ đọc — và không gán nhanh ánh xạ được ở bản xem trước.
  */
-export const MASTER_DATA_MANAGER_ROLES: readonly RoleKey[] = ['ADMIN', 'TRAINING_OFFICER'];
+const MASTER_DATA_MANAGER_ROLES: readonly RoleKey[] = ['ADMIN', 'TRAINING_OFFICER'];
 
 export function canManageMasterData(roles: readonly RoleKey[]): boolean {
   return roles.some((role) => MASTER_DATA_MANAGER_ROLES.includes(role));

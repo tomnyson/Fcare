@@ -28,7 +28,7 @@ const staffWithRoles = {
 
 type StaffWithRoles = Prisma.StaffGetPayload<typeof staffWithRoles>;
 
-export interface AuthSession {
+interface AuthSession {
   user: AuthUser;
   accessToken: string;
   refreshToken: string;
@@ -43,7 +43,7 @@ export interface GoogleLinkChallenge {
   expiresAt: number;
 }
 
-export interface GoogleOAuthResult {
+interface GoogleOAuthResult {
   session?: AuthSession;
   challenge?: GoogleLinkChallenge;
 }

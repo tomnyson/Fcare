@@ -3,7 +3,7 @@
  * duyệt không cho phát âm riêng — popup OneSignal dùng âm mặc định của máy.
  */
 
-export const ALERT_SOUND_MIN_LEVEL = 3;
+const ALERT_SOUND_MIN_LEVEL = 3;
 export const SOUND_PREFERENCE_KEY = 'fcare.alertSound';
 
 export interface PreferenceStorage {

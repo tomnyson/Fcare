@@ -15,7 +15,7 @@ import type {
 } from './monitoring.types';
 
 const SETTINGS_ID = 'default';
-export const DEFAULT_RETENTION_DAYS = 30;
+const DEFAULT_RETENTION_DAYS = 30;
 
 type MonitoringSettingRow = NonNullable<
   Awaited<ReturnType<PrismaService['monitoringSetting']['findUnique']>>

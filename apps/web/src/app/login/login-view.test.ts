@@ -39,4 +39,17 @@ describe('LoginView', () => {
     const html = renderToStaticMarkup(h(LoginView, { checkSession: false }));
     expect(html).not.toContain('data-recaptcha');
   });
+
+  it('tôn trọng prop recaptchaEnabled khi truyền vào (ghi đè recaptcha.enabled)', () => {
+    recaptchaMock.enabled = true;
+    // Bật ở lib nhưng truyền prop false (như trên localhost) → không render ô tick
+    const htmlDisabled = renderToStaticMarkup(h(LoginView, { checkSession: false, recaptchaEnabled: false }));
+    expect(htmlDisabled).not.toContain('data-recaptcha');
+
+    recaptchaMock.enabled = false;
+    // Tắt ở lib nhưng truyền prop true → vẫn render ô tick
+    const htmlEnabled = renderToStaticMarkup(h(LoginView, { checkSession: false, recaptchaEnabled: true }));
+    expect(htmlEnabled).toContain('data-recaptcha="true"');
+  });
 });
+

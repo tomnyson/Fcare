@@ -22,7 +22,6 @@ import { BulkStaffEmailDto } from './dto/staff-email.dto';
 import { Prisma } from '@prisma/client';
 import { ListAuditLogsQuery } from './dto/audit-log.dto';
 
-
 /**
  * Phần client đủ dùng cho việc gán email công vụ. Các delegate tùy chọn
  * vì transaction có thể là mock tối giản trong spec.

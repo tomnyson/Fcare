@@ -9,6 +9,7 @@ import {
   MONITORING_SETTINGS_KEY,
   MonitoringSettingsCard,
 } from '../../../../components/admin/monitoring-settings-card';
+import { IconActivity, IconSettings } from '../../../../components/dashboard/nav-icons';
 import { FormError, FormSuccess, Label, Select } from '../../../../components/ui/form';
 import { Modal } from '../../../../components/ui/modal';
 import { PageHeader } from '../../../../components/ui/page-header';
@@ -22,9 +23,11 @@ import {
   formatWeekRange,
   LEVEL_LABEL,
   parseMonitoringFilters,
+  parseMonitoringTab,
   weekParamOf,
   type ErrorGroupView,
   type MonitoringSettingsView,
+  type MonitoringTab,
   type WeekSummary,
 } from '../../../../lib/system-monitoring';
 
@@ -72,10 +75,8 @@ function ErrorCard({ message, onRetry }: { message: string; onRetry: () => void 
 function LoadingSkeleton() {
   return (
     <div className="space-y-6" aria-busy="true" aria-label="Đang tải trang giám sát">
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <div className="h-72 animate-pulse rounded-[var(--radius-card)] bg-border/60 motion-reduce:animate-none" />
-        <div className="h-[28rem] animate-pulse rounded-[var(--radius-card)] bg-border/60 motion-reduce:animate-none" />
-      </div>
+      <div className="h-14 animate-pulse rounded-[var(--radius-card)] bg-border/40" />
+      <div className="h-64 animate-pulse rounded-[var(--radius-card)] bg-border/60 motion-reduce:animate-none" />
       <div className="h-96 animate-pulse rounded-[var(--radius-card)] bg-border/60 motion-reduce:animate-none" />
     </div>
   );
@@ -102,75 +103,109 @@ function WeeksCard({ weeks, selectedWeek, onSelectWeek, retentionDays, onPurge }
   const bars = [...weeks].reverse();
 
   return (
-    <SurfaceCard className="flex flex-col gap-6 p-6" aria-labelledby="monitoring-weeks-heading">
-      <div>
-        <h2
-          id="monitoring-weeks-heading"
-          className="text-xs font-semibold tracking-wide text-muted uppercase"
-        >
-          {selected ? `Tuần ${formatWeekRange(selected.weekStart)}` : 'Toàn bộ log đang lưu'}
-        </h2>
-        <p className="mt-2 flex flex-wrap items-baseline gap-x-3">
-          <span className="font-display text-5xl font-bold text-fpt-blue-900 tabular-nums">
-            {totals.events.toLocaleString('vi-VN')}
-          </span>
-          <span className="text-sm text-muted">
-            lần lỗi · <span className="font-semibold text-ink tabular-nums">{totals.groups}</span>{' '}
-            nhóm
-          </span>
-        </p>
-      </div>
-
-      {bars.length > 0 ? (
-        <div>
-          <div
-            className="flex h-28 items-end gap-1.5 border-b border-border"
-            role="group"
-            aria-label="Số lần lỗi theo tuần — chọn một tuần để lọc"
-          >
-            {bars.map((week) => {
-              const param = weekParamOf(week.weekStart);
-              const active = param === selectedWeek;
-              return (
-                <button
-                  key={week.weekStart}
-                  type="button"
-                  aria-pressed={active}
-                  aria-label={`Tuần ${formatWeekRange(week.weekStart)}: ${week.totalEvents} lần lỗi`}
-                  title={`${formatWeekRange(week.weekStart)} · ${week.totalEvents} lần`}
-                  onClick={() => onSelectWeek(active ? '' : param)}
-                  className="group flex h-full min-w-0 flex-1 items-end rounded-t-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fpt-orange"
-                >
-                  <span
-                    className={`block w-full rounded-t-sm transition-opacity duration-[var(--duration-fast)] group-hover:opacity-80 ${
-                      active ? 'bg-fpt-orange' : 'bg-fpt-blue-900/70'
-                    }`}
-                    style={{ height: `${Math.max(4, (week.totalEvents / max) * 100)}%` }}
-                  />
-                </button>
-              );
-            })}
+    <SurfaceCard className="p-6 sm:p-7" aria-labelledby="monitoring-weeks-heading">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,19rem)_minmax(0,1fr)] lg:items-center">
+        <div className="space-y-4 border-b border-border pb-5 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-6">
+          <div className="flex items-center justify-between gap-2">
+            <h2
+              id="monitoring-weeks-heading"
+              className="text-xs font-bold tracking-wider text-muted uppercase"
+            >
+              {selected ? 'Tuần đang lọc' : 'Toàn bộ log'}
+            </h2>
+            {selected ? (
+              <button
+                type="button"
+                onClick={() => onSelectWeek('')}
+                className="text-xs font-semibold text-fpt-orange hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fpt-orange cursor-pointer"
+              >
+                ✕ Bỏ lọc tuần
+              </button>
+            ) : null}
           </div>
-          <p className="mt-2 flex justify-between text-xs text-muted tabular-nums">
-            <span>{formatWeekRange(bars[0].weekStart).split(' – ')[0]}</span>
-            <span>{bars.length} tuần gần nhất</span>
-          </p>
-        </div>
-      ) : (
-        <p className="rounded-md bg-success/10 px-4 py-3 text-sm font-medium text-success">
-          ✅ Chưa có lỗi nào trong thời gian lưu trữ.
-        </p>
-      )}
 
-      <div className="mt-auto flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-muted">
-          Tự dọn nhóm lỗi không tái diễn quá{' '}
-          <span className="font-semibold text-ink tabular-nums">{retentionDays} ngày</span> lúc 03:00
-          hằng ngày.
-        </p>
-        <Button type="button" variant="ghost" onClick={onPurge}>
-          Dọn ngay
-        </Button>
+          <div>
+            <p className="font-display text-4xl sm:text-5xl font-bold text-fpt-blue-900 tabular-nums">
+              {totals.events.toLocaleString('vi-VN')}
+            </p>
+            <p className="mt-1 text-sm text-muted">
+              lần ghi nhận lỗi · <span className="font-semibold text-ink tabular-nums">{totals.groups}</span> nhóm lỗi
+            </p>
+            {selected ? (
+              <p className="mt-2 inline-flex items-center rounded-md bg-fpt-orange-50 px-2.5 py-1 text-xs font-semibold text-fpt-orange-600 border border-fpt-orange/20">
+                Tuần {formatWeekRange(selected.weekStart)}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="pt-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted">
+                Lưu trữ: <strong className="font-semibold text-ink tabular-nums">{retentionDays} ngày</strong>
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={onPurge}
+                className="text-xs border border-border"
+              >
+                Dọn log quá hạn
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-xs text-muted">
+            <span className="font-medium text-ink">Phân bố số lần lỗi 12 tuần gần nhất</span>
+            <span className="tabular-nums">Bấm cột để lọc tuần</span>
+          </div>
+
+          {bars.length > 0 ? (
+            <div>
+              <div
+                className="flex h-32 items-end gap-2 border-b border-border pb-1"
+                role="group"
+                aria-label="Số lần lỗi theo tuần — chọn một tuần để lọc"
+              >
+                {bars.map((week) => {
+                  const param = weekParamOf(week.weekStart);
+                  const active = param === selectedWeek;
+                  const percent = Math.max(6, (week.totalEvents / max) * 100);
+                  return (
+                    <button
+                      key={week.weekStart}
+                      type="button"
+                      aria-pressed={active}
+                      aria-label={`Tuần ${formatWeekRange(week.weekStart)}: ${week.totalEvents} lần lỗi`}
+                      title={`${formatWeekRange(week.weekStart)} · ${week.totalEvents.toLocaleString('vi-VN')} lần lỗi (${week.groupCount} nhóm)`}
+                      onClick={() => onSelectWeek(active ? '' : param)}
+                      className="group relative flex h-full min-w-0 flex-1 items-end rounded-t focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fpt-orange cursor-pointer"
+                    >
+                      <span
+                        className={`block w-full rounded-t transition-all duration-[var(--duration-fast)] group-hover:opacity-90 ${
+                          active
+                            ? 'bg-fpt-orange shadow-sm ring-2 ring-fpt-orange/30'
+                            : 'bg-fpt-blue-900/70 hover:bg-fpt-blue-900/90'
+                        }`}
+                        style={{ height: `${percent}%` }}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-2 flex justify-between text-[11px] text-muted tabular-nums">
+                <span>{formatWeekRange(bars[0].weekStart).split(' – ')[0]}</span>
+                <span className="hidden sm:inline">Tuần gần nhất: {formatWeekRange(bars[bars.length - 1].weekStart).split(' – ')[1]}</span>
+                <span>{bars.length} tuần</span>
+              </div>
+            </div>
+          ) : (
+            <p className="rounded-md bg-success/10 px-4 py-3 text-sm font-medium text-success">
+              ✅ Chưa có lỗi nào trong thời gian lưu trữ.
+            </p>
+          )}
+        </div>
       </div>
     </SurfaceCard>
   );
@@ -237,9 +272,21 @@ function MonitoringPageContent() {
   const params = useSearchParams();
   const { data: me } = useMe();
   const isAdmin = me?.user.roles.includes('ADMIN') ?? false;
+  const activeTab = parseMonitoringTab(params.get('tab'));
   const filters = parseMonitoringFilters(params);
   const [purgeOpen, setPurgeOpen] = useState(false);
   const [purgeMessage, setPurgeMessage] = useState('');
+
+  function handleTabChange(nextTab: MonitoringTab) {
+    const next = new URLSearchParams(params.toString());
+    if (nextTab === 'logs') {
+      next.delete('tab');
+    } else {
+      next.set('tab', nextTab);
+    }
+    const query = next.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
 
   // Đổi bộ lọc → về trang 1, trừ khi patch tự đặt `page`.
   function setFilters(patch: Record<string, string | null>) {
@@ -268,7 +315,7 @@ function MonitoringPageContent() {
       apiFetch<Paginated<ErrorGroupView>>(
         `/admin/monitoring/errors?${buildErrorGroupsQuery(filters, ERROR_GROUPS_PAGE_SIZE).toString()}`,
       ),
-    enabled: isAdmin,
+    enabled: isAdmin && activeTab === 'logs',
     placeholderData: keepPreviousData,
   });
 
@@ -277,6 +324,7 @@ function MonitoringPageContent() {
   const errors = errorsQuery.data;
   const totalPages = errors ? pageCount(errors.meta.total, errors.meta.limit) : 1;
   const filtered = Boolean(filters.week || filters.level);
+  const totalEventsInStorage = weeks.reduce((acc, w) => acc + w.totalEvents, 0);
 
   let body: ReactNode;
   if (me && !isAdmin) {
@@ -293,99 +341,191 @@ function MonitoringPageContent() {
     body = <LoadingSkeleton />;
   } else {
     body = (
-      <div className="space-y-8">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          <WeeksCard
-            weeks={weeks}
-            selectedWeek={filters.week}
-            onSelectWeek={(week) => setFilters({ week: week || null })}
-            retentionDays={view.retentionDays}
-            onPurge={() => {
-              setPurgeMessage('');
-              setPurgeOpen(true);
-            }}
-          />
-          <MonitoringSettingsCard key={view.updatedAt ?? 'env'} view={view} />
+      <div className="space-y-6">
+        {/* Thanh chuyển đổi 2 Tab */}
+        <div
+          role="tablist"
+          aria-label="Phân vùng giám sát hệ thống"
+          className="flex border-b border-border"
+        >
+          <button
+            role="tab"
+            id="tab-logs"
+            aria-controls="panel-logs"
+            aria-selected={activeTab === 'logs'}
+            type="button"
+            onClick={() => handleTabChange('logs')}
+            className={`group flex items-center gap-2.5 border-b-2 px-5 py-3 text-sm font-semibold transition-all duration-[var(--duration-fast)] cursor-pointer ${
+              activeTab === 'logs'
+                ? 'border-fpt-orange text-fpt-orange'
+                : 'border-transparent text-muted hover:border-border hover:text-ink'
+            }`}
+          >
+            <IconActivity className="h-4.5 w-4.5" />
+            <span>Nhật ký lỗi</span>
+            {totalEventsInStorage > 0 ? (
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-bold tabular-nums transition-colors ${
+                  activeTab === 'logs'
+                    ? 'bg-fpt-orange/10 text-fpt-orange'
+                    : 'bg-border/60 text-muted group-hover:text-ink'
+                }`}
+              >
+                {totalEventsInStorage.toLocaleString('vi-VN')}
+              </span>
+            ) : null}
+          </button>
+
+          <button
+            role="tab"
+            id="tab-settings"
+            aria-controls="panel-settings"
+            aria-selected={activeTab === 'settings'}
+            type="button"
+            onClick={() => handleTabChange('settings')}
+            className={`group flex items-center gap-2.5 border-b-2 px-5 py-3 text-sm font-semibold transition-all duration-[var(--duration-fast)] cursor-pointer ${
+              activeTab === 'settings'
+                ? 'border-fpt-orange text-fpt-orange'
+                : 'border-transparent text-muted hover:border-border hover:text-ink'
+            }`}
+          >
+            <IconSettings className="h-4.5 w-4.5" />
+            <span>Cài đặt & Báo cáo</span>
+            <span
+              className={`h-2 w-2 rounded-full transition-colors ${
+                view.enabled && view.hasWebhook ? 'bg-success' : 'bg-border'
+              }`}
+              aria-hidden="true"
+              title={
+                view.enabled && view.hasWebhook
+                  ? 'Báo cáo tự động đang hoạt động'
+                  : 'Chưa cấu hình xong báo cáo'
+              }
+            />
+          </button>
         </div>
 
-        <section aria-labelledby="monitoring-groups-heading" className="space-y-4">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h2
-                id="monitoring-groups-heading"
-                className="font-display text-lg font-semibold text-fpt-blue-900"
-              >
-                Nhóm lỗi
-              </h2>
-              <p className="text-sm text-muted">
-                Lỗi giống nhau trong cùng một tuần được gộp lại, xếp theo số lần xảy ra.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-3 sm:w-auto sm:min-w-[26rem]">
-              <div>
-                <Label htmlFor="monitoring-week" className="text-xs">
-                  Tuần
-                </Label>
-                <Select
-                  id="monitoring-week"
-                  value={filters.week}
-                  onChange={(e) => setFilters({ week: e.target.value || null })}
-                >
-                  <option value="">Mọi tuần</option>
-                  {filters.week && !weeks.some((w) => weekParamOf(w.weekStart) === filters.week) ? (
-                    <option value={filters.week}>Tuần {filters.week}</option>
+        {/* Nội dung Tab 1: Nhật ký lỗi */}
+        {activeTab === 'logs' ? (
+          <div
+            id="panel-logs"
+            role="tabpanel"
+            aria-labelledby="tab-logs"
+            className="space-y-6"
+          >
+            <WeeksCard
+              weeks={weeks}
+              selectedWeek={filters.week}
+              onSelectWeek={(week) => setFilters({ week: week || null })}
+              retentionDays={view.retentionDays}
+              onPurge={() => {
+                setPurgeMessage('');
+                setPurgeOpen(true);
+              }}
+            />
+
+            <section aria-labelledby="monitoring-groups-heading" className="space-y-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h2
+                    id="monitoring-groups-heading"
+                    className="font-display text-lg font-semibold text-fpt-blue-900"
+                  >
+                    Danh sách nhóm lỗi
+                  </h2>
+                  <p className="text-sm text-muted">
+                    Lỗi có cùng thông điệp hoặc nguồn trong tuần được gộp nhóm, sắp xếp theo số lần xảy ra.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-end gap-3 sm:w-auto">
+                  <div className="w-40 sm:w-48">
+                    <Label htmlFor="monitoring-week" className="text-xs">
+                      Tuần
+                    </Label>
+                    <Select
+                      id="monitoring-week"
+                      value={filters.week}
+                      onChange={(e) => setFilters({ week: e.target.value || null })}
+                    >
+                      <option value="">Mọi tuần ({weeks.length} tuần)</option>
+                      {filters.week && !weeks.some((w) => weekParamOf(w.weekStart) === filters.week) ? (
+                        <option value={filters.week}>Tuần {filters.week}</option>
+                      ) : null}
+                      {weeks.map((w) => (
+                        <option key={w.weekStart} value={weekParamOf(w.weekStart)}>
+                          {formatWeekRange(w.weekStart)}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div className="w-32 sm:w-36">
+                    <Label htmlFor="monitoring-level" className="text-xs">
+                      Mức độ
+                    </Label>
+                    <Select
+                      id="monitoring-level"
+                      value={filters.level}
+                      onChange={(e) => setFilters({ level: e.target.value || null })}
+                    >
+                      <option value="">Mọi mức</option>
+                      <option value="FATAL">{LEVEL_LABEL.FATAL}</option>
+                      <option value="ERROR">{LEVEL_LABEL.ERROR}</option>
+                    </Select>
+                  </div>
+                  {filtered ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setFilters({ week: null, level: null })}
+                      className="border border-border text-xs"
+                    >
+                      Bỏ lọc
+                    </Button>
                   ) : null}
-                  {weeks.map((w) => (
-                    <option key={w.weekStart} value={weekParamOf(w.weekStart)}>
-                      {formatWeekRange(w.weekStart)}
-                    </option>
-                  ))}
-                </Select>
+                </div>
               </div>
-              <div>
-                <Label htmlFor="monitoring-level" className="text-xs">
-                  Mức độ
-                </Label>
-                <Select
-                  id="monitoring-level"
-                  value={filters.level}
-                  onChange={(e) => setFilters({ level: e.target.value || null })}
-                >
-                  <option value="">Mọi mức</option>
-                  <option value="FATAL">{LEVEL_LABEL.FATAL}</option>
-                  <option value="ERROR">{LEVEL_LABEL.ERROR}</option>
-                </Select>
-              </div>
-            </div>
+
+              {purgeMessage ? <FormSuccess>{purgeMessage}</FormSuccess> : null}
+              {errorsQuery.isError ? (
+                <FormError>
+                  {errorsQuery.error instanceof ApiError
+                    ? errorsQuery.error.message
+                    : 'Không tải được danh sách lỗi.'}
+                </FormError>
+              ) : null}
+
+              <ErrorGroupsTable
+                groups={errors?.items ?? []}
+                isLoading={errorsQuery.isPending}
+                isRefreshing={errorsQuery.isFetching}
+                skeletonRows={8}
+                filtered={filtered}
+                onClearFilters={() => setFilters({ week: null, level: null })}
+              />
+              <Pagination
+                page={filters.page}
+                totalPages={totalPages}
+                onPageChange={(page) => setFilters({ page: String(page) })}
+                isLoading={errorsQuery.isFetching}
+                total={errors?.meta.total}
+                limit={errors?.meta.limit}
+                label="Phân trang nhóm lỗi"
+              />
+            </section>
           </div>
+        ) : null}
 
-          {purgeMessage ? <FormSuccess>{purgeMessage}</FormSuccess> : null}
-          {errorsQuery.isError ? (
-            <FormError>
-              {errorsQuery.error instanceof ApiError
-                ? errorsQuery.error.message
-                : 'Không tải được danh sách lỗi.'}
-            </FormError>
-          ) : null}
-
-          <ErrorGroupsTable
-            groups={errors?.items ?? []}
-            isLoading={errorsQuery.isPending}
-            isRefreshing={errorsQuery.isFetching}
-            skeletonRows={8}
-            filtered={filtered}
-            onClearFilters={() => setFilters({ week: null, level: null })}
-          />
-          <Pagination
-            page={filters.page}
-            totalPages={totalPages}
-            onPageChange={(page) => setFilters({ page: String(page) })}
-            isLoading={errorsQuery.isFetching}
-            total={errors?.meta.total}
-            limit={errors?.meta.limit}
-            label="Phân trang nhóm lỗi"
-          />
-        </section>
+        {/* Nội dung Tab 2: Cài đặt & Báo cáo */}
+        {activeTab === 'settings' ? (
+          <div
+            id="panel-settings"
+            role="tabpanel"
+            aria-labelledby="tab-settings"
+            className="space-y-6"
+          >
+            <MonitoringSettingsCard key={view.updatedAt ?? 'env'} view={view} />
+          </div>
+        ) : null}
 
         <PurgeDialog
           open={purgeOpen}
@@ -403,7 +543,7 @@ function MonitoringPageContent() {
     <div>
       <PageHeader
         title="Giám sát lỗi"
-        description="Lỗi máy chủ được gom theo tuần và báo cáo lên Discord mỗi sáng thứ Hai."
+        description="Theo dõi nhật ký sự cố máy chủ và cấu hình báo cáo tự động qua Discord."
       />
       {body}
     </div>

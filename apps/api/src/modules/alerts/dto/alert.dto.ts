@@ -2,6 +2,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AlertSource, AlertStatus } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayNotEmpty,
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -14,6 +17,23 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+
+/** Một lượt xoá tối đa bấy nhiêu cảnh báo — bằng cỡ trang lớn nhất của bảng. */
+export const ALERT_BULK_DELETE_MAX = 100;
+
+export class BulkAlertIdsDto {
+  @ApiProperty({
+    type: [String],
+    minItems: 1,
+    maxItems: ALERT_BULK_DELETE_MAX,
+    description: 'ID các cảnh báo cần xoá một lượt (trùng nhau được gộp)',
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(ALERT_BULK_DELETE_MAX)
+  @IsUUID('all', { each: true })
+  ids!: string[];
+}
 
 export class RaiseAlertDto {
   @ApiProperty({ description: 'ID sinh viên' })

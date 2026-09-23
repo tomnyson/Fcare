@@ -51,6 +51,12 @@ export interface WeeklyReportResult {
   groupCount: number;
 }
 
+export type MonitoringTab = 'logs' | 'settings';
+
+export function parseMonitoringTab(value: string | null | undefined): MonitoringTab {
+  return value === 'settings' ? 'settings' : 'logs';
+}
+
 export interface MonitoringFilters {
   /** `YYYY-MM-DD` (Thứ Hai, giờ VN) hoặc '' = mọi tuần còn lưu. */
   week: string;

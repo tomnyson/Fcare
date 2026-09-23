@@ -56,7 +56,7 @@ export interface SendTestMailResult {
 
 export type MailPresetKey = 'mailhog' | 'gmail' | 'office365';
 
-export interface MailPreset {
+interface MailPreset {
   key: MailPresetKey;
   label: string;
   host: string;
