@@ -326,6 +326,7 @@ aaPanel → Monitor: bật cảnh báo RAM > 85% và disk > 80%.
 | `PrismaClientInitializationError` … `libssl` | Image thiếu openssl | Build lại (Dockerfile đã `apk add openssl`) |
 | Web trắng trang, console lỗi `localhost:3001` | Image web build thiếu `NEXT_PUBLIC_API_URL` | Build lại web với `--build-arg`/`PUBLIC_WEB_ORIGIN` đúng |
 | Đăng nhập xong lại về trang login | Cookie `Secure` mà site chạy HTTP | Bật Force HTTPS |
+| Đăng nhập báo "Vui lòng tick ô Tôi không phải người máy" nhưng không thấy ô tick | API có `RECAPTCHA_SECRET_KEY` nhưng image web build khi `RECAPTCHA_SITE_KEY` còn trống (site key inline lúc build) | Điền `RECAPTCHA_SITE_KEY` vào `.env.production` rồi `./update.sh --force`; kiểm tra `curl -s <site>/login \| grep -o 'recaptchaEnabled[^,]*'` phải là `true` |
 | Mutation trả 403 `CSRF` | Nginx lọc mất `X-Requested-With` | Thêm `proxy_set_header X-Requested-With` |
 | Thông báo chỉ về sau ~2 phút | Nginx buffer SSE | Thêm block `location /api/notifications/stream` |
 | `Prisma Client did not initialize yet` | Image build thiếu bước generate trong `/out` | Build lại bằng Dockerfile hiện tại |

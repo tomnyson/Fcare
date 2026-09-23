@@ -40,16 +40,12 @@ export class AuthController {
   @HttpCode(200)
   @ApiOperation({ summary: 'Đăng nhập bằng mã nhân viên + mật khẩu' })
   async login(
-    @Req() req: RequestWithCookies,
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const origin =
-      (req.headers?.['origin'] as string | undefined) ||
-      (req.headers?.['referer'] as string | undefined) ||
-      (req.headers?.['host'] as string | undefined);
-    // Chặn bot TRƯỚC khi đụng tới mật khẩu — không để lộ tín hiệu đúng/sai (bỏ qua trên localhost).
-    await this.recaptcha.verifyLogin(dto.recaptchaToken, origin);
+    // Chặn bot TRƯỚC khi đụng tới mật khẩu — không để lộ tín hiệu đúng/sai.
+    // Không nhìn Origin/Host: header client tự khai, không được dùng để miễn captcha.
+    await this.recaptcha.verifyLogin(dto.recaptchaToken);
     const session = await this.authService.login(dto.staffCode, dto.password);
     this.setAuthCookies(response, session.accessToken, session.refreshToken);
     return {

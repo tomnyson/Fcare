@@ -16,28 +16,13 @@ interface SiteVerifyResponse {
   'error-codes'?: string[];
 }
 
-export function isLocalhost(value?: string | null): boolean {
-  if (!value) return false;
-  try {
-    const url =
-      value.startsWith('http://') || value.startsWith('https://')
-        ? new URL(value)
-        : new URL(`http://${value}`);
-    const host = url.hostname.toLowerCase();
-    return host === 'localhost' || host === '127.0.0.1' || host === '::1';
-  } catch {
-    const clean = value
-      .replace(/^https?:\/\//, '')
-      .split(/[:/]/)[0]
-      .toLowerCase();
-    return clean === 'localhost' || clean === '127.0.0.1' || clean === '::1';
-  }
-}
-
 /**
  * reCAPTCHA v2 (ô tick "Tôi không phải người máy") cho đăng nhập bằng mật khẩu.
- * Bỏ trống RECAPTCHA_SECRET_KEY thì tắt (dev, e2e). Tự động bỏ qua cho localhost domain.
- * Đã bật thì fail-closed: không hỏi được Google cũng KHÔNG cho qua. Token chỉ dùng được một lần.
+ * Bỏ trống RECAPTCHA_SECRET_KEY thì tắt (dev, e2e). Đã bật thì fail-closed: không
+ * hỏi được Google cũng KHÔNG cho qua. Token chỉ dùng được một lần.
+ *
+ * KHÔNG có ngoại lệ theo tên miền: Origin/Referer/Host là header do client tự
+ * khai, từng bị lợi dụng để bỏ qua captcha bằng `Origin: http://localhost`.
  */
 @Injectable()
 export class RecaptchaService {
@@ -52,17 +37,8 @@ export class RecaptchaService {
     return this.secret !== undefined;
   }
 
-  async verifyLogin(
-    token: string | undefined,
-    clientHost?: string,
-  ): Promise<void> {
+  async verifyLogin(token: string | undefined): Promise<void> {
     if (!this.secret) return;
-    if (clientHost && isLocalhost(clientHost)) {
-      this.logger.debug(
-        `reCAPTCHA được bỏ qua cho tên miền localhost (${clientHost})`,
-      );
-      return;
-    }
     if (!token) {
       throw new ForbiddenException({
         code: 'RECAPTCHA_REQUIRED',

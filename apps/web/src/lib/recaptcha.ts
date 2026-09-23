@@ -37,42 +37,16 @@ export interface RecaptchaClient {
   reset: (widgetId: number) => void;
 }
 
-export function isLocalhostDomain(hostOrUrl?: string | null): boolean {
-  if (hostOrUrl) {
-    const trimmed = hostOrUrl.trim().toLowerCase();
-    if (trimmed === 'localhost' || trimmed === '127.0.0.1' || trimmed === '::1') return true;
-    try {
-      const url =
-        trimmed.startsWith('http://') || trimmed.startsWith('https://')
-          ? new URL(trimmed)
-          : new URL(`http://${trimmed}`);
-      const host = url.hostname.replace(/^\[/, '').replace(/\]$/, '').toLowerCase();
-      return host === 'localhost' || host === '127.0.0.1' || host === '::1';
-    } catch {
-      const clean = trimmed
-        .replace(/^https?:\/\//, '')
-        .replace(/^\[/, '')
-        .split(/[\]:/]/)[0];
-      return clean === 'localhost' || clean === '127.0.0.1' || clean === '::1';
-    }
-  }
-  if (typeof window === 'undefined') return false;
-  const host = window.location.hostname.toLowerCase();
-  return host === 'localhost' || host === '127.0.0.1' || host === '::1';
-}
-
 interface RecaptchaDeps {
   siteKey: string;
   loadScript: (src: string) => Promise<void>;
   getGrecaptcha: () => Grecaptcha | undefined;
-  isLocalhost?: (hostOrUrl?: string | null) => boolean;
 }
 
 export function createRecaptchaClient({
   siteKey,
   loadScript,
   getGrecaptcha,
-  isLocalhost = isLocalhostDomain,
 }: RecaptchaDeps): RecaptchaClient {
   let loading: Promise<void> | null = null;
 
@@ -91,7 +65,7 @@ export function createRecaptchaClient({
     availableWidth: number,
     handlers: RecaptchaHandlers,
   ): Promise<number | null> {
-    if (!siteKey || isLocalhost()) return null;
+    if (!siteKey) return null;
     try {
       await load();
       const grecaptcha = getGrecaptcha();
@@ -110,13 +84,42 @@ export function createRecaptchaClient({
   }
 
   return {
+    // Chỉ theo site key. Không suy từ hostname: sau reverse proxy Next thấy
+    // 127.0.0.1 và từng tắt nhầm ở production trong khi API vẫn đòi token.
     get enabled() {
-      if (isLocalhost()) return false;
       return siteKey.length > 0;
     },
     mount,
     reset: (widgetId) => getGrecaptcha()?.reset(widgetId),
   };
+}
+
+/**
+ * Gọi `onWidth` với bề rộng thật của `el` — ngay nếu đã hiện, hoặc đợi tới lúc
+ * hiện. Form đăng nhập bị `hidden` trong lúc kiểm tra phiên nên `clientWidth`
+ * đo lúc mount là 0 → từng chọn nhầm cỡ compact giữa form rộng; Google không
+ * cho đổi cỡ sau khi render nên phải đo đúng ngay lần đầu. Trả hàm huỷ.
+ */
+export function whenLaidOut(
+  el: HTMLElement,
+  onWidth: (width: number) => void,
+  ResizeObserverCtor: typeof ResizeObserver | undefined = globalThis.ResizeObserver,
+): () => void {
+  if (el.clientWidth > 0) {
+    onWidth(el.clientWidth);
+    return () => {};
+  }
+  if (!ResizeObserverCtor) {
+    onWidth(RECAPTCHA_NORMAL_WIDTH);
+    return () => {};
+  }
+  const observer = new ResizeObserverCtor(() => {
+    if (el.clientWidth === 0) return;
+    observer.disconnect();
+    onWidth(el.clientWidth);
+  });
+  observer.observe(el);
+  return () => observer.disconnect();
 }
 
 function loadScriptTag(src: string): Promise<void> {

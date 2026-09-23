@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { recaptcha } from '../../lib/recaptcha';
+import { recaptcha, whenLaidOut } from '../../lib/recaptcha';
 
 interface RecaptchaCheckboxProps {
   /** Token khi tick xong; null khi hết hạn hoặc bị bỏ tick. */
@@ -31,21 +31,26 @@ export function RecaptchaCheckbox({ onTokenChange, resetSignal }: RecaptchaCheck
     // (StrictMode chạy effect hai lần ở dev).
     const slot = document.createElement('div');
     host.appendChild(slot);
-    recaptcha
-      .mount(slot, host.clientWidth, {
-        onToken: (token) => onTokenRef.current(token),
-        onExpired: () => onTokenRef.current(null),
-      })
-      .then((widgetId) => {
-        if (cancelled) return;
-        widgetRef.current = widgetId;
-        setStatus('ready');
-      })
-      .catch(() => {
-        if (!cancelled) setStatus('unavailable');
-      });
+    // Đo bề rộng khi form đã hiện (form bị `hidden` lúc kiểm tra phiên → 0 → compact nhầm).
+    const stopWaiting = whenLaidOut(host, (width) => {
+      if (cancelled) return;
+      recaptcha
+        .mount(slot, width, {
+          onToken: (token) => onTokenRef.current(token),
+          onExpired: () => onTokenRef.current(null),
+        })
+        .then((widgetId) => {
+          if (cancelled) return;
+          widgetRef.current = widgetId;
+          setStatus('ready');
+        })
+        .catch(() => {
+          if (!cancelled) setStatus('unavailable');
+        });
+    });
     return () => {
       cancelled = true;
+      stopWaiting();
       widgetRef.current = null;
       slot.remove();
     };
