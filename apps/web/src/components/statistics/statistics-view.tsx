@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useRef } from 'react';
+import { Suspense, useCallback, useEffect, useRef } from 'react';
 import { FilterBar, FilterField, FilterFooter, FilterGrid } from '../ui/filter-bar';
 import { FormError, Select } from '../ui/form';
 import { PageHeader } from '../ui/page-header';
@@ -49,24 +49,27 @@ function StatisticsContent({ tab }: { tab: StatisticsTabKey }) {
   const { data: currentTerm } = useCurrentTerm();
   const hasInitializedTermRef = useRef(false);
 
+  const setView = useCallback(
+    (patch: { term?: string | null; block?: string | null }) => {
+      const next = new URLSearchParams(params.toString());
+      for (const key of ['term', 'block'] as const) {
+        const value = patch[key];
+        if (value === undefined) continue;
+        if (value) next.set(key, value);
+        else next.delete(key);
+      }
+      const query = next.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [params, pathname, router],
+  );
+
   useEffect(() => {
     if (!hasInitializedTermRef.current && !params.has('term') && currentTerm?.code) {
       hasInitializedTermRef.current = true;
       setView({ term: currentTerm.code });
     }
-  }, [currentTerm?.code, params]);
-
-  function setView(patch: { term?: string | null; block?: string | null }) {
-    const next = new URLSearchParams(params.toString());
-    for (const key of ['term', 'block'] as const) {
-      const value = patch[key];
-      if (value === undefined) continue;
-      if (value) next.set(key, value);
-      else next.delete(key);
-    }
-    const query = next.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  }
+  }, [currentTerm?.code, params, setView]);
 
   const options = useQuery({
     queryKey: ['student-filter-options'],

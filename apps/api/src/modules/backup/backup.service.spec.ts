@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   BadRequestException,
   ConflictException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import * as fs from 'fs';
@@ -43,6 +44,7 @@ describe('BackupService', () => {
       $disconnect: jest.fn().mockResolvedValue(undefined),
       $connect: jest.fn().mockResolvedValue(undefined),
       $queryRaw: jest.fn().mockResolvedValue([{ '?column?': 1 }]),
+      $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -149,6 +151,12 @@ describe('BackupService', () => {
 
       expect(result.success).toBe(true);
       expect(result.preRestoreSnapshotId).toBeDefined();
+      expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('DROP SCHEMA public CASCADE'),
+      );
+      expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('CREATE SCHEMA public'),
+      );
       expect(prisma.$disconnect).toHaveBeenCalled();
       expect(pgRunner.restoreFromFile).toHaveBeenCalledWith(initial.filepath);
       expect(prisma.$connect).toHaveBeenCalled();
@@ -158,6 +166,68 @@ describe('BackupService', () => {
           entity: 'Backup',
         }),
       );
+    });
+
+    // Sự cố 23/09/2026: pg_terminate_backend giết luôn kết nối đang ghi audit
+    // (fire-and-forget) → unhandledRejection → crash handler tắt API giữa chừng.
+    it('audit ghi thất bại chỉ cảnh báo, không văng unhandled rejection', async () => {
+      const warn = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      audit.log.mockRejectedValue(
+        new Error('terminating connection due to administrator command'),
+      );
+
+      await expect(
+        service.createBackup({ type: 'MANUAL', comment: 'x' }),
+      ).resolves.toMatchObject({ status: 'COMPLETED' });
+
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('DB_BACKUP_CREATED'),
+      );
+      warn.mockRestore();
+    });
+
+    it('resetDatabase ngắt pool Prisma trước rồi gom terminate + drop vào một câu lệnh', async () => {
+      await service.resetDatabase();
+
+      expect(prisma.$disconnect).toHaveBeenCalledTimes(1);
+      expect(prisma.$executeRawUnsafe).toHaveBeenCalledTimes(1);
+      const [sql] = prisma.$executeRawUnsafe.mock.calls[0] as [string];
+      expect(sql).toContain('pg_terminate_backend');
+      expect(sql).toContain('pid <> pg_backend_pid()');
+      expect(sql).toContain('DROP SCHEMA public CASCADE');
+      expect(sql).toContain('CREATE SCHEMA public');
+
+      const disconnectOrder = prisma.$disconnect.mock.invocationCallOrder[0];
+      const resetOrder = prisma.$executeRawUnsafe.mock.invocationCallOrder[0];
+      expect(disconnectOrder).toBeLessThan(resetOrder);
+    });
+
+    it('chờ audit của snapshot an toàn ghi xong rồi mới reset schema', async () => {
+      const events: string[] = [];
+      audit.log.mockImplementation(
+        (entry) =>
+          new Promise<void>((resolve) => {
+            setImmediate(() => {
+              events.push(`audit:${entry.action}`);
+              resolve();
+            });
+          }),
+      );
+      prisma.$executeRawUnsafe.mockImplementation((() => {
+        events.push('reset');
+        return Promise.resolve(0);
+      }) as unknown as PrismaService['$executeRawUnsafe']);
+
+      const initial = await service.createBackup({ type: 'MANUAL' });
+      events.length = 0;
+      await service.restoreBackup(initial.id, { confirmation: 'XAC NHAN' });
+
+      const snapshotAudit = events.indexOf('audit:DB_BACKUP_CREATED');
+      const reset = events.indexOf('reset');
+      expect(snapshotAudit).toBeGreaterThanOrEqual(0);
+      expect(reset).toBeGreaterThan(snapshotAudit);
     });
   });
 

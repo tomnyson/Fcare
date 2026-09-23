@@ -67,12 +67,6 @@ export const analysisSourceSnapshotSchema = z.object({
   limitations: z.array(z.string()),
 });
 
-export type AnalysisSourceEnrollment = z.infer<
-  typeof analysisSourceEnrollmentSchema
->;
-export type AnalysisSourceEvaluation = z.infer<
-  typeof analysisSourceEvaluationSchema
->;
 export type AnalysisSourceCareLog = z.infer<typeof analysisSourceCareLogSchema>;
 export type AnalysisSourceSnapshot = z.infer<
   typeof analysisSourceSnapshotSchema

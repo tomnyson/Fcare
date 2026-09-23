@@ -28,7 +28,7 @@ const OPTIONAL = ['Số buổi nghỉ/TS', 'Điểm', 'Trạng thái'] as const;
  */
 const EXAM_CLASS_PREFIX = 'TL_EOS';
 
-export interface GradeStatus {
+interface GradeStatus {
   result: EnrollmentResult;
   /** Trượt vì chuyên cần = bị cấm thi. */
   isExamBanned: boolean;

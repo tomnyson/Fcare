@@ -16,7 +16,7 @@ export const STATISTICS_TABS = [
 export type StatisticsTab = (typeof STATISTICS_TABS)[number];
 export type StatisticsTabKey = StatisticsTab['key'];
 
-export const DEFAULT_STATISTICS_TAB: StatisticsTabKey = 'classes';
+const DEFAULT_STATISTICS_TAB: StatisticsTabKey = 'classes';
 
 export function isStatisticsTabKey(value: string): value is StatisticsTabKey {
   return STATISTICS_TABS.some((tab) => tab.key === value);
@@ -35,7 +35,7 @@ export function parseStatisticsView(params: URLSearchParams): {
 
 /** Block trong kỳ của lớp học phần (`ClassSection.block`). */
 export const CLASS_BLOCKS = ['1', '2'] as const;
-export type ClassBlock = (typeof CLASS_BLOCKS)[number];
+type ClassBlock = (typeof CLASS_BLOCKS)[number];
 
 /** Giá trị block lạ trên URL coi như không lọc thay vì làm API trả 400. */
 export function parseBlockParam(value: string | null): ClassBlock | '' {

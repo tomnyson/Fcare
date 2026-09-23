@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { DataTable, Td } from '../ui/data-table';
+import { usePagedList } from '../../lib/use-paged-list';
 import type { ClassStatistics } from '../../lib/types';
 
 const HEADERS = [
@@ -16,15 +17,28 @@ export function ClassesTable({
   rows: ClassStatistics[];
   isLoading: boolean;
 }) {
+  const paged = usePagedList(rows, { pageSize: 10 });
+
   return (
     <DataTable
+      fitViewport
       headers={HEADERS}
       isLoading={isLoading}
-      skeletonRows={6}
+      skeletonRows={paged.pageSize}
       isEmpty={rows.length === 0}
       emptyMessage="Chưa có lớp học phần nào trong phạm vi của bạn ở kỳ này."
+      pagination={{
+        page: paged.page,
+        totalPages: paged.totalPages,
+        total: paged.total,
+        limit: paged.pageSize,
+        isLoading,
+        onPageChange: paged.setPage,
+        onLimitChange: paged.setPageSize,
+        label: 'Phân trang lớp học phần',
+      }}
     >
-      {rows.map((section) => (
+      {paged.pageItems.map((section) => (
         <tr key={section.id} className="transition-colors hover:bg-fpt-orange-50/40">
           <Td className="font-semibold text-ink">
             {/* Bấm mã lớp để xem thẳng danh sách sinh viên của lớp đó. */}

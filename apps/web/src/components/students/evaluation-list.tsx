@@ -10,6 +10,7 @@ import { formatDateTime } from '../../lib/labels';
 import type { Evaluation } from '../../lib/types';
 import { DataTable, Td } from '../ui/data-table';
 import { EvaluationGuidanceCell } from './evaluation-guidance';
+import { usePagedList } from '../../lib/use-paged-list';
 
 /** Bảng các bản nhận xét của sinh viên — mỗi lớp học phần một dòng. */
 export function EvaluationList({
@@ -19,6 +20,8 @@ export function EvaluationList({
   items: Evaluation[];
   isLoading: boolean;
 }) {
+  const paged = usePagedList(items, { pageSize: 10 });
+
   return (
     <DataTable
       headers={[
@@ -37,8 +40,17 @@ export function EvaluationList({
       skeletonRows={5}
       isEmpty={!isLoading && items.length === 0}
       emptyMessage="Chưa có nhận xét nào."
+      pagination={{
+        page: paged.page,
+        totalPages: paged.totalPages,
+        total: paged.total,
+        limit: paged.pageSize,
+        onPageChange: paged.setPage,
+        onLimitChange: paged.setPageSize,
+        isLoading,
+      }}
     >
-      {items.map((evaluation) => {
+      {paged.pageItems.map((evaluation) => {
         const criteria = evaluation.criteria.map((mark) => mark.criterion);
         return (
           <tr key={evaluation.id}>

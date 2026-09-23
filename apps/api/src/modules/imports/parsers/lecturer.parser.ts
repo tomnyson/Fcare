@@ -9,7 +9,7 @@ import type {
 } from '../types';
 import { locateHeaders, normalizeHeader } from './header-locator';
 
-export const LECTURER_SHEET = 'T.Kê';
+const LECTURER_SHEET = 'T.Kê';
 const DATA_START_ROW = 2;
 
 /**
@@ -17,7 +17,7 @@ const DATA_START_ROW = 2;
  * Sheet "T.Kê" không có cột bộ môn, nên thiếu sheet này thì `Staff.departmentId`
  * rỗng → `deptFilter` trả `__no_department__` → giảng viên không thấy sinh viên.
  */
-export const ASSIGNMENT_SHEET = 'BL1+BL2';
+const ASSIGNMENT_SHEET = 'BL1+BL2';
 const ASSIGNMENT_HEADER_ROW = 8;
 const COL_DEPT = 'Bộ môn';
 const COL_ASSIGNEES = 'Phân công giảng viên';

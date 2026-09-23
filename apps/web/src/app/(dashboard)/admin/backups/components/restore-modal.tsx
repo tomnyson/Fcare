@@ -1,9 +1,16 @@
 'use client';
 
 import { Button } from '@fcare/ui-kit';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { FormError, Input, Label } from '../../../../../components/ui/form';
 import { Modal } from '../../../../../components/ui/modal';
+import { PinCodeInput } from '../../../../../components/ui/pin-code-input';
+import {
+  checkRestoreGate,
+  RESTORE_CONFIRMATION_KEYWORD,
+  remainingRestoreAttempts,
+  resolveRestoreGate,
+} from '../../../../../lib/restore-gate';
 import type { BackupMetadata } from '../../../../../lib/types';
 import { formatBytes, formatDate } from './backup-stats';
 
@@ -14,24 +21,47 @@ interface RestoreModalProps {
   onConfirmRestore: (id: string, confirmation: string) => Promise<void>;
 }
 
-export function RestoreModal({
-  backup,
-  open,
-  onClose,
-  onConfirmRestore,
-}: RestoreModalProps) {
-  const [confirmation, setConfirmation] = useState('');
+export function RestoreModal({ backup, open, onClose, onConfirmRestore }: RestoreModalProps) {
+  const gate = resolveRestoreGate();
+  const [input, setInput] = useState('');
+  const [failedAttempts, setFailedAttempts] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Mỗi lần mở lại modal là một phiên xác thực mới.
+  useEffect(() => {
+    if (open) {
+      setInput('');
+      setFailedAttempts(0);
+      setError(null);
+    }
+  }, [open]);
+
   if (!backup) return null;
 
-  const isConfirmed = confirmation.trim().toUpperCase() === 'XAC NHAN';
+  const remaining = remainingRestoreAttempts(failedAttempts);
+  const isLocked = remaining === 0;
+  const isComplete =
+    gate.kind === 'pin' ? input.length === gate.length : checkRestoreGate(gate, input).ok;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!isConfirmed) {
-      setError('Vui lòng nhập chính xác từ khóa "XAC NHAN" để tiếp tục');
+    if (isLocked) return;
+
+    const verdict = checkRestoreGate(gate, input);
+    if (!verdict.ok) {
+      if (verdict.reason === 'wrong') {
+        const left = remainingRestoreAttempts(failedAttempts + 1);
+        setFailedAttempts(failedAttempts + 1);
+        setInput('');
+        setError(
+          left > 0
+            ? `${verdict.message} Còn ${left} lần thử.`
+            : 'Đã nhập sai nhiều lần. Đóng hộp thoại và thử lại sau.',
+        );
+      } else {
+        setError(verdict.message);
+      }
       return;
     }
 
@@ -39,12 +69,20 @@ export function RestoreModal({
     setError(null);
 
     try {
-      await onConfirmRestore(backup.id, 'XAC NHAN');
-      setConfirmation('');
+      // API vẫn nhận từ khóa; PIN chỉ là chốt chặn phía người dùng.
+      await onConfirmRestore(backup.id, RESTORE_CONFIRMATION_KEYWORD);
+      setInput('');
       onClose();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Phục hồi database thất bại';
-      setError(msg);
+      // "Failed to fetch" = mất kết nối tới API giữa chừng (API tắt/khởi động lại),
+      // không phải API từ chối. Diễn giải cho người dùng thay vì in lỗi thô.
+      setError(
+        /failed to fetch|network/i.test(msg)
+          ? 'Mất kết nối tới máy chủ trong lúc phục hồi. Kiểm tra trạng thái API và Nhật ký hành động trước khi thử lại.'
+          : msg,
+      );
+      setInput('');
     } finally {
       setIsSubmitting(false);
     }
@@ -74,15 +112,13 @@ export function RestoreModal({
           <p className="font-semibold text-fpt-blue-900">Thông tin bản sao lưu được chọn:</p>
           <ul className="mt-2 space-y-1 text-muted">
             <li>
-              • Tệp:{' '}
-              <span className="font-mono text-ink font-semibold">{backup.filename}</span>
+              • Tệp: <span className="font-mono text-ink font-semibold">{backup.filename}</span>
             </li>
             <li>
               • Kích thước: <span className="text-ink">{formatBytes(backup.sizeBytes)}</span>
             </li>
             <li>
-              • Thời điểm tạo:{' '}
-              <span className="text-ink">{formatDate(backup.createdAt)}</span>
+              • Thời điểm tạo: <span className="text-ink">{formatDate(backup.createdAt)}</span>
             </li>
             {backup.comment && (
               <li>
@@ -97,23 +133,49 @@ export function RestoreModal({
           <p className="font-semibold">🛡️ Cơ chế Snapshot bảo vệ an toàn:</p>
           <p className="mt-1 text-blue-800">
             Hệ thống sẽ <strong>TỰ ĐỘNG tạo một bản sao lưu trạng thái hiện tại</strong> (Snapshot)
-            ngay trước khi ghi đè dữ liệu. Bạn có thể phục hồi lại trạng thái trước đó nếu cần thiết.
+            ngay trước khi ghi đè dữ liệu. Bạn có thể phục hồi lại trạng thái trước đó nếu cần
+            thiết.
           </p>
         </div>
 
-        <div>
-          <Label htmlFor="restore-confirmation">
-            Để xác nhận, vui lòng nhập <span className="font-bold text-danger font-mono">XAC NHAN</span> vào ô bên dưới:
-          </Label>
-          <Input
-            id="restore-confirmation"
-            placeholder="Nhập XAC NHAN"
-            value={confirmation}
-            onChange={(e) => setConfirmation(e.target.value)}
-            disabled={isSubmitting}
-            className="font-mono uppercase tracking-wider"
-          />
-        </div>
+        {gate.kind === 'pin' ? (
+          <div>
+            <Label htmlFor="restore-pin-0" className="text-center">
+              Nhập <span className="font-bold text-danger">mã PIN hệ thống</span> ({gate.length} chữ
+              số) để xác nhận:
+            </Label>
+            <div className="mt-3">
+              <PinCodeInput
+                id="restore-pin"
+                value={input}
+                length={gate.length}
+                onChange={(next) => {
+                  setInput(next);
+                  if (error) setError(null);
+                }}
+                disabled={isSubmitting || isLocked}
+                invalid={Boolean(error) && !isSubmitting}
+                autoFocus
+              />
+            </div>
+          </div>
+        ) : (
+          <div>
+            <Label htmlFor="restore-confirmation">
+              Để xác nhận, vui lòng nhập{' '}
+              <span className="font-bold text-danger font-mono">{gate.keyword}</span> vào ô bên
+              dưới:
+            </Label>
+            <Input
+              id="restore-confirmation"
+              placeholder={`Nhập ${gate.keyword}`}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              disabled={isSubmitting || isLocked}
+              className="font-mono uppercase tracking-wider"
+            />
+          </div>
+        )}
 
         {error && <FormError>{error}</FormError>}
 
@@ -121,11 +183,7 @@ export function RestoreModal({
           <Button variant="ghost" type="button" onClick={onClose} disabled={isSubmitting}>
             Hủy bỏ
           </Button>
-          <Button
-            variant="danger"
-            type="submit"
-            disabled={!isConfirmed || isSubmitting}
-          >
+          <Button variant="danger" type="submit" disabled={!isComplete || isSubmitting || isLocked}>
             {isSubmitting ? 'Đang phục hồi hệ thống...' : 'Tiến hành phục hồi ngay'}
           </Button>
         </div>

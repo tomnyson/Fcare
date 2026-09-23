@@ -19,12 +19,12 @@ const SA_ROLES = new Set(['SA_OFFICER', 'SA_HEAD']);
 /** Khẩn cấp → Thấp, đúng thứ tự trên màn hình. */
 const LEVELS_DESC = [4, 3, 2, 1] as const;
 
-export interface CareCount {
+interface CareCount {
   careLogs: number;
   caredStudents: number;
 }
 
-export interface CareStaffRow extends CareCount {
+interface CareStaffRow extends CareCount {
   id: string;
   staffCode: string;
   fullName: string;

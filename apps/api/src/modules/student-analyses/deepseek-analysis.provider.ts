@@ -144,5 +144,3 @@ export class DeepSeekAnalysisProvider implements AcademicAnalysisProvider {
     });
   }
 }
-
-export { PROMPT_VERSION as DEEPSEEK_PROMPT_VERSION };

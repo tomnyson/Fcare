@@ -28,6 +28,7 @@ export type Subjects =
   | 'MasterData'
   | 'Staff'
   | 'MailSettings'
+  | 'Monitoring'
   | 'Statistics'
   | 'Excel'
   | 'Backup'

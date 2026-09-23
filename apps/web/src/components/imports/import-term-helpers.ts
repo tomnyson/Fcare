@@ -1,4 +1,4 @@
-export const TERM_PATTERN = /^[A-Z]{2}\d{2}$/;
+const TERM_PATTERN = /^[A-Z]{2}\d{2}$/;
 
 export function isTermValid(term: string): boolean {
   return TERM_PATTERN.test(term);

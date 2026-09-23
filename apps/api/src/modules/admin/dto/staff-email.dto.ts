@@ -8,7 +8,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-export class StaffEmailMappingDto {
+class StaffEmailMappingDto {
   @ApiProperty({ description: 'Mã nhân viên' })
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { CatalogPagination, CatalogSearch, type useCatalogPaging } from './catalog-paging';
+import { CatalogSearch, type useCatalogPaging } from './catalog-paging';
 import { DataTable, Td } from '../ui/data-table';
 import type { ClassSection, Subject } from '../../lib/types';
 
@@ -51,6 +51,16 @@ export function SubjectsTable({
             ? 'Không có môn học nào khớp từ khoá.'
             : 'Chưa có môn học nào — bấm “+ Thêm môn học” để tạo danh mục đầu tiên.'
         }
+        pagination={{
+          page: paging.page,
+          totalPages: paging.totalPages,
+          total: paging.total,
+          limit: paging.pageSize,
+          isLoading: query.isLoading,
+          onPageChange: paging.setPage,
+          onLimitChange: paging.setPageSize,
+          label: 'Phân trang môn học',
+        }}
       >
         {paging.pageItems.map((subject) => (
           <tr key={subject.id} className="transition-colors hover:bg-fpt-orange-50/40">
@@ -63,14 +73,6 @@ export function SubjectsTable({
           </tr>
         ))}
       </DataTable>
-      <CatalogPagination
-        label="Phân trang môn học"
-        page={paging.page}
-        totalPages={paging.totalPages}
-        total={paging.total}
-        isLoading={query.isLoading}
-        onPageChange={paging.setPage}
-      />
     </>
   );
 }
@@ -105,6 +107,16 @@ export function ClassSectionsTable({
             ? 'Không có lớp học phần nào khớp từ khoá.'
             : 'Chưa có lớp học phần nào — bấm “+ Thêm lớp học phần” để tạo.'
         }
+        pagination={{
+          page: paging.page,
+          totalPages: paging.totalPages,
+          total: paging.total,
+          limit: paging.pageSize,
+          isLoading: query.isLoading,
+          onPageChange: paging.setPage,
+          onLimitChange: paging.setPageSize,
+          label: 'Phân trang lớp học phần',
+        }}
       >
         {paging.pageItems.map((section) => (
           <tr key={section.id} className="transition-colors hover:bg-fpt-orange-50/40">
@@ -125,14 +137,6 @@ export function ClassSectionsTable({
           </tr>
         ))}
       </DataTable>
-      <CatalogPagination
-        label="Phân trang lớp học phần"
-        page={paging.page}
-        totalPages={paging.totalPages}
-        total={paging.total}
-        isLoading={query.isLoading}
-        onPageChange={paging.setPage}
-      />
     </>
   );
 }

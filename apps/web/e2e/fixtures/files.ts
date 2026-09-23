@@ -6,7 +6,7 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
 const DOCS_DIR = path.join(REPO_ROOT, 'docs');
 
 /** Nơi chứa file .xlsx sinh ra lúc chạy test — gitignore, không commit. */
-export const ARTIFACT_DIR = path.resolve(__dirname, '..', '.artifacts');
+const ARTIFACT_DIR = path.resolve(__dirname, '..', '.artifacts');
 
 /**
  * File nguồn THẬT của trường, còn nguyên cột email ở sheet "T.Kê".

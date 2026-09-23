@@ -56,4 +56,3 @@ export const academicAnalysisOutputSchema = z.object({
 export type AcademicAnalysisOutput = z.infer<
   typeof academicAnalysisOutputSchema
 >;
-export type ForcedEscalation = AcademicAnalysisOutput['forcedEscalation'];

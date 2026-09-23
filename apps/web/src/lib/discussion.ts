@@ -1,6 +1,6 @@
 import type { DiscussionMessage } from './types';
 
-export interface DiscussionDayGroup {
+interface DiscussionDayGroup {
   /** Khóa ngày dạng YYYY-MM-DD, dùng làm React key. */
   day: string;
   /** Nhãn hiển thị trên vạch ngăn ngày. */

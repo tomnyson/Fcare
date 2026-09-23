@@ -1,6 +1,7 @@
 'use client';
 
 import { DataTable, Td } from '../ui/data-table';
+import { usePagedList } from '../../lib/use-paged-list';
 import type { SubjectStatistics } from '../../lib/types';
 
 const HEADERS = [
@@ -15,14 +16,28 @@ export function SubjectsTable({
   rows: SubjectStatistics[];
   isLoading: boolean;
 }) {
+  const paged = usePagedList(rows, { pageSize: 10 });
+
   return (
     <DataTable
+      fitViewport
       headers={HEADERS}
       isLoading={isLoading}
+      skeletonRows={paged.pageSize}
       isEmpty={rows.length === 0}
       emptyMessage="Chưa có môn học nào trong phạm vi của bạn ở kỳ này."
+      pagination={{
+        page: paged.page,
+        totalPages: paged.totalPages,
+        total: paged.total,
+        limit: paged.pageSize,
+        isLoading,
+        onPageChange: paged.setPage,
+        onLimitChange: paged.setPageSize,
+        label: 'Phân trang môn học',
+      }}
     >
-      {rows.map((row) => (
+      {paged.pageItems.map((row) => (
         <tr key={row.id}>
           <Td className="font-semibold">{row.code}</Td>
           <Td>{row.name}</Td>

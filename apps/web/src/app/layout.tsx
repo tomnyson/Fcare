@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import { Be_Vietnam_Pro, Inter } from 'next/font/google';
 import { Providers } from '../components/providers';
+import { NavigationProgressBar } from '../components/ui/navigation-progress-bar';
 import { FeedbackButton } from '../components/ui/feedback-button';
 import './globals.css';
 
@@ -31,8 +33,12 @@ export default function RootLayout({
   return (
     <html lang="vi">
       <body className={`${beVietnam.variable} ${inter.variable} antialiased`}>
-        <Providers>{children}</Providers>
-        <FeedbackButton />
+        <Suspense fallback={null}>
+          <NavigationProgressBar>
+            <Providers>{children}</Providers>
+            <FeedbackButton />
+          </NavigationProgressBar>
+        </Suspense>
       </body>
     </html>
   );

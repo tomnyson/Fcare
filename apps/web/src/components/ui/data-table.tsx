@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Skeleton } from './skeleton';
+import { Pagination, type PaginationProps } from './pagination';
 
 export type SortDirection = 'asc' | 'desc';
 
@@ -7,6 +8,19 @@ export type SortDirection = 'asc' | 'desc';
 export interface SortableColumn {
   direction: SortDirection | null;
   onSort: () => void;
+}
+
+export type DataTablePaginationProps = Omit<PaginationProps, 'docked'>;
+
+function isPaginationProps(val: unknown): val is DataTablePaginationProps {
+  return (
+    typeof val === 'object' &&
+    val !== null &&
+    'page' in val &&
+    'totalPages' in val &&
+    'onPageChange' in val &&
+    typeof (val as { onPageChange: unknown }).onPageChange === 'function'
+  );
 }
 
 interface DataTableProps {
@@ -27,6 +41,13 @@ interface DataTableProps {
    * thanh cuộn ngang luôn nằm trong tầm nhìn thay vì ở đáy trang.
    */
   fitViewport?: boolean;
+  /**
+   * Cấu hình phân trang (tự động render cả 2 đầu trên và dưới) hoặc ReactNode tùy biến.
+   */
+  pagination?: DataTablePaginationProps | ReactNode;
+  /** Footer tuỳ biến bất kỳ */
+  footer?: ReactNode;
+  className?: string;
 }
 
 // Bề rộng lệch nhau cho các ô skeleton để trông như dữ liệu thật chứ không
@@ -44,18 +65,34 @@ export function DataTable({
   isRefreshing,
   skeletonRows = 8,
   fitViewport = false,
+  pagination,
+  footer,
+  className = '',
 }: DataTableProps) {
+  const isStructuredPagination = isPaginationProps(pagination);
+  const position = isStructuredPagination ? (pagination.position ?? 'both') : 'bottom';
+  const showTopPagination = isStructuredPagination && (position === 'top' || position === 'both');
+  const showBottomPagination = isStructuredPagination && (position === 'bottom' || position === 'both');
+  const customBottom = !isStructuredPagination ? (pagination ?? footer) : footer;
+
   return (
-    <div
-      // Chỉ mờ đi khi tải lại — dữ liệu cũ vẫn đứng yên, không nhảy layout.
-      className={`data-table-scroll ${
-        fitViewport ? 'max-h-[var(--table-fit-height)] overflow-auto' : 'overflow-x-auto'
-      } rounded-[var(--radius-card)] border border-border bg-white shadow-[var(--shadow-card)] motion-safe:transition-opacity motion-safe:duration-[var(--duration-fast)] ${
-        isRefreshing && !isLoading ? 'opacity-60' : 'opacity-100'
-      }`}
-      aria-busy={isLoading || isRefreshing || undefined}
-    >
-      <table className="w-full min-w-max text-left text-sm">
+    <div className={`flex flex-col rounded-[var(--radius-card)] border border-border bg-white shadow-[var(--shadow-card)] overflow-hidden ${className}`}>
+      {/* 1. Thanh phân trang ở đầu trên bảng */}
+      {showTopPagination ? (
+        <Pagination {...pagination} position="top" docked />
+      ) : null}
+
+      {/* 2. Thân bảng cuộn */}
+      <div
+        // Chỉ mờ đi khi tải lại — dữ liệu cũ vẫn đứng yên, không nhảy layout.
+        className={`data-table-scroll ${
+          fitViewport ? 'max-h-[var(--table-fit-height)] overflow-auto' : 'overflow-x-auto'
+        } motion-safe:transition-opacity motion-safe:duration-[var(--duration-fast)] ${
+          isRefreshing && !isLoading ? 'opacity-60' : 'opacity-100'
+        }`}
+        aria-busy={isLoading || isRefreshing || undefined}
+      >
+        <table className="w-full min-w-max text-left text-sm">
         <thead className={fitViewport ? 'sticky top-0 z-10' : undefined}>
           <tr className="border-b border-border bg-fpt-blue-900 text-white">
             {headers.map((header) => {
@@ -97,6 +134,14 @@ export function DataTable({
           )}
         </tbody>
       </table>
+      </div>
+
+      {/* 3. Thanh phân trang ở chân bảng */}
+      {showBottomPagination ? (
+        <Pagination {...pagination} position="bottom" docked />
+      ) : customBottom ? (
+        <div className="-mt-px">{customBottom}</div>
+      ) : null}
     </div>
   );
 }

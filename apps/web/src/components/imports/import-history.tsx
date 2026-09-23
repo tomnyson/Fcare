@@ -4,7 +4,6 @@ import { Badge } from '@fcare/ui-kit';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { DataTable, Td } from '../ui/data-table';
-import { Pagination } from '../ui/pagination';
 import { FormError } from '../ui/form';
 import { ApiError, apiFetch } from '../../lib/api';
 import { formatDateTime } from '../../lib/labels';
@@ -12,8 +11,8 @@ import { IMPORT_KIND_LABEL_BY_KIND } from '../../lib/import-kinds';
 import { pageCount } from '../../lib/pagination';
 import type { ImportBatchSummary, ImportStatus, Paginated } from '../../lib/types';
 
-/** Số lô mỗi trang — lịch sử có thể tới hàng trăm lô sau vài kỳ. */
-const PAGE_SIZE = 20;
+/** Số lô mỗi trang — mặc định 10 lô/trang. */
+const PAGE_SIZE = 10;
 
 const STATUS_LABELS: Record<ImportStatus, string> = {
   PENDING: 'Chờ xác nhận',
@@ -37,10 +36,10 @@ interface ImportHistoryProps {
 
 export function ImportHistory({ onResume }: ImportHistoryProps) {
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(PAGE_SIZE);
   const { data, isLoading, isFetching, isError, error } = useQuery({
-    queryKey: ['imports', page],
-    queryFn: () =>
-      apiFetch<Paginated<ImportBatchSummary>>(`/imports?page=${page}&limit=${PAGE_SIZE}`),
+    queryKey: ['imports', page, limit],
+    queryFn: () => apiFetch<Paginated<ImportBatchSummary>>(`/imports?page=${page}&limit=${limit}`),
     placeholderData: keepPreviousData,
   });
   const items = data?.items ?? [];
@@ -73,10 +72,23 @@ export function ImportHistory({ onResume }: ImportHistoryProps) {
           'Người thực hiện',
         ]}
         isLoading={isLoading}
-        skeletonRows={5}
+        skeletonRows={limit}
         isRefreshing={isFetching && !isLoading}
         isEmpty={!isLoading && !isError && items.length === 0}
         emptyMessage="Chưa có lượt import nào."
+        pagination={{
+          page,
+          totalPages: pageCount(total, limit),
+          total,
+          limit,
+          isLoading,
+          onPageChange: setPage,
+          onLimitChange: (newLimit) => {
+            setLimit(newLimit);
+            setPage(1);
+          },
+          label: 'Phân trang lịch sử import',
+        }}
       >
         {items.map((batch) => {
           const resumable = batch.status === 'PENDING';
@@ -113,15 +125,6 @@ export function ImportHistory({ onResume }: ImportHistoryProps) {
           );
         })}
       </DataTable>
-      <Pagination
-        label="Phân trang lịch sử import"
-        page={page}
-        totalPages={pageCount(total, PAGE_SIZE)}
-        total={total}
-        limit={PAGE_SIZE}
-        isLoading={isLoading}
-        onPageChange={setPage}
-      />
     </section>
   );
 }

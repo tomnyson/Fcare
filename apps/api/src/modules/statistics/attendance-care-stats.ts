@@ -4,7 +4,7 @@ import type {
   CareStudentAttendanceAlert,
 } from './care-statistics.types';
 
-export interface AttendanceAlertRow {
+interface AttendanceAlertRow {
   studentId: string;
   classSectionId: string | null;
   level: number;

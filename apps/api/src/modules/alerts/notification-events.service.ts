@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Observable, Subject, filter } from 'rxjs';
 
-export interface NotificationEvent {
+interface NotificationEvent {
   recipientId: string;
   payload: {
     id: string;

@@ -85,6 +85,20 @@ describe('nav-tree — dựng cây theo vai trò', () => {
     expect(lecturer.flatMap((section) => hrefs(section.items))).not.toContain('/admin/backups');
   });
 
+  it('ADMIN thấy "Giám sát lỗi" trong nhóm Hệ thống, role khác không thấy', () => {
+    const system = buildNavSections(user(['ADMIN'])).find((section) => section.id === 'system');
+    expect(hrefs(system?.items ?? [])).toContain('/admin/monitoring');
+    const officer = buildNavSections(user(['TRAINING_OFFICER']));
+    expect(officer.flatMap((section) => hrefs(section.items))).not.toContain('/admin/monitoring');
+  });
+
+  it('ADMIN thấy "Nhật ký hành động" trong nhóm Hệ thống, role khác không thấy', () => {
+    const system = buildNavSections(user(['ADMIN'])).find((section) => section.id === 'system');
+    expect(hrefs(system?.items ?? [])).toContain('/admin/audit-logs');
+    const officer = buildNavSections(user(['TRAINING_OFFICER']));
+    expect(officer.flatMap((section) => hrefs(section.items))).not.toContain('/admin/audit-logs');
+  });
+
   it('chỉ mục Cảnh báo mang chỉ số cảnh báo đang mở', () => {
     const main = buildNavSections(user(['LECTURER']))[0].items;
     const badged = main.filter((node) => node.kind === 'leaf' && node.badge === 'openAlerts');

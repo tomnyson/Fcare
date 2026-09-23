@@ -7,10 +7,10 @@ import { EmailService } from '../email/email.service';
 import { PushService } from '../push/push.service';
 
 export const ALERT_ESCALATION_QUEUE = 'alert-escalation';
-export const DELIVER_NOTIFICATIONS_JOB = 'deliver-notifications';
+const DELIVER_NOTIFICATIONS_JOB = 'deliver-notifications';
 
 /** Enqueue phải fail nhanh khi Redis không phản hồi để còn fallback đồng bộ. */
-export const ENQUEUE_TIMEOUT_MS = 1_500;
+const ENQUEUE_TIMEOUT_MS = 1_500;
 
 export interface EscalationJobData {
   alertId: string;

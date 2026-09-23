@@ -150,6 +150,13 @@ export const IconDatabase: NavIcon = (props) => (
   </Icon>
 );
 
+/** Nhịp tim — giám sát lỗi hệ thống. */
+export const IconActivity: NavIcon = (props) => (
+  <Icon {...props}>
+    <path d="M3 12h4l3-8 4 16 3-8h4" />
+  </Icon>
+);
+
 /** Mũi tên gập/mở nhóm. */
 export const IconChevron: NavIcon = (props) => (
   <Icon {...props}>
@@ -180,5 +187,14 @@ export const IconClose: NavIcon = (props) => (
   <Icon {...props}>
     <path d="m6 6 12 12" />
     <path d="M18 6 6 18" />
+  </Icon>
+);
+
+/** Lịch sử / Nhật ký hành động — đồng hồ ngược chiều kim đồng hồ. */
+export const IconHistory: NavIcon = (props) => (
+  <Icon {...props}>
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <path d="M3 3v5h5" />
+    <path d="M12 7v5l4 2" />
   </Icon>
 );

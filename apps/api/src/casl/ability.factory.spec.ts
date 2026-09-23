@@ -60,6 +60,26 @@ describe('AbilityFactory — ma trận phân quyền theo Quy định chung', ()
     }
   });
 
+  it('chỉ admin được xem/cấu hình giám sát lỗi hệ thống', () => {
+    for (const role of [
+      'LECTURER',
+      'HEAD_OF_DEPT',
+      'TRAINING_OFFICER',
+      'SA_OFFICER',
+      'SA_HEAD',
+    ] as const) {
+      expect(
+        factory.createForUser(makeUser([role])).can('manage', 'Monitoring'),
+      ).toBe(false);
+      expect(
+        factory.createForUser(makeUser([role])).can('read', 'Monitoring'),
+      ).toBe(false);
+    }
+    expect(
+      factory.createForUser(makeUser(['ADMIN'])).can('manage', 'Monitoring'),
+    ).toBe(true);
+  });
+
   it('nhiều vai trò được cộng gộp quyền', () => {
     const ability = factory.createForUser(
       makeUser(['LECTURER', 'HEAD_OF_DEPT']),

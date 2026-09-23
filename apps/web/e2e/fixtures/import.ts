@@ -11,7 +11,7 @@ export const IMPORT_KIND_LABELS = {
   'grade-attendance': 'Đầu kỳ 3/3 — Điểm và chuyên cần',
 } as const;
 
-export type ImportKindKey = keyof typeof IMPORT_KIND_LABELS;
+type ImportKindKey = keyof typeof IMPORT_KIND_LABELS;
 
 const PREVIEW_TIMEOUT = 90_000;
 
@@ -19,7 +19,7 @@ const PREVIEW_TIMEOUT = 90_000;
  * Checkbox chọn loại import là `sr-only` bên trong `<label>` — người dùng bấm
  * vào thẻ label, nên test cũng bấm label rồi kiểm tra checkbox thật đã được tick.
  */
-export async function selectImportKind(page: Page, kind: ImportKindKey): Promise<void> {
+async function selectImportKind(page: Page, kind: ImportKindKey): Promise<void> {
   const label = IMPORT_KIND_LABELS[kind];
   await page.locator('label').filter({ hasText: label }).first().click();
   await expect(page.locator(`input[name="import-kind"][value="${kind}"]`)).toBeChecked();

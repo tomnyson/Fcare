@@ -2,7 +2,7 @@
  * Trang Tổng quan hiển thị theo vai trò — người nhiều vai thấy gộp các khối.
  * Chỉ quyết định HIỂN THỊ; phạm vi dữ liệu vẫn do API (`studentScope`) chặn.
  */
-export interface DashboardSections {
+interface DashboardSections {
   /** Chăm sóc theo bộ môn / giảng viên / CTSV + SV cảnh báo theo mức. */
   careOverview: boolean;
   /** CTSV: sinh viên đang có cảnh báo chưa giải quyết. */

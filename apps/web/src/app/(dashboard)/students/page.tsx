@@ -4,9 +4,8 @@ import { Badge, Button } from '@fcare/ui-kit';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { DataTable, Td } from '../../../components/ui/data-table';
-import { Pagination } from '../../../components/ui/pagination';
 import {
   FilterBar,
   FilterChip,
@@ -38,7 +37,7 @@ import type { Evaluation, Paginated, Student, StudentFilterOptions } from '../..
 import { useCurrentTerm } from '../../../lib/use-current-term';
 import { pageCount, parsePageParam } from '../../../lib/pagination';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 const SORT_LABELS: Record<StudentSortField, string> = {
   absentSessions: 'số buổi vắng',
@@ -119,12 +118,27 @@ function StudentsPageContent() {
     enabled: Boolean(filters.sectionId) && canEvaluate,
   });
 
+  /** Ghi bộ lọc vào URL. Mọi thay đổi bộ lọc đều đưa về trang 1. */
+  const setFilters = useCallback(
+    (patch: Record<string, string | null>) => {
+      const next = new URLSearchParams(params.toString());
+      for (const [key, value] of Object.entries({ page: null, ...patch })) {
+        if (value) next.set(key, value);
+        else next.delete(key);
+      }
+      const query = next.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+      setSelected([]);
+    },
+    [params, pathname, router],
+  );
+
   useEffect(() => {
     if (!hasInitializedTermRef.current && !params.has('term') && currentTerm?.code) {
       hasInitializedTermRef.current = true;
       setFilters({ term: currentTerm.code });
     }
-  }, [currentTerm?.code, params]);
+  }, [currentTerm?.code, params, setFilters]);
 
   // Back/forward đổi query param `search` trên URL mà không đi qua ô input —
   // đồng bộ lại state để ô tìm kiếm không giữ giá trị cũ.
@@ -132,19 +146,9 @@ function StudentsPageContent() {
     setSearch(submittedSearch);
   }, [submittedSearch]);
 
-  /** Ghi bộ lọc vào URL. Mọi thay đổi bộ lọc đều đưa về trang 1. */
-  function setFilters(patch: Record<string, string | null>) {
-    const next = new URLSearchParams(params.toString());
-    for (const [key, value] of Object.entries({ page: null, ...patch })) {
-      if (value) next.set(key, value);
-      else next.delete(key);
-    }
-    const query = next.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-    setSelected([]);
-  }
-
-  const listQuery = buildStudentListQuery(filters, page, PAGE_SIZE, sort).toString();
+  const limitParam = parseInt(params.get('limit') ?? '10', 10);
+  const limit = [10, 20, 50, 100].includes(limitParam) ? limitParam : PAGE_SIZE;
+  const listQuery = buildStudentListQuery(filters, page, limit, sort).toString();
   const { data, isLoading, isFetching, isError, error } = useQuery({
     queryKey: ['students', listQuery],
     queryFn: () => apiFetch<Paginated<Student>>(`/students?${listQuery}`),
@@ -535,9 +539,19 @@ function StudentsPageContent() {
         ]}
         isLoading={isLoading}
         isRefreshing={isFetching}
-        skeletonRows={PAGE_SIZE}
+        skeletonRows={limit}
         isEmpty={!isLoading && !isError && items.length === 0}
         emptyMessage="Không có sinh viên nào khớp bộ lọc."
+        pagination={{
+          page,
+          totalPages,
+          total,
+          limit,
+          isLoading,
+          onPageChange: (next) => setFilters({ page: String(next) }),
+          onLimitChange: (next) => setFilters({ limit: String(next), page: '1' }),
+          label: 'Phân trang sinh viên',
+        }}
       >
         {items.map((student) => (
           <tr key={student.id} className="transition-colors hover:bg-fpt-orange-50/40">
@@ -635,15 +649,6 @@ function StudentsPageContent() {
           {allSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả trên trang này'}
         </Button>
       ) : null}
-
-      <Pagination
-        page={page}
-        totalPages={totalPages}
-        total={total}
-        limit={PAGE_SIZE}
-        isLoading={isLoading}
-        onPageChange={(next) => setFilters({ page: String(next) })}
-      />
 
       {savedNotice ? (
         <div className="fixed bottom-6 right-6 z-50 rounded-md bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg transition-opacity animate-in fade-in duration-300">

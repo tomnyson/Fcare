@@ -32,8 +32,8 @@
   /* Rhythm */
   --space-section: clamp(4rem, 3rem + 5vw, 8rem);
   --radius-card: 12px;
-  /* Chiều cao tối đa của bảng `fitViewport`: chừa topbar + khoảng thở. */
-  --table-fit-height: max(20rem, calc(100dvh - 7rem));
+  /* Chiều cao tối đa của bảng `fitViewport`: chừa topbar + page header + filter + pagination header & footer. */
+  --table-fit-height: max(18rem, calc(100dvh - 19.5rem));
   --shadow-card: 0 1px 3px rgb(0 0 0 / 0.04), 0 8px 24px rgb(0 102 179 / 0.06);
 
   /* Motion */

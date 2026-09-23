@@ -14,7 +14,7 @@ import {
   renderDiscussionEmail,
 } from './email-template.helpers';
 
-export interface SendMailOptions {
+interface SendMailOptions {
   to: string | string[];
   subject: string;
   html: string;

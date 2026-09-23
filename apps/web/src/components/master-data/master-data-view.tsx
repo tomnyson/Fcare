@@ -9,6 +9,7 @@ import { FormError, Input, Label, Select } from '../ui/form';
 import { Modal } from '../ui/modal';
 import { PageHeader } from '../ui/page-header';
 import { useCatalogPaging } from './catalog-paging';
+import { usePagedList } from '../../lib/use-paged-list';
 import { ClassSectionsTable, SubjectsTable } from './catalog-tables';
 import { apiFetch, ApiError } from '../../lib/api';
 import { useMe } from '../../lib/hooks';
@@ -24,6 +25,8 @@ import type {
 } from '../../lib/types';
 import { formatDateForInput, generateTermPreset, seasonBadgeInfo } from './term-preset-helpers';
 import { DepartmentActiveToggle } from './department-active-toggle';
+import { AddStudentsModal } from './add-students-modal';
+import { SectionStudentsRosterModal } from './section-students-roster-modal';
 
 type Entity = Department | Major | Subject | ClassSection | Term;
 
@@ -59,6 +62,8 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Entity | null>(null);
   const [deleting, setDeleting] = useState<Entity | null>(null);
+  const [supplementingSection, setSupplementingSection] = useState<ClassSection | null>(null);
+  const [rosterSection, setRosterSection] = useState<ClassSection | null>(null);
   const [formError, setFormError] = useState('');
   const [deleteError, setDeleteError] = useState('');
 
@@ -81,11 +86,6 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
     queryFn: () => apiFetch<Subject[]>('/subjects'),
     enabled: tab === 'subjects' || tab === 'class-sections',
   });
-  const classSections = useQuery({
-    queryKey: ['class-sections'],
-    queryFn: () => apiFetch<ClassSection[]>('/class-sections'),
-    enabled: tab === 'class-sections',
-  });
   const terms = useQuery({
     queryKey: ['terms'],
     queryFn: () => apiFetch<Term[]>('/terms'),
@@ -95,6 +95,17 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
     queryKey: ['terms', 'current'],
     queryFn: () => apiFetch<Term | null>('/terms/current'),
     enabled: tab === 'terms' || tab === 'class-sections',
+  });
+  // Chỉ fetch lớp học phần của kỳ hiện tại; nếu không có kỳ hiện tại (null) → lấy tất cả
+  const currentTermCode = currentTerm.data?.code ?? null;
+  const classSections = useQuery({
+    queryKey: ['class-sections', currentTermCode],
+    queryFn: () =>
+      apiFetch<ClassSection[]>(
+        currentTermCode ? `/class-sections?term=${encodeURIComponent(currentTermCode)}` : '/class-sections',
+      ),
+    // Chờ currentTerm đã fetch xong (data !== undefined) để tránh 2 lần fetch
+    enabled: tab === 'class-sections' && currentTerm.data !== undefined,
   });
   const isAdmin = me?.user.roles.includes('ADMIN') ?? false;
   const lecturers = useQuery({
@@ -126,6 +137,9 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
       section.term.toLowerCase().includes(needle),
     tab,
   );
+  const departmentPaging = usePagedList(departments.data ?? [], { pageSize: 10, resetKey: tab });
+  const majorPaging = usePagedList(majors.data ?? [], { pageSize: 10, resetKey: tab });
+  const termPaging = usePagedList(terms.data ?? [], { pageSize: 10, resetKey: tab });
   const [termStart, setTermStart] = useState('');
   const [termEnd, setTermEnd] = useState('');
   const [termOverride, setTermOverride] = useState(false);
@@ -254,6 +268,26 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
               Đặt kỳ này
             </button>
           ) : null}
+          {tab === 'class-sections' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setRosterSection(entity as ClassSection)}
+                className="rounded-md border border-fpt-orange/40 bg-fpt-orange/10 px-2 py-1 text-xs font-semibold text-fpt-orange transition-colors hover:bg-fpt-orange/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fpt-orange"
+                title="Xem danh sách sinh viên trong lớp"
+              >
+                DS Sinh viên
+              </button>
+              <button
+                type="button"
+                onClick={() => setSupplementingSection(entity as ClassSection)}
+                className="rounded-md border border-fpt-blue/40 bg-fpt-blue/10 px-2 py-1 text-xs font-semibold text-fpt-blue transition-colors hover:bg-fpt-blue/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fpt-blue"
+                title="Bổ sung sinh viên vào lớp học phần"
+              >
+                + Thêm SV
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             onClick={() => {
@@ -363,15 +397,25 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
               ...actionHeader,
             ]}
             isLoading={departments.isLoading}
-            skeletonRows={5}
+            skeletonRows={departmentPaging.pageSize}
             isEmpty={
               !departments.isLoading &&
               !departments.isError &&
               (departments.data?.length ?? 0) === 0
             }
             emptyMessage="Chưa có bộ môn nào — bấm “+ Thêm bộ môn” để tạo danh mục đầu tiên."
+            pagination={{
+              page: departmentPaging.page,
+              totalPages: departmentPaging.totalPages,
+              total: departmentPaging.total,
+              limit: departmentPaging.pageSize,
+              isLoading: departments.isLoading,
+              onPageChange: departmentPaging.setPage,
+              onLimitChange: departmentPaging.setPageSize,
+              label: 'Phân trang bộ môn',
+            }}
           >
-            {(departments.data ?? []).map((department) => (
+            {departmentPaging.pageItems.map((department) => (
               <tr
                 key={department.id}
                 className={`transition-colors hover:bg-fpt-orange-50/40 ${
@@ -399,11 +443,21 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
           <DataTable
             headers={['Mã', 'Tên ngành', 'Bộ môn', 'Sinh viên', ...actionHeader]}
             isLoading={majors.isLoading}
-            skeletonRows={5}
+            skeletonRows={majorPaging.pageSize}
             isEmpty={!majors.isLoading && !majors.isError && (majors.data?.length ?? 0) === 0}
             emptyMessage="Chưa có ngành học nào — bấm “+ Thêm ngành học” để tạo danh mục đầu tiên."
+            pagination={{
+              page: majorPaging.page,
+              totalPages: majorPaging.totalPages,
+              total: majorPaging.total,
+              limit: majorPaging.pageSize,
+              isLoading: majors.isLoading,
+              onPageChange: majorPaging.setPage,
+              onLimitChange: majorPaging.setPageSize,
+              label: 'Phân trang ngành học',
+            }}
           >
-            {(majors.data ?? []).map((major) => (
+            {majorPaging.pageItems.map((major) => (
               <tr key={major.id} className="transition-colors hover:bg-fpt-orange-50/40">
                 <Td className="font-semibold">{major.code}</Td>
                 <Td>{major.name}</Td>
@@ -449,11 +503,21 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
               ...actionHeader,
             ]}
             isLoading={terms.isLoading}
-            skeletonRows={6}
+            skeletonRows={termPaging.pageSize}
             isEmpty={!terms.isLoading && !terms.isError && (terms.data?.length ?? 0) === 0}
             emptyMessage="Chưa có học kỳ nào — bấm “+ Thêm học kỳ” để tạo danh mục đầu tiên."
+            pagination={{
+              page: termPaging.page,
+              totalPages: termPaging.totalPages,
+              total: termPaging.total,
+              limit: termPaging.pageSize,
+              isLoading: terms.isLoading,
+              onPageChange: termPaging.setPage,
+              onLimitChange: termPaging.setPageSize,
+              label: 'Phân trang học kỳ',
+            }}
           >
-            {(terms.data ?? []).map((term) => {
+            {termPaging.pageItems.map((term) => {
               const badge = seasonBadgeInfo(term.season);
               const isCurrent = currentTerm.data?.id === term.id;
               const startStr = new Date(term.startDate).toLocaleDateString('vi-VN');
@@ -773,6 +837,21 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
           </div>
         ) : null}
       </Modal>
+
+      <AddStudentsModal
+        open={supplementingSection !== null}
+        section={supplementingSection}
+        onClose={() => setSupplementingSection(null)}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['class-sections'] });
+        }}
+      />
+
+      <SectionStudentsRosterModal
+        open={rosterSection !== null}
+        section={rosterSection}
+        onClose={() => setRosterSection(null)}
+      />
     </>
   );
 }

@@ -5,7 +5,7 @@
  * giảng viên, lớp học phần) dùng chung tên tham số với `/students` nên chuyển
  * qua lại giữa hai trang không phải dịch tên.
  */
-export interface AlertFilters {
+interface AlertFilters {
   search: string;
   status: string;
   level: string;
@@ -23,7 +23,7 @@ export interface AlertFilters {
 }
 
 /** Khóa query string của từng bộ lọc, dùng chung cho đọc URL và xóa lọc. */
-export const ALERT_FILTER_KEYS = [
+const ALERT_FILTER_KEYS = [
   'search',
   'status',
   'level',

@@ -78,7 +78,7 @@ export function importKindLabel(slug: ImportKindSlug): string {
 }
 
 /** Nguồn file của một loại — hai loại khác nguồn không tick chung được. */
-export function importKindSource(slug: ImportKindSlug): ImportSource | undefined {
+function importKindSource(slug: ImportKindSlug): ImportSource | undefined {
   return IMPORT_KINDS.find((kind) => kind.slug === slug)?.source;
 }
 

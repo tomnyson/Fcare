@@ -22,6 +22,9 @@ interface MockHandles {
   alertGroupBy: jest.Mock;
 }
 
+type TransactionArg =
+  ((tx: PrismaService) => Promise<unknown>) | Promise<unknown>[];
+
 function makePrisma(): MockHandles {
   const findMany = jest.fn().mockResolvedValue([]);
   const findUnique = jest.fn();
@@ -454,5 +457,193 @@ describe('ClassSectionsService — phạm vi lớp học phần & cảnh báo', 
     );
     expect(result[0].openAlertCount).toBe(2);
     expect(result[1].openAlertCount).toBe(1);
+  });
+});
+
+describe('ClassSectionsService — bổ sung sinh viên vào lớp học phần', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('tạo sinh viên mới nếu chưa có và ghi danh vào lớp', async () => {
+    const { prisma, findUnique } = makePrisma();
+    const studentFindMany = jest.fn().mockResolvedValue([]);
+    const studentCreate = jest
+      .fn()
+      .mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+        id: 'sv-new-1',
+        ...data,
+      }));
+    const enrollmentFindMany = jest.fn().mockResolvedValue([]);
+    const enrollmentCreate = jest.fn().mockResolvedValue({ id: 'enr-new-1' });
+
+    (prisma as unknown as Record<string, unknown>).student = {
+      findMany: studentFindMany,
+      create: studentCreate,
+    };
+    prisma.enrollment.findMany = enrollmentFindMany;
+    prisma.enrollment.create = enrollmentCreate;
+    prisma.$transaction = jest
+      .fn()
+      .mockImplementation((arg: TransactionArg) =>
+        typeof arg === 'function' ? arg(prisma) : Promise.all(arg),
+      );
+
+    findUnique.mockResolvedValueOnce({
+      id: 'sec-1',
+      code: 'AI21301-ITA106',
+      subjectId: 'sub-1',
+      subject: { id: 'sub-1', departmentId: 'dept-cntt' },
+    });
+
+    const service = new ClassSectionsService(prisma, audit);
+    const result = await service.addStudentsToSection(user, 'sec-1', [
+      { studentCode: 'PK04346', fullName: 'Hoàng Lê Minh Sang' },
+    ]);
+
+    expect(result.addedCount).toBe(1);
+    expect(result.existingCount).toBe(0);
+    expect(studentCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          studentCode: 'PK04346',
+          fullName: 'Hoàng Lê Minh Sang',
+          departmentId: 'dept-cntt',
+          classCode: 'AI21301',
+        }) as unknown,
+      }),
+    );
+    expect(auditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'SECTION_STUDENTS_ADD',
+        entityId: 'sec-1',
+      }),
+    );
+  });
+
+  it('bỏ qua nếu sinh viên đã ghi danh sẵn trong lớp', async () => {
+    const { prisma, findUnique } = makePrisma();
+    const studentFindMany = jest
+      .fn()
+      .mockResolvedValue([
+        { id: 'sv-1', studentCode: 'PK04346', fullName: 'Hoàng Lê Minh Sang' },
+      ]);
+    const enrollmentFindMany = jest
+      .fn()
+      .mockResolvedValue([{ studentId: 'sv-1', classSectionId: 'sec-1' }]);
+    const enrollmentCreate = jest.fn();
+
+    (prisma as unknown as Record<string, unknown>).student = {
+      findMany: studentFindMany,
+    };
+    prisma.enrollment.findMany = enrollmentFindMany;
+    prisma.enrollment.create = enrollmentCreate;
+    prisma.$transaction = jest
+      .fn()
+      .mockImplementation((arg: TransactionArg) =>
+        typeof arg === 'function' ? arg(prisma) : Promise.all(arg),
+      );
+
+    findUnique.mockResolvedValueOnce({
+      id: 'sec-1',
+      code: 'AI21301-ITA106',
+      subjectId: 'sub-1',
+      subject: { id: 'sub-1', departmentId: 'dept-cntt' },
+    });
+
+    const service = new ClassSectionsService(prisma, audit);
+    const result = await service.addStudentsToSection(user, 'sec-1', [
+      { studentCode: 'PK04346', fullName: 'Hoàng Lê Minh Sang' },
+    ]);
+
+    expect(result.addedCount).toBe(0);
+    expect(result.existingCount).toBe(1);
+    expect(enrollmentCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe('ClassSectionsService — xóa & sửa sinh viên trong lớp học phần', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('xóa sinh viên ra khỏi lớp: xóa enrollment và ghi audit log', async () => {
+    const { prisma, findUnique } = makePrisma();
+    const enrollmentDelete = jest.fn().mockResolvedValue({});
+    findUnique.mockResolvedValueOnce({
+      id: 'sec-1',
+      code: 'AI21301-ITA106',
+    });
+    prisma.enrollment.findFirst = jest.fn().mockResolvedValue({
+      id: 'enr-1',
+      studentId: 'std-1',
+      classSectionId: 'sec-1',
+      student: {
+        id: 'std-1',
+        studentCode: 'PK04346',
+        fullName: 'Hoàng Lê Minh Sang',
+      },
+    });
+    prisma.enrollment.delete = enrollmentDelete;
+
+    const service = new ClassSectionsService(prisma, audit);
+    const result = await service.removeStudentFromSection(
+      user,
+      'sec-1',
+      'enr-1',
+    );
+
+    expect(result.removed).toBe(true);
+    expect(result.studentCode).toBe('PK04346');
+    expect(enrollmentDelete).toHaveBeenCalledWith({ where: { id: 'enr-1' } });
+    expect(auditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'SECTION_STUDENT_REMOVE',
+        entityId: 'sec-1',
+      }),
+    );
+  });
+
+  it('sửa thông tin sinh viên và điểm trong lớp', async () => {
+    const { prisma, findUnique } = makePrisma();
+    findUnique.mockResolvedValueOnce({
+      id: 'sec-1',
+      code: 'AI21301-ITA106',
+    });
+    prisma.enrollment.findFirst = jest.fn().mockResolvedValue({
+      id: 'enr-1',
+      studentId: 'std-1',
+      classSectionId: 'sec-1',
+      totalScore: 5,
+      result: EnrollmentResult.IN_PROGRESS,
+      student: { id: 'std-1', studentCode: 'PK04346', fullName: 'Cũ' },
+    });
+    const studentUpdate = jest.fn().mockResolvedValue({});
+    const enrollmentUpdate = jest.fn().mockResolvedValue({});
+    (prisma as unknown as Record<string, unknown>).student = {
+      update: studentUpdate,
+    };
+    prisma.enrollment.update = enrollmentUpdate;
+
+    const service = new ClassSectionsService(prisma, audit);
+    const result = await service.updateStudentInSection(
+      user,
+      'sec-1',
+      'enr-1',
+      {
+        fullName: 'Hoàng Lê Minh Sang Mới',
+        totalScore: 9,
+        result: EnrollmentResult.PASS,
+      },
+    );
+
+    expect(result.updated).toBe(true);
+    expect(studentUpdate).toHaveBeenCalledWith({
+      where: { id: 'std-1' },
+      data: { fullName: 'Hoàng Lê Minh Sang Mới' },
+    });
+    expect(enrollmentUpdate).toHaveBeenCalledWith({
+      where: { id: 'enr-1' },
+      data: expect.objectContaining({
+        totalScore: 9,
+        result: EnrollmentResult.PASS,
+      }) as unknown,
+    });
   });
 });

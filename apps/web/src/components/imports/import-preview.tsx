@@ -5,7 +5,6 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { QuickMappingModal } from './quick-mapping-modal';
 import { DataTable, Td } from '../ui/data-table';
-import { Pagination } from '../ui/pagination';
 import { apiFetch } from '../../lib/api';
 import { IMPORT_PAYLOAD_COLUMNS } from '../../lib/import-kinds';
 import { useMe } from '../../lib/hooks';
@@ -19,8 +18,8 @@ import {
 } from '../../lib/mapping-targets';
 import type { ImportBatchDetail, ImportRowView, Paginated } from '../../lib/types';
 
-/** Cùng cỡ trang mặc định của API — trang 1 dùng luôn dữ liệu upload trả về. */
-const PAGE_SIZE = 50;
+/** Cỡ trang mặc định của bảng xem trước: mặc định 10 dòng/trang. */
+const PAGE_SIZE = 10;
 
 const CHECKBOX_CLASSES =
   'h-4 w-4 shrink-0 rounded border-border accent-fpt-orange ' +
@@ -54,15 +53,14 @@ export function ImportPreview({
   const [mapped, setMapped] = useState<ReadonlySet<string>>(() => new Set<string>());
   const okCount = batch.summary.validRows;
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(PAGE_SIZE);
   const [onlyErrors, setOnlyErrors] = useState(false);
-  // File thật ~3000 dòng: API chỉ trả từng trang. Trang 1 (không lọc) đã có
-  // sẵn trong `batch` từ lúc upload/nạp lại nên seed thẳng vào cache, các
-  // trang khác và chế độ "chỉ dòng lỗi" mới gọi GET preview.
-  const isSeedPage = page === 1 && !onlyErrors;
+  // File thật ~3000 dòng: API chỉ trả từng trang.
+  const isSeedPage = page === 1 && !onlyErrors && limit === PAGE_SIZE && batch.rows.meta.limit === PAGE_SIZE;
   const rowsQuery = useQuery({
-    queryKey: ['imports', batch.id, 'rows', page, onlyErrors],
+    queryKey: ['imports', batch.id, 'rows', page, limit, onlyErrors],
     queryFn: async () => {
-      const search = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+      const search = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (onlyErrors) search.set('onlyErrors', 'true');
       const detail = await apiFetch<ImportBatchDetail>(`/imports/${batch.id}/preview?${search}`);
       return detail.rows;
@@ -71,7 +69,7 @@ export function ImportPreview({
     staleTime: 60_000,
     placeholderData: keepPreviousData,
   });
-  const rows: Paginated<ImportRowView> = rowsQuery.data ?? { items: [], meta: { total: 0, page, limit: PAGE_SIZE } };
+  const rows: Paginated<ImportRowView> = rowsQuery.data ?? { items: [], meta: { total: 0, page, limit } };
   const visible = rows.items;
   const rowsTotal = rows.meta.total;
   // Allowlist theo loại import — KHÔNG đổ nguyên Object.entries(payload) ra
@@ -176,6 +174,19 @@ export function ImportPreview({
         skeletonRows={8}
         isEmpty={!rowsQuery.isPending && visible.length === 0}
         emptyMessage={onlyErrors ? 'Không có dòng lỗi nào.' : 'File không có dòng dữ liệu nào.'}
+        pagination={{
+          page,
+          totalPages: pageCount(rowsTotal, limit),
+          total: rowsTotal,
+          limit,
+          isLoading: rowsQuery.isPending,
+          onPageChange: setPage,
+          onLimitChange: (newLimit) => {
+            setLimit(newLimit);
+            setPage(1);
+          },
+          label: 'Phân trang dòng xem trước',
+        }}
       >
         {visible.map((row) => (
           <tr
@@ -198,18 +209,9 @@ export function ImportPreview({
         ))}
       </DataTable>
 
-      <Pagination
-        label="Phân trang dòng xem trước"
-        page={page}
-        totalPages={pageCount(rowsTotal, PAGE_SIZE)}
-        total={rowsTotal}
-        limit={PAGE_SIZE}
-        isLoading={rowsQuery.isPending}
-        onPageChange={setPage}
-      />
-      {rowsTotal > PAGE_SIZE ? (
+      {rowsTotal > limit ? (
         <p className="text-sm text-muted">
-          Bảng chỉ hiện {PAGE_SIZE} dòng mỗi trang. Xác nhận sẽ ghi toàn bộ dòng hợp lệ của file.
+          Bảng chỉ hiện {limit} dòng mỗi trang. Xác nhận sẽ ghi toàn bộ dòng hợp lệ của file.
         </p>
       ) : null}
 

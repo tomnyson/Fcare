@@ -255,6 +255,48 @@ export interface Alert {
   resolvedBy?: StaffRef | null;
 }
 
+/** Trả về của `GET /alerts/:id/deletion-preview` — những gì sẽ mất khi ADMIN xoá. */
+export interface AlertDeletionPreview {
+  id: string;
+  level: number;
+  status: AlertStatus;
+  source: AlertSource;
+  student: { studentCode: string; fullName: string };
+  /** Nhật ký chăm sóc gắn cảnh báo này (xoá). */
+  careLogs: number;
+  /** Thông báo đã phát cho cảnh báo (xoá theo FK). */
+  notifications: number;
+  /** TOÀN BỘ nhận xét giảng viên của sinh viên (xoá). */
+  evaluations: number;
+  /** TOÀN BỘ tin trao đổi nội bộ về sinh viên (xoá). */
+  discussionMessages: number;
+  /** Bản phân tích AI từng gắn cảnh báo — chỉ mất liên kết, không xoá. */
+  analysisVersionsUnlinked: number;
+}
+
+/** Số lượng sẽ mất, dùng chung cho xoá đơn lẻ và xoá một lô. */
+export type AlertDeletionCounts = Pick<
+  AlertDeletionPreview,
+  'careLogs' | 'notifications' | 'evaluations' | 'discussionMessages' | 'analysisVersionsUnlinked'
+>;
+
+/** Trả về của `POST /alerts/bulk-deletion-preview` — tổng hợp cho một lô cảnh báo. */
+export interface AlertBulkDeletionPreview extends AlertDeletionCounts {
+  alerts: number;
+  /** Số sinh viên DISTINCT — nhận xét/trao đổi đếm theo sinh viên, không theo cảnh báo. */
+  students: number;
+  /** Số cảnh báo điểm danh tự động trong lô — có thể được phát lại sau khi xoá. */
+  autoAttendance: number;
+  items: Array<Pick<AlertDeletionPreview, 'id' | 'level' | 'status' | 'source' | 'student'>>;
+}
+
+/** Trả về của `POST /alerts/bulk-delete`. */
+export interface AlertBulkDeletionResult extends AlertDeletionCounts {
+  ids: string[];
+  alerts: number;
+  students: number;
+}
+
 export interface Notification {
   id: string;
   title: string;
@@ -657,4 +699,14 @@ export interface CareOverview {
   sa: { careLogs: number; caredStudents: number; staff: CareCountRow[] };
   /** Luôn đủ 4 mức, Khẩn cấp → Thấp; mỗi SV tính một lần ở mức cao nhất. */
   warnedByLevel: Array<{ level: number; students: number }>;
+}
+
+export interface AddStudentsResult {
+  sectionId: string;
+  sectionCode: string;
+  addedCount: number;
+  existingCount: number;
+  totalSubmitted: number;
+  added: Array<{ studentCode: string; fullName: string; isNewStudent: boolean }>;
+  existing: Array<{ studentCode: string; fullName: string }>;
 }

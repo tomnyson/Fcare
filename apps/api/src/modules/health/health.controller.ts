@@ -2,7 +2,7 @@ import { Controller, Get } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 
-export interface HealthStatus {
+interface HealthStatus {
   status: 'ok';
   uptimeSeconds: number;
   timestamp: string;

@@ -5,8 +5,8 @@ import { createHash } from 'node:crypto';
 export const ONESIGNAL_NOTIFICATIONS_URL =
   'https://api.onesignal.com/notifications';
 /** Chỉ cảnh báo Cao (3) và Khẩn cấp (4) mới push lên trình duyệt. */
-export const PUSH_MIN_ALERT_LEVEL = 3;
-export const PUSH_TIMEOUT_MS = 5_000;
+const PUSH_MIN_ALERT_LEVEL = 3;
+const PUSH_TIMEOUT_MS = 5_000;
 /** Giới hạn external_id của OneSignal cho một request. */
 const MAX_EXTERNAL_IDS_PER_REQUEST = 20_000;
 

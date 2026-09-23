@@ -4,9 +4,9 @@ import { Badge, Button } from '@fcare/ui-kit';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { DeleteAlertModal } from '../../../components/alerts/delete-alert-modal';
 import { DataTable, Td } from '../../../components/ui/data-table';
-import { Pagination } from '../../../components/ui/pagination';
 import { FormError, Label, Select, Textarea } from '../../../components/ui/form';
 import {
   FilterBar,
@@ -30,6 +30,13 @@ import {
   formatDateTime,
 } from '../../../lib/labels';
 import {
+  ALERT_BULK_DELETE_MAX,
+  ALERT_DELETE_INVALIDATION_KEYS,
+  alertRowActions,
+  toggleAllSelected,
+  toggleSelected,
+} from '../../../lib/alert-actions';
+import {
   buildAlertListQuery,
   clearAlertFiltersPatch,
   parseAlertFilters,
@@ -38,10 +45,8 @@ import type { Alert, Paginated, StudentFilterOptions } from '../../../lib/types'
 import { useCurrentTerm } from '../../../lib/use-current-term';
 import { pageCount, parsePageParam } from '../../../lib/pagination';
 
-const RESOLVER_ROLES = ['ADMIN', 'HEAD_OF_DEPT', 'TRAINING_OFFICER', 'SA_HEAD'];
-
-// Mỗi trang 20 cảnh báo — cùng cỡ với trang Sinh viên; cũng là số hàng skeleton.
-const PAGE_SIZE = 20;
+// Mỗi trang 10 cảnh báo — cùng cỡ với trang Sinh viên; cũng là số hàng skeleton.
+const PAGE_SIZE = 10;
 
 // Danh mục kỳ/lớp/ngành/GV/lớp học phần đổi theo học kỳ chứ không theo phút.
 // Dùng chung queryKey với trang /students để hai trang xài chung một lần gọi.
@@ -56,6 +61,10 @@ function AlertsPageContent() {
   const { data: currentTerm } = useCurrentTerm();
   const hasInitializedTermRef = useRef(false);
   const [resolving, setResolving] = useState<Alert | null>(null);
+  // Id đang chờ xoá trong modal (một dòng hoặc cả bộ chọn); rỗng = modal đóng.
+  const [deletingIds, setDeletingIds] = useState<string[]>([]);
+  // Bộ chọn xoá nhiều: giữ qua các trang để gom cảnh báo ở nhiều trang một lượt.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
   const [error, setError] = useState('');
 
   // URL là nguồn sự thật của bộ lọc — link "cảnh báo mức 4 của lớp X" gửi được.
@@ -64,28 +73,31 @@ function AlertsPageContent() {
   const submittedSearch = filters.search;
   const [search, setSearch] = useState(submittedSearch);
 
+  // Đổi bất kỳ bộ lọc nào → về trang 1, trừ khi patch tự đặt `page`.
+  const setFilters = useCallback(
+    (patch: Record<string, string | null>) => {
+      const next = new URLSearchParams(params.toString());
+      for (const [key, value] of Object.entries({ page: null, ...patch })) {
+        if (value) next.set(key, value);
+        else next.delete(key);
+      }
+      const query = next.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [params, pathname, router],
+  );
+
   useEffect(() => {
     if (!hasInitializedTermRef.current && !params.has('term') && currentTerm?.code) {
       hasInitializedTermRef.current = true;
       setFilters({ term: currentTerm.code });
     }
-  }, [currentTerm?.code, params]);
+  }, [currentTerm?.code, params, setFilters]);
 
   // Back/forward đổi `search` trên URL mà không đi qua ô input.
   useEffect(() => {
     setSearch(submittedSearch);
   }, [submittedSearch]);
-
-  // Đổi bất kỳ bộ lọc nào → về trang 1, trừ khi patch tự đặt `page`.
-  function setFilters(patch: Record<string, string | null>) {
-    const next = new URLSearchParams(params.toString());
-    for (const [key, value] of Object.entries({ page: null, ...patch })) {
-      if (value) next.set(key, value);
-      else next.delete(key);
-    }
-    const query = next.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  }
 
   // Cùng nguồn option với /students nên phạm vi bộ môn/lớp đang dạy đã được
   // API cắt sẵn (RULE 2) — không cần lọc lại phía web.
@@ -160,7 +172,9 @@ function AlertsPageContent() {
         'đã chọn',
     });
 
-  const listQuery = buildAlertListQuery(filters, PAGE_SIZE, page).toString();
+  const limitParam = parseInt(params.get('limit') ?? '10', 10);
+  const limit = [10, 20, 50, 100].includes(limitParam) ? limitParam : PAGE_SIZE;
+  const listQuery = buildAlertListQuery(filters, limit, page).toString();
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['alerts', listQuery],
     queryFn: () => apiFetch<Paginated<Alert>>(`/alerts?${listQuery}`),
@@ -187,7 +201,35 @@ function AlertsPageContent() {
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Có lỗi xảy ra.'),
   });
 
-  const canResolve = me?.user.roles.some((role) => RESOLVER_ROLES.includes(role)) ?? false;
+  // Xoá đơn lẻ hay cả lô đều đi một đường; xoá hết dòng của trang > 1 thì lùi
+  // một trang thay vì đứng ở trang trống.
+  const deleteMutation = useMutation({
+    mutationFn: (ids: string[]) =>
+      apiFetch('/alerts/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
+    onSuccess: async (_result, ids) => {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const id of ids) next.delete(id);
+        return next;
+      });
+      const remainingOnPage = (data?.items ?? []).filter((item) => !ids.includes(item.id));
+      if (page > 1 && remainingOnPage.length === 0) {
+        setFilters({ page: String(page - 1) });
+      }
+      await Promise.all(
+        ALERT_DELETE_INVALIDATION_KEYS.map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey: [...queryKey] }),
+        ),
+      );
+    },
+  });
+
+  const roles = me?.user.roles;
+  // Cột chọn chỉ có ý nghĩa với người được xoá (ADMIN) — trạng thái không ảnh hưởng quyền xoá.
+  const canBulkDelete = alertRowActions({ roles, status: 'OPEN' }).canDelete;
+  const pageIds = (data?.items ?? []).map((alert) => alert.id);
+  const pageAllSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+  const pageSomeSelected = pageIds.some((id) => selected.has(id));
 
   function onResolveSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -392,9 +434,22 @@ function AlertsPageContent() {
         ) : null}
       </FilterBar>
 
+      {canBulkDelete ? (
+        <BulkSelectionBar
+          selectedCount={selected.size}
+          pageCount={pageIds.length}
+          pageAllSelected={pageAllSelected}
+          pageSomeSelected={pageSomeSelected}
+          onTogglePage={() => setSelected((prev) => toggleAllSelected(prev, pageIds))}
+          onClear={() => setSelected(new Set())}
+          onDeleteSelected={() => setDeletingIds([...selected])}
+        />
+      ) : null}
+
       <DataTable
         fitViewport
         headers={[
+          ...(canBulkDelete ? ['Chọn'] : []),
           'Độ khẩn',
           'Sinh viên',
           'Lớp học phần',
@@ -406,12 +461,39 @@ function AlertsPageContent() {
         ]}
         isLoading={isLoading}
         isRefreshing={isFetching}
-        skeletonRows={8}
+        skeletonRows={limit}
         isEmpty={!isLoading && (data?.items.length ?? 0) === 0}
         emptyMessage="Không có cảnh báo nào khớp bộ lọc."
+        pagination={{
+          page,
+          totalPages: pageCount(data?.meta.total ?? 0, limit),
+          total: data?.meta.total ?? 0,
+          limit,
+          isLoading,
+          onPageChange: (next) => setFilters({ page: String(next) }),
+          onLimitChange: (next) => setFilters({ limit: String(next), page: '1' }),
+          label: 'Phân trang cảnh báo',
+        }}
       >
         {(data?.items ?? []).map((alert) => (
-          <tr key={alert.id} className="transition-colors hover:bg-fpt-orange-50/40">
+          <tr
+            key={alert.id}
+            className={`transition-colors hover:bg-fpt-orange-50/40 ${
+              selected.has(alert.id) ? 'bg-danger/5' : ''
+            }`}
+            aria-selected={canBulkDelete ? selected.has(alert.id) : undefined}
+          >
+            {canBulkDelete ? (
+              <Td>
+                <input
+                  type="checkbox"
+                  aria-label={`Chọn cảnh báo của ${alert.student?.fullName ?? 'sinh viên'}`}
+                  checked={selected.has(alert.id)}
+                  onChange={() => setSelected((prev) => toggleSelected(prev, alert.id))}
+                  className="size-4 accent-danger"
+                />
+              </Td>
+            ) : null}
             <Td>
               <Badge
                 tone={ALERT_LEVEL_TONES[alert.level] ?? 'info'}
@@ -481,40 +563,22 @@ function AlertsPageContent() {
               </Badge>
             </Td>
             <Td>
-              {canResolve && alert.status !== 'RESOLVED' ? (
-                <div className="flex gap-2">
-                  {alert.status === 'OPEN' ? (
-                    <button
-                      type="button"
-                      onClick={() => acknowledgeMutation.mutate(alert.id)}
-                      className="text-xs font-semibold text-fpt-blue hover:underline"
-                    >
-                      Tiếp nhận
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => setResolving(alert)}
-                    className="text-xs font-semibold text-success hover:underline"
-                  >
-                    Xử lý
-                  </button>
-                </div>
-              ) : (
-                <span className="text-xs text-muted">—</span>
-              )}
+              <AlertRowActionsCell
+                actions={alertRowActions({ roles, status: alert.status })}
+                onAcknowledge={() => acknowledgeMutation.mutate(alert.id)}
+                onResolve={() => setResolving(alert)}
+                onDelete={() => setDeletingIds([alert.id])}
+              />
             </Td>
           </tr>
         ))}
       </DataTable>
 
-      <Pagination
-        page={page}
-        totalPages={pageCount(data?.meta.total ?? 0, PAGE_SIZE)}
-        total={data?.meta.total ?? 0}
-        limit={PAGE_SIZE}
-        isLoading={isLoading}
-        onPageChange={(next) => setFilters({ page: String(next) })}
+      <DeleteAlertModal
+        ids={deletingIds}
+        open={deletingIds.length > 0}
+        onClose={() => setDeletingIds([])}
+        onConfirmDelete={(ids) => deleteMutation.mutateAsync(ids).then(() => undefined)}
       />
 
       <Modal
@@ -545,6 +609,126 @@ function AlertsPageContent() {
         </form>
       </Modal>
     </>
+  );
+}
+
+/**
+ * Thanh chọn nhiều nằm ngay trên bảng: ô "chọn cả trang" thay cho checkbox ở
+ * tiêu đề cột (DataTable chỉ nhận tiêu đề chữ), đếm đã chọn qua các trang và
+ * nút xoá đỏ chỉ sáng khi có lựa chọn.
+ */
+function BulkSelectionBar({
+  selectedCount,
+  pageCount,
+  pageAllSelected,
+  pageSomeSelected,
+  onTogglePage,
+  onClear,
+  onDeleteSelected,
+}: {
+  selectedCount: number;
+  pageCount: number;
+  pageAllSelected: boolean;
+  pageSomeSelected: boolean;
+  onTogglePage: () => void;
+  onClear: () => void;
+  onDeleteSelected: () => void;
+}) {
+  const hasSelection = selectedCount > 0;
+  return (
+    <div
+      role="toolbar"
+      aria-label="Chọn nhiều cảnh báo"
+      className={`mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[var(--radius-card)] border px-4 py-2.5 text-sm transition-colors ${
+        hasSelection ? 'border-danger/40 bg-danger/5' : 'border-border bg-white'
+      }`}
+    >
+      <label className="flex items-center gap-2 font-semibold text-ink">
+        <input
+          type="checkbox"
+          checked={pageAllSelected}
+          ref={(el) => {
+            if (el) el.indeterminate = pageSomeSelected && !pageAllSelected;
+          }}
+          disabled={pageCount === 0}
+          onChange={onTogglePage}
+          className="size-4 accent-danger"
+        />
+        Chọn cả trang
+        <span className="font-normal text-muted">({pageCount})</span>
+      </label>
+
+      <span className={hasSelection ? 'font-semibold text-danger' : 'text-muted'} aria-live="polite">
+        {hasSelection
+          ? `Đã chọn ${selectedCount}${selectedCount >= ALERT_BULK_DELETE_MAX ? ` (tối đa ${ALERT_BULK_DELETE_MAX} một lượt)` : ''}`
+          : 'Chưa chọn cảnh báo nào'}
+      </span>
+
+      <div className="ml-auto flex items-center gap-2">
+        {hasSelection ? (
+          <Button type="button" variant="ghost" className="h-8 px-2 text-xs" onClick={onClear}>
+            Bỏ chọn
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          variant="danger"
+          className="h-8 px-3 text-xs"
+          disabled={!hasSelection}
+          onClick={onDeleteSelected}
+        >
+          Xoá đã chọn{hasSelection ? ` (${selectedCount})` : ''}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Cột THAO TÁC: quyền đã tính sẵn ở `alertRowActions` — ở đây chỉ vẽ nút. */
+function AlertRowActionsCell({
+  actions,
+  onAcknowledge,
+  onResolve,
+  onDelete,
+}: {
+  actions: ReturnType<typeof alertRowActions>;
+  onAcknowledge: () => void;
+  onResolve: () => void;
+  onDelete: () => void;
+}) {
+  if (!actions.canAcknowledge && !actions.canResolve && !actions.canDelete) {
+    return <span className="text-xs text-muted">—</span>;
+  }
+  return (
+    <div className="flex gap-3">
+      {actions.canAcknowledge ? (
+        <button
+          type="button"
+          onClick={onAcknowledge}
+          className="text-xs font-semibold text-fpt-blue hover:underline"
+        >
+          Tiếp nhận
+        </button>
+      ) : null}
+      {actions.canResolve ? (
+        <button
+          type="button"
+          onClick={onResolve}
+          className="text-xs font-semibold text-success hover:underline"
+        >
+          Xử lý
+        </button>
+      ) : null}
+      {actions.canDelete ? (
+        <button
+          type="button"
+          onClick={onDelete}
+          className="text-xs font-semibold text-danger hover:underline"
+        >
+          Xoá
+        </button>
+      ) : null}
+    </div>
   );
 }
 

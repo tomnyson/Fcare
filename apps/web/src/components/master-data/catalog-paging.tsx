@@ -5,8 +5,8 @@ import { Pagination } from '../ui/pagination';
 import { Input, Label } from '../ui/form';
 import { usePagedList } from '../../lib/use-paged-list';
 
-/** Số dòng mỗi trang cho các bảng danh mục (môn học ~450, lớp học phần ~400 dòng). */
-export const CATALOG_PAGE_SIZE = 20;
+/** Số dòng mỗi trang mặc định cho các bảng danh mục (mặc định 10 dòng/trang). */
+export const CATALOG_PAGE_SIZE = 10;
 
 /**
  * Tìm kiếm + cắt trang phía web cho bảng danh mục: API vẫn trả nguyên mảng
@@ -76,8 +76,17 @@ interface CatalogPaginationProps {
   total: number;
   isLoading: boolean;
   onPageChange: (page: number) => void;
+  limit?: number;
+  onLimitChange?: (limit: number) => void;
+  position?: 'top' | 'bottom' | 'both';
 }
 
 export function CatalogPagination(props: CatalogPaginationProps) {
-  return <Pagination {...props} limit={CATALOG_PAGE_SIZE} />;
+  return (
+    <Pagination
+      {...props}
+      limit={props.limit ?? CATALOG_PAGE_SIZE}
+      position={props.position ?? 'both'}
+    />
+  );
 }

@@ -263,17 +263,30 @@ export class PgRunnerService {
     return new Promise((resolve, reject) => {
       execFile(pgRestore, args, { env }, (error, _stdout, stderr) => {
         // Trong PostgreSQL: pg_restore trả về mã 1 khi có cảnh báo không nghiêm trọng
-        // (chẳng hạn drop table không tồn tại). Chỉ coi là lỗi khi có mã > 1.
-        if (error && typeof error.code === 'number' && error.code > 1) {
-          this.logger.error(
-            `Lỗi nghiêm trọng khi chạy pg_restore: ${stderr || error.message}`,
-          );
-          return reject(
-            new InternalServerErrorException(
-              `Quá trình phục hồi thất bại: ${stderr || error.message}`,
-            ),
-          );
+        // (chẳng hạn tham số transaction_timeout chưa được hỗ trợ trên server PG cũ hơn client).
+        // Tuy nhiên, nếu có lỗi SQL nghiêm trọng (ERROR: khác với transaction_timeout) hoặc code > 1, ném lỗi ngay.
+        const isHarmlessWarning =
+          stderr &&
+          stderr.includes('transaction_timeout') &&
+          !stderr.replace(/.*transaction_timeout.*/g, '').includes('ERROR:');
+
+        if (error) {
+          const isRealError =
+            (typeof error.code === 'number' && error.code > 1) ||
+            (!isHarmlessWarning && stderr && stderr.includes('ERROR:'));
+
+          if (isRealError) {
+            this.logger.error(
+              `Lỗi thực thi khi chạy pg_restore: ${stderr || error.message}`,
+            );
+            return reject(
+              new InternalServerErrorException(
+                `Quá trình phục hồi thất bại: ${stderr || error.message}`,
+              ),
+            );
+          }
         }
+
         if (stderr) {
           this.logger.warn(`Thông điệp từ pg_restore: ${stderr}`);
         }
