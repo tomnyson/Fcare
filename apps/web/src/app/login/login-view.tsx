@@ -7,7 +7,8 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { FormError, Input, Label } from '../../components/ui/form';
 import { BrandMark } from '../../components/ui/brand-mark';
 import { apiFetch, ApiError, probeSession } from '../../lib/api';
-import { recaptcha } from '../../lib/recaptcha';
+import { googleButtonOptions } from '../../lib/google-button';
+import { recaptcha, whenLaidOut } from '../../lib/recaptcha';
 import { RecaptchaCheckbox } from '../../components/auth/recaptcha-checkbox';
 import type { LoginResult } from '../../lib/types';
 
@@ -69,6 +70,7 @@ export function LoginView({ checkSession, recaptchaEnabled = recaptcha.enabled }
   useEffect(() => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) return;
+    let stopLayout: () => void = () => {};
 
     interface GoogleGsiWindow {
       google?: {
@@ -82,10 +84,10 @@ export function LoginView({ checkSession, recaptchaEnabled = recaptcha.enabled }
     }
 
     function initGoogle() {
-      const google = (window as unknown as GoogleGsiWindow).google;
-      if (!google?.accounts?.id) return;
+      const gsi = (window as unknown as GoogleGsiWindow).google?.accounts?.id;
+      if (!gsi) return;
       try {
-        google.accounts.id.initialize({
+        gsi.initialize({
           client_id: clientId,
           callback: (response: { credential: string }) => {
             void onGoogleCredentialRef.current(response.credential);
@@ -94,16 +96,20 @@ export function LoginView({ checkSession, recaptchaEnabled = recaptcha.enabled }
           cancel_on_tap_outside: true,
         });
 
-        if (googleBtnRef.current) {
-          googleBtnRef.current.innerHTML = '';
-          google.accounts.id.renderButton(googleBtnRef.current, {
-            type: 'standard',
-            theme: 'outline',
-            size: 'large',
-            text: 'continue_with',
-            shape: 'rectangular',
-            width: 360,
-            logo_alignment: 'left',
+        const parent = googleBtnRef.current;
+        if (parent) {
+          parent.innerHTML = '';
+          // Google vẽ nút cố định theo px; đo khung khi form đã hiện (form bị
+          // `hidden` lúc kiểm tra phiên) để nút không kéo form tràn màn hình hẹp.
+          stopLayout = whenLaidOut(parent, (availableWidth) => {
+            gsi.renderButton(parent, {
+              type: 'standard',
+              theme: 'outline',
+              size: 'large',
+              shape: 'rectangular',
+              logo_alignment: 'left',
+              ...googleButtonOptions(availableWidth),
+            });
           });
         }
         setGoogleReady(true);
@@ -114,7 +120,7 @@ export function LoginView({ checkSession, recaptchaEnabled = recaptcha.enabled }
 
     if ((window as unknown as GoogleGsiWindow).google?.accounts?.id) {
       initGoogle();
-      return;
+      return () => stopLayout();
     }
 
     const existingScript = document.getElementById('google-gsi-client');
@@ -122,6 +128,7 @@ export function LoginView({ checkSession, recaptchaEnabled = recaptcha.enabled }
       existingScript.addEventListener('load', initGoogle);
       return () => {
         existingScript.removeEventListener('load', initGoogle);
+        stopLayout();
       };
     }
 
@@ -131,6 +138,7 @@ export function LoginView({ checkSession, recaptchaEnabled = recaptcha.enabled }
     script.async = true;
     script.onload = initGoogle;
     document.head.appendChild(script);
+    return () => stopLayout();
   }, []);
 
   async function onGoogleCredential(credential: string) {
@@ -214,8 +222,9 @@ export function LoginView({ checkSession, recaptchaEnabled = recaptcha.enabled }
     }
   }
 
+  // grid-cols-1 = minmax(0,1fr): cột không nở theo min-content của widget bên thứ ba.
   return (
-    <main className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
+    <main className="grid min-h-screen grid-cols-1 lg:grid-cols-[1.1fr_1fr]">
       {/* Panel thương hiệu */}
       <section className="relative hidden flex-col justify-between overflow-hidden bg-fpt-blue-900 p-12 text-white lg:flex">
         <div
@@ -327,7 +336,7 @@ export function LoginView({ checkSession, recaptchaEnabled = recaptcha.enabled }
         <form
           hidden={checking || linkingChallenge !== null}
           onSubmit={onSubmit}
-          className="w-full max-w-sm space-y-5"
+          className="w-full min-w-0 max-w-sm space-y-5"
           noValidate
         >
           <div>
@@ -380,7 +389,7 @@ export function LoginView({ checkSession, recaptchaEnabled = recaptcha.enabled }
             <span className="relative bg-surface px-3">hoặc</span>
           </div>
 
-          <div ref={googleBtnRef} className="flex min-h-[44px] justify-center" />
+          <div ref={googleBtnRef} className="flex min-h-[44px] w-full justify-center" />
 
           {!googleReady ? (
             <Button type="button" variant="secondary" className="w-full" disabled>

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createRecaptchaClient,
-  isLocalhostDomain,
   RECAPTCHA_NORMAL_WIDTH,
   RecaptchaUnavailableError,
+  whenLaidOut,
 } from './recaptcha';
 
 function fakeGrecaptcha() {
@@ -99,44 +99,71 @@ describe('createRecaptchaClient (v2 checkbox)', () => {
     expect(() => notLoaded.reset(7)).not.toThrow();
   });
 
-  it('tự động tắt khi chạy trên tên miền localhost / 127.0.0.1', async () => {
-    const loadScript = vi.fn();
-    const grecaptcha = fakeGrecaptcha();
-    const client = createRecaptchaClient({
-      siteKey: 'k',
-      loadScript,
-      getGrecaptcha: () => grecaptcha,
-      isLocalhost: () => true,
-    });
-
-    expect(client.enabled).toBe(false);
-    await expect(client.mount({} as HTMLElement, 400, handlers)).resolves.toBeNull();
-    expect(loadScript).not.toHaveBeenCalled();
+  it('bật/tắt CHỈ theo site key — không có ngoại lệ theo tên miền (localhost hay proxy nội bộ)', () => {
+    // Từng tự tắt khi hostname là localhost: sau nginx, Next thấy Host=127.0.0.1
+    // nên production cũng mất ô tick trong khi API vẫn đòi token.
+    const on = createRecaptchaClient({ siteKey: 'k', loadScript: vi.fn(), getGrecaptcha: () => undefined });
+    const off = createRecaptchaClient({ siteKey: '', loadScript: vi.fn(), getGrecaptcha: () => undefined });
+    expect(on.enabled).toBe(true);
+    expect(off.enabled).toBe(false);
   });
 });
 
-describe('isLocalhostDomain', () => {
-  it('nhận diện đúng các định dạng localhost khác nhau', () => {
-    expect(isLocalhostDomain('localhost')).toBe(true);
-    expect(isLocalhostDomain('localhost:3000')).toBe(true);
-    expect(isLocalhostDomain('127.0.0.1')).toBe(true);
-    expect(isLocalhostDomain('127.0.0.1:3000')).toBe(true);
-    expect(isLocalhostDomain('::1')).toBe(true);
-    expect(isLocalhostDomain('[::1]:3000')).toBe(true);
-    expect(isLocalhostDomain('http://localhost:3000')).toBe(true);
-    expect(isLocalhostDomain('https://127.0.0.1:8080')).toBe(true);
+describe('whenLaidOut — chỉ đo bề rộng khi phần tử đã hiện', () => {
+  type Callback = () => void;
+  function fakeResizeObserver() {
+    const instances: { cb: Callback; observed: unknown[]; disconnect: ReturnType<typeof vi.fn> }[] =
+      [];
+    class RO {
+      observed: unknown[] = [];
+      disconnect = vi.fn();
+      constructor(public cb: Callback) {
+        instances.push(this);
+      }
+      observe(el: unknown) {
+        this.observed.push(el);
+      }
+    }
+    return { RO: RO as unknown as typeof ResizeObserver, instances };
+  }
+
+  it('đã hiện (clientWidth > 0) → gọi ngay, không cần observer', () => {
+    const { RO, instances } = fakeResizeObserver();
+    const onWidth = vi.fn();
+    whenLaidOut({ clientWidth: 384 } as HTMLElement, onWidth, RO);
+    expect(onWidth).toHaveBeenCalledWith(384);
+    expect(instances).toHaveLength(0);
   });
 
-  it('trả về false cho tên miền production hoặc staging', () => {
-    expect(isLocalhostDomain('fcare.fpt.edu.vn')).toBe(false);
-    expect(isLocalhostDomain('fcare.fpt.edu.vn:443')).toBe(false);
-    expect(isLocalhostDomain('https://fcare.fpt.edu.vn')).toBe(false);
-    expect(isLocalhostDomain('example.com')).toBe(false);
+  it('đang ẩn (clientWidth = 0, form hidden lúc kiểm tra phiên) → đợi tới khi hiện rồi mới đo', () => {
+    const { RO, instances } = fakeResizeObserver();
+    const el = { clientWidth: 0 } as { clientWidth: number };
+    const onWidth = vi.fn();
+    whenLaidOut(el as HTMLElement, onWidth, RO);
+    expect(onWidth).not.toHaveBeenCalled();
+    expect(instances[0]?.observed).toEqual([el]);
+
+    instances[0]!.cb(); // vẫn 0 → chưa đo
+    expect(onWidth).not.toHaveBeenCalled();
+
+    el.clientWidth = 384;
+    instances[0]!.cb();
+    expect(onWidth).toHaveBeenCalledTimes(1);
+    expect(onWidth).toHaveBeenCalledWith(384);
+    expect(instances[0]!.disconnect).toHaveBeenCalled();
   });
 
-  it('xử lý chuỗi rỗng hoặc undefined khi không có window', () => {
-    expect(isLocalhostDomain('')).toBe(false);
-    expect(isLocalhostDomain(null)).toBe(false);
-    expect(isLocalhostDomain(undefined)).toBe(false);
+  it('huỷ trước khi hiện → ngắt observer, không gọi lại', () => {
+    const { RO, instances } = fakeResizeObserver();
+    const onWidth = vi.fn();
+    const stop = whenLaidOut({ clientWidth: 0 } as HTMLElement, onWidth, RO);
+    stop();
+    expect(instances[0]!.disconnect).toHaveBeenCalled();
+  });
+
+  it('trình duyệt không có ResizeObserver → coi như đủ chỗ cho ô tick chuẩn', () => {
+    const onWidth = vi.fn();
+    whenLaidOut({ clientWidth: 0 } as HTMLElement, onWidth, undefined);
+    expect(onWidth).toHaveBeenCalledWith(RECAPTCHA_NORMAL_WIDTH);
   });
 });

@@ -87,16 +87,14 @@ describe('RecaptchaService (v2 checkbox)', () => {
     );
   });
 
-  it('bỏ qua reCAPTCHA khi gọi từ domain localhost / 127.0.0.1 (kể cả không có token)', async () => {
-    await expect(
-      makeService().verifyLogin(undefined, 'http://localhost:3000'),
-    ).resolves.toBeUndefined();
-    await expect(
-      makeService().verifyLogin(undefined, 'http://127.0.0.1:3000'),
-    ).resolves.toBeUndefined();
-    await expect(
-      makeService().verifyLogin(undefined, 'localhost:3001'),
-    ).resolves.toBeUndefined();
+  it('KHÔNG có ngoại lệ theo tên miền: header Origin/Host do client tự khai, không được dùng để bỏ qua', async () => {
+    // Trước đây verifyLogin nhận thêm clientHost và bỏ qua khi là localhost —
+    // kẻ tấn công chỉ cần gửi `Origin: http://localhost:3000` là dò mật khẩu
+    // không cần captcha. Chữ ký giờ chỉ còn token; bật/tắt chỉ theo secret.
+    expect(makeService().verifyLogin.length).toBe(1);
+    await expect(codeOf(makeService().verifyLogin(undefined))).resolves.toBe(
+      'RECAPTCHA_REQUIRED',
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
