@@ -9,6 +9,7 @@ import {
   statsSectionScope,
   statsStudentScope,
   studentScope,
+  studentScopeWithin,
 } from './dept-scope';
 
 function makeUser(overrides: Partial<AuthUser>): AuthUser {
@@ -251,5 +252,49 @@ describe('statsStudentScope / statsSectionScope — thống kê của giảng vi
       expect(statsStudentScope(user)).toEqual(studentScope(user));
       expect(statsSectionScope(user)).toEqual(sectionScope(user));
     }
+  });
+});
+
+describe('studentScopeWithin — "lớp mình dạy" gắn cùng điều kiện đăng ký', () => {
+  const inTerm = { classSection: { term: 'FA26' } };
+
+  it('người xem toàn trường: không thêm giới hạn', () => {
+    const user = makeUser({ roles: ['TRAINING_OFFICER'], departmentId: null });
+    expect(studentScopeWithin(user, inTerm)).toEqual({});
+  });
+
+  it('giảng viên: chỉ SV của lớp MÌNH dạy TRONG kỳ — không lọt SV kỳ trước đang học lớp người khác', () => {
+    const user = makeUser({ roles: ['LECTURER'] });
+    expect(studentScopeWithin(user, inTerm)).toEqual({
+      AND: [
+        {
+          enrollments: {
+            some: {
+              AND: [inTerm, { classSection: { lecturerId: 'staff-1' } }],
+            },
+          },
+        },
+      ],
+    });
+  });
+
+  it('trưởng bộ môn: SV bộ môn mình, hoặc SV lớp mình dạy trong cùng điều kiện', () => {
+    const user = makeUser({ roles: ['HEAD_OF_DEPT'] });
+    expect(studentScopeWithin(user, inTerm)).toEqual({
+      AND: [
+        {
+          OR: [
+            { departmentId: 'dept-se' },
+            {
+              enrollments: {
+                some: {
+                  AND: [inTerm, { classSection: { lecturerId: 'staff-1' } }],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    });
   });
 });

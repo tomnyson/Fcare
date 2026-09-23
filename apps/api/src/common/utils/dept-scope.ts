@@ -168,6 +168,35 @@ export function statsStudentScope(user: AuthUser): Prisma.StudentWhereInput {
   };
 }
 
+/**
+ * Như `studentScope` nhưng nhánh "lớp mình dạy" phải khớp CÙNG một lượt đăng ký
+ * với `enrollment` (vd. `{ classSection: { term } }`). Ghép `studentScope` với
+ * một `enrollments.some` riêng thì hai điều kiện rời nhau: SV giảng viên dạy kỳ
+ * trước, nay học lớp người khác trong kỳ này, vẫn bị đếm vào "SV kỳ này".
+ * Nhánh bộ môn của TBM không đổi — người gọi tự thêm điều kiện đăng ký nếu cần.
+ */
+export function studentScopeWithin(
+  user: AuthUser,
+  enrollment: Prisma.EnrollmentWhereInput,
+): Prisma.StudentWhereInput {
+  if (!isDeptScoped(user)) {
+    return {};
+  }
+  const taught: Prisma.StudentWhereInput = {
+    enrollments: {
+      some: { AND: [enrollment, { classSection: { lecturerId: user.id } }] },
+    },
+  };
+  if (!seesWholeDepartment(user)) {
+    return { AND: [taught] };
+  }
+  return {
+    AND: [
+      { OR: [{ departmentId: user.departmentId ?? NO_DEPARTMENT }, taught] },
+    ],
+  };
+}
+
 /** Như `statsStudentScope` cho lớp học phần: lớp mình dạy của môn thuộc bộ môn mình. */
 export function statsSectionScope(
   user: AuthUser,

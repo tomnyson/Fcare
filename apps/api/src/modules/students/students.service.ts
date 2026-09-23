@@ -13,6 +13,7 @@ import {
   sectionScope,
   seesWholeDepartment,
   studentScope,
+  studentScopeWithin,
 } from '../../common/utils/dept-scope';
 import { isPrismaError } from '../../common/utils/prisma-error';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -129,7 +130,11 @@ export class StudentsService {
           ? { majorId: query.majorId }
           : {}),
       // Scope đặt SAU filter query để luôn thắng với người dùng bị giới hạn.
-      ...studentScope(user),
+      // Có lọc kỳ/GV/lớp thì "lớp mình dạy" phải là CHÍNH lượt đăng ký đó —
+      // không thì SV giảng viên dạy kỳ trước, kỳ này học lớp khác, vẫn hiện.
+      ...(hasEnrollmentFilter
+        ? studentScopeWithin(user, enrollmentWhere)
+        : studentScope(user)),
       ...(query.classCode ? { classCode: query.classCode } : {}),
       // Gộp vào CÙNG một `some` để "kỳ SU25 + thầy A" nghĩa là học phần kỳ
       // SU25 do thầy A dạy, chứ không phải hai lần đăng ký rời nhau.

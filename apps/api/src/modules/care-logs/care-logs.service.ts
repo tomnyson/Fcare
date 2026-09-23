@@ -23,6 +23,24 @@ const alertSummarySelect = {
   classSection: { select: { code: true } },
 } as const;
 
+/** Đủ để xoá một lượt và biết có phải lượt "GV đứng lớp đã chăm sóc" không. */
+const deletableSelect = {
+  id: true,
+  staffId: true,
+  studentId: true,
+  alertId: true,
+  alert: {
+    select: {
+      ownerCaredAt: true,
+      classSection: { select: { lecturerId: true } },
+    },
+  },
+} as const;
+
+type DeletableCareLog = Prisma.CareLogGetPayload<{
+  select: typeof deletableSelect;
+}>;
+
 interface LinkedAlert {
   id: string;
   studentId: string;
@@ -103,6 +121,59 @@ export class CareLogsService {
 
     this.sendEmail(careLog.id, user.id);
     return careLog;
+  }
+
+  /**
+   * Xoá một lượt chăm sóc (CASL `delete CareLog` — chỉ ADMIN). Nếu đó là lượt
+   * cuối cùng của GV đứng lớp gắn với cảnh báo thì bỏ `ownerCaredAt` để banner
+   * "cần chăm sóc" hiện lại, không để số "đã chăm sóc" khai khống.
+   */
+  async remove(user: AuthUser, id: string) {
+    const log = await this.prisma.careLog.findFirst({
+      where: { id, student: studentScope(user) },
+      select: deletableSelect,
+    });
+    if (!log) {
+      throw new NotFoundException('Không tìm thấy lượt chăm sóc.');
+    }
+
+    const ownerCareReset = await this.prisma.$transaction(async (tx) => {
+      await tx.careLog.delete({ where: { id } });
+      return this.resetOwnerCaredIfLast(tx, log);
+    });
+
+    // Không chép nội dung vào audit — nội dung tự do có thể lỡ chứa PII.
+    await this.auditService.log({
+      staffId: user.id,
+      action: 'CARE_LOG_DELETED',
+      entity: 'CareLog',
+      entityId: id,
+      metadata: {
+        careStaffId: log.staffId,
+        studentId: log.studentId,
+        alertId: log.alertId,
+        ownerCareReset,
+      },
+    });
+    return { id, ownerCareReset };
+  }
+
+  private async resetOwnerCaredIfLast(
+    tx: Prisma.TransactionClient,
+    log: DeletableCareLog,
+  ): Promise<boolean> {
+    const { alert, alertId } = log;
+    if (!alert || !alertId || alert.ownerCaredAt === null) return false;
+    if (alert.classSection?.lecturerId !== log.staffId) return false;
+    const remaining = await tx.careLog.count({
+      where: { alertId, staffId: log.staffId },
+    });
+    if (remaining > 0) return false;
+    await tx.alert.update({
+      where: { id: alertId },
+      data: { ownerCaredAt: null },
+    });
+    return true;
   }
 
   private async requireLinkedAlert(

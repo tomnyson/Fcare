@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { apiFetch } from '../../lib/api';
+import { careStaffLogsHref } from '../../lib/care-staff-logs';
 import { ALERT_LEVEL_LABELS } from '../../lib/labels';
 import { buildStatisticsQuery } from '../../lib/statistics-view';
 import type { CareCountRow, CareDepartmentRow, CareOverview } from '../../lib/types';
@@ -73,16 +74,33 @@ function CareFigures({ careLogs, caredStudents }: { careLogs: number; caredStude
   );
 }
 
-function StaffList({ rows, emptyText }: { rows: CareCountRow[]; emptyText: string }) {
+interface StaffListProps {
+  rows: CareCountRow[];
+  emptyText: string;
+  term: string;
+}
+
+/** Mỗi người là một link sang trang nhật ký chăm sóc của họ trong cùng kỳ. */
+function StaffList({ rows, emptyText, term }: StaffListProps) {
   if (rows.length === 0) return <p className="px-4 py-3 text-sm text-muted">{emptyText}</p>;
   return (
     <ol className="divide-y divide-border">
       {rows.map((person) => (
-        <li key={person.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-          <span className="min-w-0 truncate text-sm text-ink">
-            {person.fullName} <span className="text-xs text-muted">· {person.staffCode}</span>
-          </span>
-          <CareFigures careLogs={person.careLogs} caredStudents={person.caredStudents} />
+        <li key={person.id}>
+          <Link
+            href={careStaffLogsHref(person.id, term)}
+            className="group flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-fpt-orange-50/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-fpt-blue"
+          >
+            <span className="min-w-0 truncate text-sm text-ink group-hover:text-fpt-orange-600 group-hover:underline group-hover:decoration-fpt-orange group-hover:underline-offset-4">
+              {person.fullName} <span className="text-xs text-muted">· {person.staffCode}</span>
+            </span>
+            <span className="flex shrink-0 items-center gap-2">
+              <CareFigures careLogs={person.careLogs} caredStudents={person.caredStudents} />
+              <span aria-hidden className="text-muted group-hover:text-fpt-orange-600">
+                →
+              </span>
+            </span>
+          </Link>
         </li>
       ))}
     </ol>
@@ -90,7 +108,15 @@ function StaffList({ rows, emptyText }: { rows: CareCountRow[]; emptyText: strin
 }
 
 /** Một bộ môn: thanh tỷ lệ theo số SV được chăm sóc, bấm để xem thầy cô nào chăm sóc. */
-function DepartmentRow({ dept, maxStudents }: { dept: CareDepartmentRow; maxStudents: number }) {
+function DepartmentRow({
+  dept,
+  maxStudents,
+  term,
+}: {
+  dept: CareDepartmentRow;
+  maxStudents: number;
+  term: string;
+}) {
   const ratio = maxStudents > 0 ? dept.caredStudents / maxStudents : 0;
   return (
     <details className="group border-b border-border last:border-b-0">
@@ -117,6 +143,7 @@ function DepartmentRow({ dept, maxStudents }: { dept: CareDepartmentRow; maxStud
       <div className="bg-surface/60">
         <StaffList
           rows={dept.lecturers}
+          term={term}
           emptyText="Chưa có giảng viên nào ghi nhật ký chăm sóc trong kỳ."
         />
       </div>
@@ -176,7 +203,8 @@ export function CareOverviewPanel({ term }: { term: string }) {
             Chăm sóc theo bộ môn
           </h2>
           <p className="mb-3 text-sm text-muted">
-            Tính theo bộ môn của người chăm sóc. Bấm vào bộ môn để xem thầy cô nào đã chăm sóc.
+            Tính theo bộ môn của người chăm sóc. Bấm vào bộ môn để xem thầy cô nào đã chăm sóc, bấm
+            tên để xem từng lượt.
           </p>
           <div className={CARD}>
             {data.departments.length === 0 ? (
@@ -185,7 +213,12 @@ export function CareOverviewPanel({ term }: { term: string }) {
               </p>
             ) : (
               data.departments.map((dept) => (
-                <DepartmentRow key={dept.id} dept={dept} maxStudents={maxStudents} />
+                <DepartmentRow
+                  key={dept.id}
+                  dept={dept}
+                  maxStudents={maxStudents}
+                  term={activeTerm}
+                />
               ))
             )}
           </div>
@@ -205,6 +238,7 @@ export function CareOverviewPanel({ term }: { term: string }) {
             </p>
             <StaffList
               rows={data.sa.staff}
+              term={activeTerm}
               emptyText="CTSV chưa ghi nhật ký chăm sóc nào trong kỳ."
             />
           </div>

@@ -188,3 +188,102 @@ describe('CareLogsService.list', () => {
     );
   });
 });
+
+describe('CareLogsService.remove — ADMIN xoá lượt chăm sóc', () => {
+  const admin: AuthUser = { ...owner, id: 'admin', roles: ['ADMIN'] };
+
+  function setupRemove(log: Record<string, unknown> | null, remaining = 0) {
+    const tx = {
+      careLog: {
+        delete: jest.fn().mockResolvedValue({}),
+        count: jest.fn().mockResolvedValue(remaining),
+      },
+      alert: { update: jest.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      careLog: { findFirst: jest.fn().mockResolvedValue(log) },
+      $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)),
+    };
+    const audit = { log: jest.fn().mockResolvedValue(undefined) };
+    const service = new CareLogsService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+    );
+    return { prisma, tx, audit, service };
+  }
+
+  const plainLog = {
+    id: 'log-1',
+    staffId: 'gv-binh',
+    studentId: 'sv-1',
+    alertId: null,
+    alert: null,
+  };
+  const ownerLog = {
+    id: 'log-2',
+    staffId: 'gv-chi',
+    studentId: 'sv-1',
+    alertId: 'alert-1',
+    alert: {
+      ownerCaredAt: new Date('2026-09-20T00:00:00.000Z'),
+      classSection: { lecturerId: 'gv-chi' },
+    },
+  };
+
+  it('không tìm thấy (hoặc ngoài phạm vi) → 404, không xoá gì', async () => {
+    const { service, prisma } = setupRemove(null);
+    await expect(service.remove(admin, 'log-x')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(prisma.careLog.findFirst).toHaveBeenCalledWith(
+      containing({ where: { id: 'log-x', student: {} } }),
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('xoá lượt thường + ghi audit CARE_LOG_DELETED (không chép nội dung)', async () => {
+    const { service, tx, audit } = setupRemove(plainLog);
+    const result = await service.remove(admin, 'log-1');
+    expect(tx.careLog.delete).toHaveBeenCalledWith({ where: { id: 'log-1' } });
+    expect(tx.alert.update).not.toHaveBeenCalled();
+    expect(audit.log).toHaveBeenCalledWith({
+      staffId: 'admin',
+      action: 'CARE_LOG_DELETED',
+      entity: 'CareLog',
+      entityId: 'log-1',
+      metadata: {
+        careStaffId: 'gv-binh',
+        studentId: 'sv-1',
+        alertId: null,
+        ownerCareReset: false,
+      },
+    });
+    expect(result).toEqual({ id: 'log-1', ownerCareReset: false });
+  });
+
+  it('xoá lượt DUY NHẤT của GV đứng lớp gắn cảnh báo → bỏ ownerCaredAt để banner hiện lại', async () => {
+    const { service, tx } = setupRemove(ownerLog, 0);
+    const result = await service.remove(admin, 'log-2');
+    expect(tx.careLog.count).toHaveBeenCalledWith({
+      where: { alertId: 'alert-1', staffId: 'gv-chi' },
+    });
+    expect(tx.alert.update).toHaveBeenCalledWith({
+      where: { id: 'alert-1' },
+      data: { ownerCaredAt: null },
+    });
+    expect(result.ownerCareReset).toBe(true);
+  });
+
+  it('GV đứng lớp còn lượt khác gắn cùng cảnh báo → giữ ownerCaredAt', async () => {
+    const { service, tx } = setupRemove(ownerLog, 1);
+    await service.remove(admin, 'log-2');
+    expect(tx.alert.update).not.toHaveBeenCalled();
+  });
+
+  it('lượt của GV khác gắn cảnh báo → không đụng ownerCaredAt', async () => {
+    const { service, tx } = setupRemove({ ...ownerLog, staffId: 'gv-binh' });
+    await service.remove(admin, 'log-2');
+    expect(tx.careLog.count).not.toHaveBeenCalled();
+    expect(tx.alert.update).not.toHaveBeenCalled();
+  });
+});

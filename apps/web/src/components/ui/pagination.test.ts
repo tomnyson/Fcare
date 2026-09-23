@@ -134,4 +134,39 @@ describe('Pagination Component', () => {
     const matches = html.match(/Trước/g);
     expect(matches?.length).toBe(2);
   });
+
+  it('ẩn hẳn khi chưa đủ mục cho trang nhỏ nhất (7 mục, 1 trang)', () => {
+    const html = renderToStaticMarkup(
+      h(Pagination, {
+        page: 1,
+        totalPages: 1,
+        total: 7,
+        limit: 10,
+        onPageChange: noop,
+        onLimitChange: noop,
+      }),
+    );
+    expect(html).toBe('');
+  });
+
+  it('bảng không đổi được số mục/trang: 1 trang là ẩn dù vượt 10 mục', () => {
+    const html = renderToStaticMarkup(
+      h(Pagination, { page: 1, totalPages: 1, total: 15, limit: 20, onPageChange: noop }),
+    );
+    expect(html).toBe('');
+  });
+
+  it('đang chọn 50 mục/trang với 30 mục: vẫn hiện để đổi lại số mục', () => {
+    const html = renderToStaticMarkup(
+      h(Pagination, {
+        page: 1,
+        totalPages: 1,
+        total: 30,
+        limit: 50,
+        onPageChange: noop,
+        onLimitChange: noop,
+      }),
+    );
+    expect(html).toContain('Số mục mỗi trang');
+  });
 });

@@ -1,7 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { AlertSource, AlertStatus, type Prisma } from '@prisma/client';
 import type { AuthUser } from '../../common/types/auth-user';
-import { statsStudentScope, studentScope } from '../../common/utils/dept-scope';
+import {
+  isDeptScoped,
+  statsStudentScope,
+  studentScope,
+  studentScopeWithin,
+} from '../../common/utils/dept-scope';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TermsService } from '../master-data/terms.service';
 
@@ -44,15 +49,22 @@ export class StatisticsService {
         studentsByStatus: [],
         openAlertsByLevel: [],
         attendancePending: 0,
+        teaching: null,
       };
     }
 
     const scope = statsStudentScope(user);
     const range = { gte: term.startDate, lte: term.endDate };
+    const enrolledInTerm = { classSection: { term: term.code } };
+    // "Tổng sinh viên" của giảng viên = SV thuộc MỌI lớp được phân công trong
+    // kỳ (kể cả môn bộ môn khác) để khớp các thẻ "Lớp tôi đang dạy" và trang
+    // Sinh viên — khác các thẻ cảnh báo/chăm sóc vẫn theo `statsStudentScope`.
+    // Lớp phải là lớp TRONG kỳ, không phải lớp kỳ trước của một SV nay học lớp
+    // người khác (xem `studentScopeWithin`).
     const studentsInTerm: Prisma.StudentWhereInput = {
       AND: [
-        scope,
-        { enrollments: { some: { classSection: { term: term.code } } } },
+        studentScopeWithin(user, enrolledInTerm),
+        { enrollments: { some: enrolledInTerm } },
       ],
     };
     const openAlertsInTerm: Prisma.AlertWhereInput[] = [
@@ -71,6 +83,7 @@ export class StatisticsService {
       careLogsInTerm,
       careLogsLast7Days,
       attendancePending,
+      teaching,
     ] = await Promise.all([
       this.prisma.student.count({ where: studentsInTerm }),
       this.prisma.student.groupBy({
@@ -98,6 +111,7 @@ export class StatisticsService {
         },
       }),
       this.countAttendancePending(user, current?.code ?? null),
+      this.countTeaching(user, term.code),
     ]);
 
     return {
@@ -115,7 +129,26 @@ export class StatisticsService {
         count: group._count._all,
       })),
       attendancePending,
+      teaching,
     };
+  }
+
+  /**
+   * Số lớp và lượt đăng ký (cộng sĩ số, một SV học 2 lớp tính 2) của lớp mình
+   * đứng trong kỳ — đối chiếu với thẻ "Lớp tôi đang dạy". Vai trò toàn trường
+   * không đứng lớp theo nghĩa này → `null`.
+   */
+  private async countTeaching(
+    user: AuthUser,
+    termCode: string,
+  ): Promise<{ sections: number; enrollments: number } | null> {
+    if (!isDeptScoped(user)) return null;
+    const mine = { lecturerId: user.id, term: termCode };
+    const [sections, enrollments] = await Promise.all([
+      this.prisma.classSection.count({ where: mine }),
+      this.prisma.enrollment.count({ where: { classSection: mine } }),
+    ]);
+    return { sections, enrollments };
   }
 
   private async findTerm(code: string): Promise<TermWindow> {
