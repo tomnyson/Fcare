@@ -53,7 +53,9 @@ function Fieldset({
   return (
     <fieldset className="space-y-4">
       <div>
-        <legend className="text-xs font-semibold tracking-wide text-muted uppercase">{legend}</legend>
+        <legend className="text-xs font-semibold tracking-wide text-muted uppercase">
+          {legend}
+        </legend>
         {hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
       </div>
       {children}
@@ -123,7 +125,10 @@ export function MailSettingsForm({ view, onValuesChange, onSaved }: MailSettings
         <FormError>{serverError}</FormError>
       </div>
 
-      <Fieldset legend="Máy chủ SMTP" hint="Chọn mẫu nhanh hoặc nhập tay. Mẫu chỉ điền máy chủ, cổng và TLS.">
+      <Fieldset
+        legend="Máy chủ SMTP"
+        hint="Chọn mẫu nhanh hoặc nhập tay. Mẫu chỉ điền máy chủ, cổng và TLS."
+      >
         <div className="flex flex-wrap gap-2" role="group" aria-label="Mẫu cấu hình nhanh">
           {MAIL_PRESETS.map((preset) => {
             const active = preset.key === activePreset;

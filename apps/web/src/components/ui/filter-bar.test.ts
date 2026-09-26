@@ -20,7 +20,7 @@ function grid() {
   return h(FilterGrid, { children: field });
 }
 
-function render(withSearchRow: boolean, activeCount?: number) {
+function render(withSearchRow: boolean, activeCount?: number, collapsible?: boolean) {
   const searchRow = h(FilterSearchRow, {
     key: 's',
     children: h(FilterSearchInput, { 'aria-label': 'Tìm' }),
@@ -28,7 +28,7 @@ function render(withSearchRow: boolean, activeCount?: number) {
   const gridWrapper = h('div', { key: 'g' }, grid());
   const children = withSearchRow ? [searchRow, gridWrapper] : [gridWrapper];
   return renderToStaticMarkup(
-    h(FilterBar, { label: 'Bộ lọc', onSubmit: noop, activeCount, children }),
+    h(FilterBar, { label: 'Bộ lọc', onSubmit: noop, activeCount, collapsible, children }),
   );
 }
 
@@ -75,5 +75,30 @@ describe('FilterBar — thu gọn bộ lọc trên điện thoại', () => {
   it('hiện số bộ lọc đang bật trên nút để biết đang lọc dù lưới đang ẩn', () => {
     expect(render(true, 3)).toContain('3 bộ lọc đang bật');
     expect(render(true, 0)).not.toContain('bộ lọc đang bật');
+  });
+});
+
+describe('FilterBar collapsible — ẩn lưới ô lọc ở MỌI cỡ màn hình (trang Cảnh báo)', () => {
+  it('mặc định lưới ẩn cả trên desktop, bảng chiếm tối đa chỗ', () => {
+    const gridTag = openingTag(render(true, 0, true), 'data-filter-grid="true"');
+    expect(gridTag).toMatch(/\shidden[\s"]|class="hidden\s/);
+    expect(gridTag).not.toContain('max-sm:hidden');
+  });
+
+  it('nút "Bộ lọc" hiện ở mọi cỡ màn hình, không còn sm:hidden', () => {
+    const html = render(true, 2, true);
+    const toggle = openingTag(html, 'data-filter-toggle="true"');
+    expect(toggle).not.toContain('sm:hidden');
+    expect(toggle).toContain('aria-expanded="false"');
+    expect(html).toContain('2 bộ lọc đang bật');
+  });
+
+  it('ô tìm kiếm luôn hiện, không bị thu gọn', () => {
+    const html = render(true, 0, true);
+    expect(openingTag(html, 'data-filter-search-row="true"')).not.toMatch(/\shidden[\s"]/);
+  });
+
+  it('không bật collapsible thì giữ hành vi cũ (chỉ thu gọn dưới sm)', () => {
+    expect(openingTag(render(true), 'data-filter-grid="true"')).toContain('max-sm:hidden');
   });
 });

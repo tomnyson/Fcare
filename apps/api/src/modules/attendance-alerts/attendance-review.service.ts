@@ -20,6 +20,7 @@ import {
   NotificationDispatchService,
   type EscalationJobData,
 } from '../alerts/notification-dispatch.service';
+import { mergedReason } from '../alerts/raise-decision';
 import {
   decideAction,
   type OpenAttendanceAlert,
@@ -51,6 +52,8 @@ interface OpenAlertRow extends OpenAttendanceAlert {
   id: string;
   studentId: string;
   classSectionId: string | null;
+  source: AlertSource;
+  reason: string;
 }
 
 const EMPTY_RESULT: AttendanceReviewResult = {
@@ -72,6 +75,27 @@ function levelLabel(level: number): string {
 
 function reasonFor(row: ReviewRow, term: string): string {
   return `Vắng ${row.absentSessions ?? 0} buổi tại lớp ${row.classSection.code} (học kỳ ${term}) — rà soát tự động sau import điểm danh`;
+}
+
+/**
+ * Cảnh báo điểm danh tự động thì thay lý do bằng số buổi mới; cảnh báo do
+ * giảng viên phát thì giữ lý do của thầy cô, chỉ nối thêm số buổi vắng.
+ */
+function nextReason(row: ReviewRow, existing: OpenAlertRow, term: string) {
+  return existing.source === AlertSource.AUTO_ATTENDANCE
+    ? reasonFor(row, term)
+    : mergedReason(existing.reason, reasonFor(row, term), new Date());
+}
+
+/** Dữ liệu cũ có thể có nhiều cảnh báo mở cùng lớp — lấy cái mức cao nhất. */
+function highestByKey(alerts: OpenAlertRow[]): Map<string, OpenAlertRow> {
+  return alerts.reduce((map, alert) => {
+    const key = `${alert.studentId}:${alert.classSectionId ?? ''}`;
+    const current = map.get(key);
+    return current && current.level >= alert.level
+      ? map
+      : new Map(map).set(key, alert);
+  }, new Map<string, OpenAlertRow>());
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -120,12 +144,7 @@ export class AttendanceReviewService {
       this.loadRows(term),
       this.loadOpenAlerts(term),
     ]);
-    const openByKey = new Map(
-      openAlerts.map((alert) => [
-        `${alert.studentId}:${alert.classSectionId ?? ''}`,
-        alert,
-      ]),
-    );
+    const openByKey = highestByKey(openAlerts);
 
     let result = EMPTY_RESULT;
     for (const row of rows) {
@@ -163,8 +182,9 @@ export class AttendanceReviewService {
 
   private loadOpenAlerts(term: string): Promise<OpenAlertRow[]> {
     return this.prisma.alert.findMany({
+      // Mọi nguồn: đã có cảnh báo mở (kể cả giảng viên phát tay) thì cập nhật
+      // cảnh báo đó thay vì tạo thêm — docs/plan-lert.md mục 1.
       where: {
-        source: AlertSource.AUTO_ATTENDANCE,
         term,
         status: { not: AlertStatus.RESOLVED },
       },
@@ -174,6 +194,8 @@ export class AttendanceReviewService {
         classSectionId: true,
         level: true,
         absentSessions: true,
+        source: true,
+        reason: true,
       },
     });
   }
@@ -194,7 +216,7 @@ export class AttendanceReviewService {
           where: { id: existing!.id },
           data: {
             absentSessions: row.absentSessions,
-            reason: reasonFor(row, term),
+            reason: nextReason(row, existing!, term),
           },
         });
         return { unchanged: 1 };
@@ -219,10 +241,9 @@ export class AttendanceReviewService {
   }
 
   /**
-   * Nâng cấp = đóng cảnh báo cũ + tạo cảnh báo mới (không update tại chỗ):
-   * unique (alertId, recipientId) của bảng thông báo khiến gửi lại trên cùng
-   * alert bị bỏ qua, còn cảnh báo mới thì reset `ownerCaredAt` — giảng viên
-   * đứng lớp phải chăm sóc lại (quyết định E).
+   * Nâng cấp tại chỗ: giữ nguyên cảnh báo đang mở, đổi mức, mở lại và reset
+   * `ownerCaredAt` — giảng viên đứng lớp phải chăm sóc lại (quyết định E).
+   * Gửi với `replay` để cả người đã nhận trước đó cũng được báo lại.
    */
   private async upgradeAlert(
     row: ReviewRow,
@@ -230,21 +251,19 @@ export class AttendanceReviewService {
     level: 3,
     term: string,
   ): Promise<Partial<AttendanceReviewResult>> {
-    const created = await this.prisma.$transaction(async (tx) => {
-      await tx.alert.update({
-        where: { id: existing.id },
-        data: {
-          status: AlertStatus.RESOLVED,
-          resolvedAt: new Date(),
-          resolutionNote: `Nâng cấp lên cảnh báo ${levelLabel(level)} (vắng ${row.absentSessions ?? 0} buổi) — rà soát điểm danh tự động`,
-        },
-      });
-      return this.tryCreate(row, level, term, tx);
+    await this.prisma.alert.update({
+      where: { id: existing.id },
+      data: {
+        level,
+        absentSessions: row.absentSessions,
+        reason: nextReason(row, existing, term),
+        status: AlertStatus.OPEN,
+        ownerCaredAt: null,
+      },
     });
-    if (!created) return { unchanged: 1 };
     return {
       upgraded: 1,
-      notified: await this.notify(row, created, level, term),
+      notified: await this.notify(row, existing, level, term, true),
     };
   }
 
@@ -279,6 +298,7 @@ export class AttendanceReviewService {
     alert: { id: string },
     level: number,
     term: string,
+    replay = false,
   ): Promise<number> {
     const recipientIds = await this.escalationService.computeRecipientIds(
       row.studentId,
@@ -292,6 +312,7 @@ export class AttendanceReviewService {
         title: `Cảnh báo ${levelLabel(level)} (điểm danh) — ${row.student.fullName} (${row.student.studentCode})`,
         body: reasonFor(row, term),
         targetUrl: `/students/${row.studentId}?tab=care-logs&alertId=${alert.id}`,
+        ...(replay ? { replay: true } : {}),
       });
     } catch (error) {
       this.logger.error(

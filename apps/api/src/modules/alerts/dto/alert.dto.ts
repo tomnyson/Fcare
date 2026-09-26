@@ -7,6 +7,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -80,6 +81,12 @@ export class ResolveAlertDto {
   @MaxLength(2000)
   resolutionNote!: string;
 }
+
+/** Cột sắp xếp được của danh sách cảnh báo — khớp `ALERT_SORT_FIELDS` phía web. */
+export const ALERT_SORT_FIELDS = ['level', 'createdAt'] as const;
+export type AlertSortField = (typeof ALERT_SORT_FIELDS)[number];
+export const ALERT_SORT_DIRECTIONS = ['asc', 'desc'] as const;
+export type AlertSortDirection = (typeof ALERT_SORT_DIRECTIONS)[number];
 
 export class ListAlertsQuery {
   @ApiPropertyOptional({ enum: AlertStatus })
@@ -156,6 +163,20 @@ export class ListAlertsQuery {
   @IsOptional()
   @IsUUID()
   sectionId?: string;
+
+  @ApiPropertyOptional({
+    enum: ALERT_SORT_FIELDS,
+    description:
+      'Sắp theo độ khẩn hoặc thời điểm phát; bỏ trống = chưa xử lý trước, rồi mức giảm dần',
+  })
+  @IsOptional()
+  @IsIn(ALERT_SORT_FIELDS)
+  sortBy?: AlertSortField;
+
+  @ApiPropertyOptional({ enum: ALERT_SORT_DIRECTIONS, default: 'desc' })
+  @IsOptional()
+  @IsIn(ALERT_SORT_DIRECTIONS)
+  sortDir?: AlertSortDirection;
 
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()

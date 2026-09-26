@@ -9,9 +9,6 @@ import type {
 } from '../alerts/notification-dispatch.service';
 import { AttendanceReviewService } from './attendance-review.service';
 
-const containing = (value: unknown): unknown => expect.objectContaining(value);
-const anyDate = (): unknown => expect.any(Date);
-
 const student = { id: 'sv-1', studentCode: 'SE1', fullName: 'Nguyễn An' };
 const section = { id: 'sec-a', code: 'SE101-A', lecturerId: 'gv-chi' };
 
@@ -34,16 +31,24 @@ function setup(
       classSectionId: string | null;
       level: number;
       absentSessions: number | null;
+      source?: 'MANUAL' | 'AUTO_ATTENDANCE';
+      reason?: string;
     }>;
   } = {},
 ) {
+  // Mặc định là cảnh báo điểm danh tự động — test nguồn khác thì ghi đè.
+  const openAlerts = (options.openAlerts ?? []).map((alert) => ({
+    source: 'AUTO_ATTENDANCE',
+    reason: 'Lý do cũ',
+    ...alert,
+  }));
   // Tách `models` ra để `$transaction` không tham chiếu vòng (TS suy ra any).
   const models = {
     enrollment: {
       findMany: jest.fn().mockResolvedValue(options.enrollments ?? []),
     },
     alert: {
-      findMany: jest.fn().mockResolvedValue(options.openAlerts ?? []),
+      findMany: jest.fn().mockResolvedValue(openAlerts),
       create: jest
         .fn()
         .mockImplementation(({ data }: { data: Record<string, unknown> }) =>
@@ -89,8 +94,8 @@ describe('AttendanceReviewService.reviewTerm', () => {
     );
     expect(prisma.alert.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
+        // Mọi nguồn: cảnh báo giảng viên phát tay cũng được gộp, không tạo thêm.
         where: {
-          source: 'AUTO_ATTENDANCE',
           term: 'FA26',
           status: { not: 'RESOLVED' },
         },
@@ -196,7 +201,7 @@ describe('AttendanceReviewService.reviewTerm', () => {
     expect(dispatch.enqueueOrDeliver).not.toHaveBeenCalled();
   });
 
-  it('2 → 3 buổi: đóng cảnh báo cấp 2, tạo cảnh báo cấp 3 mới và thông báo lại (reset chăm sóc)', async () => {
+  it('2 → 3 buổi: nâng cảnh báo đang mở lên cấp 3 tại chỗ, mở lại và báo lại (replay)', async () => {
     const { service, prisma, escalation, dispatch } = setup({
       enrollments: [enrollment(3)],
       openAlerts: [
@@ -216,30 +221,114 @@ describe('AttendanceReviewService.reviewTerm', () => {
       unchanged: 0,
       notified: 2,
     });
+    expect(prisma.alert.create).not.toHaveBeenCalled();
     expect(prisma.alert.update).toHaveBeenCalledWith({
       where: { id: 'alert-old' },
       data: {
-        status: 'RESOLVED',
-        resolvedAt: anyDate(),
-        resolutionNote:
-          'Nâng cấp lên cảnh báo Cao (vắng 3 buổi) — rà soát điểm danh tự động',
-      },
-    });
-    expect(prisma.alert.create).toHaveBeenCalledWith({
-      data: containing({
         level: 3,
         absentSessions: 3,
-        classSectionId: 'sec-a',
-      }),
+        reason:
+          'Vắng 3 buổi tại lớp SE101-A (học kỳ FA26) — rà soát tự động sau import điểm danh',
+        status: 'OPEN',
+        ownerCaredAt: null,
+      },
     });
     expect(escalation.computeRecipientIds).toHaveBeenCalledWith('sv-1', 3);
     expect(dispatch.enqueueOrDeliver).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        alertId: 'alert-new',
+        alertId: 'alert-old',
         title: 'Cảnh báo Cao (điểm danh) — Nguyễn An (SE1)',
+        replay: true,
       }),
     );
+  });
+
+  it('giảng viên đã phát tay cùng mức → chỉ ghi thêm số buổi vào lý do, giữ lý do của giảng viên', async () => {
+    const { service, prisma, dispatch } = setup({
+      enrollments: [enrollment(3)],
+      openAlerts: [
+        {
+          id: 'alert-gv',
+          studentId: 'sv-1',
+          classSectionId: 'sec-a',
+          level: 3,
+          absentSessions: null,
+          source: 'MANUAL',
+          reason: 'Em hay ngủ gật trong lớp.',
+        },
+      ],
+    });
+    const result = await service.reviewTerm('FA26');
+    expect(result).toMatchObject({ created: 0, upgraded: 0, unchanged: 1 });
+    expect(prisma.alert.create).not.toHaveBeenCalled();
+    const [args] = prisma.alert.update.mock.calls[0] as [
+      {
+        where: { id: string };
+        data: { absentSessions: number; reason: string };
+      },
+    ];
+    expect(args.where.id).toBe('alert-gv');
+    expect(args.data.absentSessions).toBe(3);
+    expect(args.data.reason).toMatch(
+      /^Em hay ngủ gật trong lớp\.\n\n\[Cập nhật .*\] Vắng 3 buổi/,
+    );
+    expect(dispatch.enqueueOrDeliver).not.toHaveBeenCalled();
+  });
+
+  it('giảng viên phát tay mức 2, nay vắng 3 → nâng tại chỗ, lý do giảng viên vẫn còn', async () => {
+    const { service, prisma, dispatch } = setup({
+      enrollments: [enrollment(3)],
+      openAlerts: [
+        {
+          id: 'alert-gv',
+          studentId: 'sv-1',
+          classSectionId: 'sec-a',
+          level: 2,
+          absentSessions: null,
+          source: 'MANUAL',
+          reason: 'Em hay ngủ gật trong lớp.',
+        },
+      ],
+    });
+    const result = await service.reviewTerm('FA26');
+    expect(result).toMatchObject({ upgraded: 1 });
+    expect(prisma.alert.create).not.toHaveBeenCalled();
+    const [args] = prisma.alert.update.mock.calls[0] as [
+      { data: { level: number; reason: string } },
+    ];
+    expect(args.data.level).toBe(3);
+    expect(args.data.reason).toContain('Em hay ngủ gật trong lớp.');
+    expect(dispatch.enqueueOrDeliver).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ alertId: 'alert-gv', replay: true }),
+    );
+  });
+
+  it('dữ liệu cũ có hai cảnh báo mở cùng lớp → so với cảnh báo mức cao nhất', async () => {
+    const { service, prisma, dispatch } = setup({
+      enrollments: [enrollment(3)],
+      openAlerts: [
+        {
+          id: 'alert-3',
+          studentId: 'sv-1',
+          classSectionId: 'sec-a',
+          level: 3,
+          absentSessions: 3,
+        },
+        {
+          id: 'alert-2',
+          studentId: 'sv-1',
+          classSectionId: 'sec-a',
+          level: 2,
+          absentSessions: 2,
+        },
+      ],
+    });
+    const result = await service.reviewTerm('FA26');
+    expect(result).toMatchObject({ upgraded: 0, unchanged: 1 });
+    expect(prisma.alert.update).not.toHaveBeenCalled();
+    expect(dispatch.enqueueOrDeliver).not.toHaveBeenCalled();
   });
 
   it('hai lượt commit chạm nhau → P2002 được coi là không đổi, không thông báo', async () => {

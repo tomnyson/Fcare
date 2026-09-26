@@ -155,6 +155,21 @@ describe('StatisticsService.overview — chỉ thống kê trong một kỳ', ()
     });
   });
 
+  it('CTSV: thẻ cảnh báo chỉ đếm cảnh báo từ mức 3', async () => {
+    const { service, prisma } = setup();
+    await service.overview({ ...lecturer, roles: ['SA_OFFICER'] });
+    const [args] = prisma.alert.groupBy.mock.calls[0] as [
+      { where: { AND: unknown[] } },
+    ];
+    expect(args.where.AND).toContainEqual({ level: { gte: 3 } });
+    const [countArgs] = prisma.student.count.mock.calls[1] as [
+      { where: { AND: [unknown, { alerts: { some: { AND: unknown[] } } }] } },
+    ];
+    expect(countArgs.where.AND[1].alerts.some.AND).toContainEqual({
+      level: { gte: 3 },
+    });
+  });
+
   it('lượt chăm sóc đếm trong kỳ, kèm 7 ngày gần nhất (không vượt đầu kỳ)', async () => {
     const { service, prisma } = setup();
     await service.overview(lecturer);

@@ -20,18 +20,24 @@ function makePrisma() {
 function makeUpdatePrisma(existing: {
   departmentId: string | null;
   roles: readonly RoleKey[];
+  email?: string | null;
+  fullName?: string;
 }) {
   const staffUpdate = jest.fn().mockResolvedValue({ id: 'target' });
   const deleteMany = jest.fn().mockResolvedValue({ count: 1 });
   const createMany = jest.fn().mockResolvedValue({ count: 1 });
+  const oauthDeleteMany = jest.fn().mockResolvedValue({ count: 1 });
   const tx = {
     staffRole: { deleteMany, createMany },
     refreshToken: { updateMany: jest.fn() },
     staff: { update: staffUpdate },
+    staffOAuthIdentity: { deleteMany: oauthDeleteMany },
   };
   const prisma = {
     staff: {
       findUnique: jest.fn().mockResolvedValue({
+        email: existing.email ?? null,
+        fullName: existing.fullName ?? 'Tên cũ',
         departmentId: existing.departmentId,
         roles: existing.roles.map((key) => ({ role: { key } })),
       }),
@@ -45,7 +51,7 @@ function makeUpdatePrisma(existing: {
     },
     $transaction: jest.fn((fn: (client: typeof tx) => unknown) => fn(tx)),
   } as unknown as PrismaService;
-  return { prisma, deleteMany, createMany, staffUpdate };
+  return { prisma, deleteMany, createMany, staffUpdate, oauthDeleteMany };
 }
 
 const auditLog = jest.fn();
@@ -432,5 +438,76 @@ describe('AdminService — listAuditLogs', () => {
         orderBy: { createdAt: 'desc' },
       }),
     );
+  });
+});
+
+describe('AdminService.update — admin sửa họ tên nhân viên', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const existing = {
+    departmentId: 'dept',
+    roles: ['LECTURER'] as const,
+    email: 'binhnt@fe.edu.vn',
+    fullName: 'Nguyen Thanh Binh',
+  };
+
+  it('lưu họ tên đã bỏ khoảng trắng thừa ở hai đầu', async () => {
+    const { prisma, staffUpdate } = makeUpdatePrisma(existing);
+    await new AdminService(prisma, audit).update('admin', 'target', {
+      fullName: '  Nguyễn Thanh Bình  ',
+    });
+    expect(staffUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fullName: 'Nguyễn Thanh Bình',
+        }) as unknown,
+      }),
+    );
+  });
+
+  it('họ tên chỉ toàn khoảng trắng bị từ chối, không ghi DB', async () => {
+    const { prisma, staffUpdate } = makeUpdatePrisma(existing);
+    await expect(
+      new AdminService(prisma, audit).update('admin', 'target', {
+        fullName: '   ',
+      }),
+    ).rejects.toThrow('Họ tên không được để trống.');
+    expect(staffUpdate).not.toHaveBeenCalled();
+  });
+
+  it('audit ghi lại họ tên trước và sau khi đổi', async () => {
+    const { prisma } = makeUpdatePrisma(existing);
+    await new AdminService(prisma, audit).update('admin', 'target', {
+      fullName: 'Nguyễn Thanh Bình',
+    });
+    expect(auditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'ADMIN_UPDATE_STAFF',
+        metadata: expect.objectContaining({
+          fullNameBefore: 'Nguyen Thanh Binh',
+          fullNameAfter: 'Nguyễn Thanh Bình',
+        }) as unknown,
+      }),
+    );
+  });
+
+  it('đổi họ tên không gỡ liên kết đăng nhập Google (email không đổi)', async () => {
+    const { prisma, oauthDeleteMany, staffUpdate } = makeUpdatePrisma(existing);
+    await new AdminService(prisma, audit).update('admin', 'target', {
+      fullName: 'Nguyễn Thanh Bình',
+    });
+    expect(oauthDeleteMany).not.toHaveBeenCalled();
+    const [args] = staffUpdate.mock.calls[0] as [
+      { data: Record<string, unknown> },
+    ];
+    expect(args.data.email).toBeUndefined();
+  });
+
+  it('đổi sang email khác thì vẫn gỡ liên kết Google cũ', async () => {
+    const { prisma, oauthDeleteMany } = makeUpdatePrisma(existing);
+    await new AdminService(prisma, audit).update('admin', 'target', {
+      email: 'binh.nt@fe.edu.vn',
+    });
+    expect(oauthDeleteMany).toHaveBeenCalled();
   });
 });

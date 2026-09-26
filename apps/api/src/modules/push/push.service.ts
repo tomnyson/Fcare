@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
+import { isExternalNotificationsDisabled } from '../../common/utils/external-notifications';
 
 export const ONESIGNAL_NOTIFICATIONS_URL =
   'https://api.onesignal.com/notifications';
@@ -27,10 +28,11 @@ export interface AlertPushData {
 export function pushIdempotencyKey(
   alertId: string,
   recipientIds: string[],
+  alertLevel?: number,
 ): string {
-  const hex = createHash('sha256')
-    .update([alertId, ...[...recipientIds].sort()].join('|'))
-    .digest('hex');
+  // Có mức trong khoá: cảnh báo nâng mức tại chỗ vẫn được push lại.
+  const parts = [alertId, `L${alertLevel ?? ''}`, ...[...recipientIds].sort()];
+  const hex = createHash('sha256').update(parts.join('|')).digest('hex');
   const variant = ((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
@@ -54,9 +56,11 @@ export class PushService {
   private readonly appId: string | undefined;
   private readonly apiKey: string | undefined;
   private readonly webBaseUrl: string;
+  private readonly externalDisabled: boolean;
   private warnedMissingConfig = false;
 
   constructor(config: ConfigService) {
+    this.externalDisabled = isExternalNotificationsDisabled(config);
     this.appId = config.get<string>('ONESIGNAL_APP_ID') || undefined;
     this.apiKey = config.get<string>('ONESIGNAL_REST_API_KEY') || undefined;
     const base =
@@ -66,6 +70,8 @@ export class PushService {
   }
 
   async sendAlertPush(data: AlertPushData): Promise<void> {
+    // Biến .env chặn kênh gửi ra ngoài: chuông trong app vẫn nhận bình thường.
+    if (this.externalDisabled) return;
     if (
       data.alertLevel < PUSH_MIN_ALERT_LEVEL ||
       data.recipientIds.length === 0
@@ -109,7 +115,11 @@ export class PushService {
           headings: { en: data.title, vi: data.title },
           contents: { en: data.body, vi: data.body },
           web_url: `${this.webBaseUrl}${data.targetUrl ?? '/alerts'}`,
-          idempotency_key: pushIdempotencyKey(data.alertId, recipientIds),
+          idempotency_key: pushIdempotencyKey(
+            data.alertId,
+            recipientIds,
+            data.alertLevel,
+          ),
         }),
         signal: controller.signal,
       });

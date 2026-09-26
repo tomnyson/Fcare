@@ -7,6 +7,12 @@ import { useSearchParams } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { apiFetch, ApiError } from '../../lib/api';
 import { ALERT_LEVEL_LABELS } from '../../lib/labels';
+import {
+  describeRaiseResult,
+  minRaiseLevel,
+  type RaiseAlertResult,
+  type RaiseMessage,
+} from '../../lib/raise-result';
 import type { Alert, AuthUser, Evaluation, Paginated } from '../../lib/types';
 import { FormError, Label, Select, Textarea } from '../ui/form';
 import { Modal } from '../ui/modal';
@@ -26,11 +32,19 @@ function canCareFor(alert: Alert | undefined): alert is Alert {
   return Boolean(alert && alert.source === 'AUTO_ATTENDANCE' && alert.status !== 'RESOLVED');
 }
 
+const RAISE_NOTICE_CLASSES: Record<RaiseMessage['tone'], string> = {
+  success: 'border-success bg-success/10',
+  warning: 'border-fpt-orange bg-fpt-orange-50',
+  info: 'border-fpt-blue bg-fpt-blue/10',
+};
+
 export function AlertsTab({ studentId, user }: { studentId: string; user: AuthUser }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
   const [level, setLevel] = useState('1');
+  // Kết quả lần phát gần nhất: tạo mới / tự nâng / nâng cảnh báo đang mở / chỉ gộp lý do.
+  const [notice, setNotice] = useState<RaiseMessage | null>(null);
   // Link từ dashboard/thông báo: `?alertId=` → mở sẵn form nhật ký cho cảnh báo đó.
   const focusAlertId = useSearchParams().get('alertId');
   const [careAlert, setCareAlert] = useState<Alert | null>(null);
@@ -69,23 +83,25 @@ export function AlertsTab({ studentId, user }: { studentId: string; user: AuthUs
     enabled: latestTerm.length > 0,
   });
 
-  const suggestedLevel = riskScore
-    ? Math.max(riskScore.drsLevel, riskScore.dataForcedLevel)
-    : null;
+  const suggestedLevel = riskScore ? minRaiseLevel(riskScore) : null;
+  // Không cho chọn thấp hơn mức hệ thống — API cũng tự nâng (docs/plan-lert.md mục 1).
+  const minLevel = minRaiseLevel(riskScore);
 
   function openRaiseModal() {
     // Mặc định theo mức đề xuất từ đánh giá gần nhất; người phát vẫn đổi được.
     setLevel(String(suggestedLevel ?? 1));
     setError('');
+    setNotice(null);
     setOpen(true);
   }
 
   const raiseMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
-      apiFetch<Alert>('/alerts', { method: 'POST', body: JSON.stringify(payload) }),
-    onSuccess: async () => {
+      apiFetch<RaiseAlertResult>('/alerts', { method: 'POST', body: JSON.stringify(payload) }),
+    onSuccess: async (result) => {
       setOpen(false);
       setError('');
+      setNotice(describeRaiseResult(result));
       await queryClient.invalidateQueries({ queryKey: ['alerts'] });
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Có lỗi xảy ra.'),
@@ -111,6 +127,16 @@ export function AlertsTab({ studentId, user }: { studentId: string; user: AuthUs
             ⚠ Phát cảnh báo
           </Button>
         </div>
+      ) : null}
+
+      {notice ? (
+        <p
+          role="status"
+          data-raise-notice={notice.tone}
+          className={`mb-4 rounded-md border-l-4 px-3 py-2 text-sm text-ink ${RAISE_NOTICE_CLASSES[notice.tone]}`}
+        >
+          {notice.text}
+        </p>
       ) : null}
 
       {!isLoading && (data?.items.length ?? 0) === 0 ? (
@@ -154,14 +180,16 @@ export function AlertsTab({ studentId, user }: { studentId: string; user: AuthUs
               required
             >
               {Object.entries(ALERT_LEVEL_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
+                <option key={value} value={value} disabled={Number(value) < minLevel}>
                   Mức {value} — {label}
+                  {Number(value) < minLevel ? ' (thấp hơn mức hệ thống)' : ''}
                 </option>
               ))}
             </Select>
             <p className="mt-1.5 text-xs text-muted">
-              Mọi mức đều báo giảng viên đang dạy · Mức 2 thêm CB CTSV · Mức 3 thêm Trưởng bộ
-              môn · Mức 4 thêm Cán bộ Đào tạo và Trưởng CTSV (cần lý do ≥ 40 ký tự).
+              Mọi mức đều báo giảng viên đang dạy · Mức 3 thêm CB CTSV và Trưởng bộ môn · Mức 4 thêm
+              Cán bộ Đào tạo và Trưởng CTSV (cần lý do ≥ 40 ký tự). Sinh viên đang có cảnh báo mở
+              thì hệ thống nâng mức cảnh báo đó thay vì tạo mới.
             </p>
             {suggestedLevel && riskScore ? (
               <p className="mt-1.5 rounded-md bg-fpt-orange-50 px-3 py-2 text-xs text-ink">

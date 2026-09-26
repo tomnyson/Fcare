@@ -40,10 +40,11 @@ export const ALERT_LEVEL_LABELS: Record<number, string> = {
   4: 'Khẩn cấp',
 };
 
-export const ALERT_LEVEL_TONES: Record<number, 'info' | 'success' | 'warning' | 'danger'> = {
+/** Thang màu mức cảnh báo (docs/plan-lert.md mục 5): 1 xanh dương, 2 vàng, 3 cam, 4 đỏ. */
+export const ALERT_LEVEL_TONES: Record<number, 'info' | 'warning' | 'orange' | 'danger'> = {
   1: 'info',
   2: 'warning',
-  3: 'warning',
+  3: 'orange',
   4: 'danger',
 };
 

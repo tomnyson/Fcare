@@ -13,6 +13,7 @@ import {
   renderCareLogEmail,
   renderDiscussionEmail,
 } from './email-template.helpers';
+import { isExternalNotificationsDisabled } from '../../common/utils/external-notifications';
 
 interface SendMailOptions {
   to: string | string[];
@@ -57,6 +58,13 @@ export class EmailService {
       .filter((e) => e.includes('@'));
 
     if (recipients.length === 0) {
+      return false;
+    }
+
+    if (isExternalNotificationsDisabled(this.config)) {
+      this.logger.warn(
+        'NOTIFICATIONS_EXTERNAL_DISABLED đang bật — chặn gửi mail, bỏ qua.',
+      );
       return false;
     }
 

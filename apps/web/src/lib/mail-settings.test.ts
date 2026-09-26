@@ -20,6 +20,7 @@ const view: MailSettingsView = {
   enabled: true,
   source: 'ENV',
   encryptionReady: true,
+  externalDisabled: false,
   lastTestedAt: null,
   lastTestOk: null,
   updatedAt: null,

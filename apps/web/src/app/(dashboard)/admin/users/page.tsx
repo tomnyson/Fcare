@@ -5,6 +5,7 @@ import { Badge, Button } from '@fcare/ui-kit';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { StaffNameEditor } from '../../../../components/admin/staff-name-editor';
 import { DataTable, Td } from '../../../../components/ui/data-table';
 import { FormError, FormSuccess, Input, Label, Select } from '../../../../components/ui/form';
 import { Modal } from '../../../../components/ui/modal';
@@ -1160,6 +1161,12 @@ function AdminUsersPageContent() {
                 </div>
               </div>
             </div>
+
+            <StaffNameEditor
+              key={viewingStaff.id}
+              member={viewingStaff}
+              onSaved={setViewingStaff}
+            />
 
             {/* Khối quản lý Email công vụ */}
             <div className="rounded-md border border-border bg-white p-4">

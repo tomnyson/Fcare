@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { buildAlertReason, raiseAlertBody } from './evaluation-handoff-step';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../../lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/api')>()),
+  apiFetch: vi.fn(),
+}));
+
+import { apiFetch } from '../../lib/api';
+import { buildAlertReason, raiseAlertBody, raiseEvaluationAlert } from './evaluation-handoff-step';
 
 describe('raiseAlertBody — cảnh báo phát từ nhận xét', () => {
   it('gắn lớp học phần vừa nhận xét để cột "Lớp học phần" có liên kết', () => {
@@ -37,5 +44,25 @@ describe('buildAlertReason — lý do cảnh báo tự sinh từ nhận xét', (
     const reason = buildAlertReason({ ...base, criterionLabels: [], note: '', suggestedLevel: 4 });
     expect(reason.length).toBeGreaterThanOrEqual(40);
     expect(reason).toContain('Khả năng học tập: Yếu. Thái độ: Kém.');
+  });
+});
+
+describe('raiseEvaluationAlert — trả kết quả gộp cảnh báo cho người phát', () => {
+  afterEach(() => vi.mocked(apiFetch).mockReset());
+
+  it('trả về kết quả POST /alerts (tạo mới / nâng mức / gộp lý do)', async () => {
+    const result = { id: 'al', level: 3, decision: 'escalated', previousLevel: 2 };
+    vi.mocked(apiFetch).mockResolvedValueOnce(result).mockResolvedValueOnce({});
+    await expect(
+      raiseEvaluationAlert({ studentId: 'st', term: 'FA26', level: 2, reason: 'Lý do' }),
+    ).resolves.toEqual(result);
+  });
+
+  it('AI chưa bật vẫn trả kết quả cảnh báo, không ném lỗi', async () => {
+    const result = { id: 'al', level: 2, decision: 'merged' };
+    vi.mocked(apiFetch).mockResolvedValueOnce(result).mockRejectedValueOnce(new Error('AI tắt'));
+    await expect(
+      raiseEvaluationAlert({ studentId: 'st', term: 'FA26', level: 2, reason: 'Lý do' }),
+    ).resolves.toEqual(result);
   });
 });

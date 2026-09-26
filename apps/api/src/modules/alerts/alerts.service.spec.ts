@@ -3,6 +3,7 @@ import type { AuditService } from '../../audit/audit.service';
 import type { AuthUser } from '../../common/types/auth-user';
 import type { PrismaService } from '../../prisma/prisma.service';
 import { AlertsService } from './alerts.service';
+import type { RiskScoreService } from '../evaluations/risk-score.service';
 import type { EscalationService } from './escalation.service';
 import type {
   EscalationJobData,
@@ -13,7 +14,7 @@ import type {
 interface AlertFindManyArgs {
   where: {
     status?: string;
-    level?: number;
+    level?: number | { gte?: number; in?: number[] };
     source?: string;
     student: {
       AND?: unknown[];
@@ -75,6 +76,7 @@ describe('AlertsService.list — lọc nhiều tiêu chí', () => {
     {} as AuditService,
     {} as NotificationDispatchService,
     queue,
+    {} as RiskScoreService,
   );
 
   beforeEach(() => jest.clearAllMocks());
@@ -109,6 +111,54 @@ describe('AlertsService.list — lọc nhiều tiêu chí', () => {
         classSection: { term: 'SU25', lecturerId: 'gv-1' },
       },
     });
+  });
+
+  const orderByOf = (call: number) =>
+    (findMany.mock.calls[call] as [{ orderBy: unknown }])[0].orderBy;
+
+  it('mặc định giữ thứ tự cũ: chưa xử lý trước, rồi mức giảm dần, mới nhất trước', async () => {
+    await service.list(adminUser, {});
+    expect(orderByOf(0)).toEqual([
+      { status: 'asc' },
+      { level: 'desc' },
+      { createdAt: 'desc' },
+    ]);
+  });
+
+  it('sắp theo độ khẩn: mức là khoá chính, cùng mức thì mới nhất trước', async () => {
+    await service.list(adminUser, { sortBy: 'level', sortDir: 'asc' });
+    expect(orderByOf(0)).toEqual([
+      { level: 'asc' },
+      { createdAt: 'desc' },
+      { id: 'asc' },
+    ]);
+  });
+
+  it('sắp theo thời điểm, thiếu sortDir thì giảm dần', async () => {
+    await service.list(adminUser, { sortBy: 'createdAt' });
+    expect(orderByOf(0)).toEqual([{ createdAt: 'desc' }, { id: 'asc' }]);
+  });
+
+  it('CTSV chỉ thấy cảnh báo từ mức 3', async () => {
+    await service.list({ ...adminUser, roles: ['SA_OFFICER'] }, {});
+    const [args] = findMany.mock.calls[0] as [AlertFindManyArgs];
+    expect(args.where.level).toEqual({ gte: 3 });
+  });
+
+  it('CTSV lọc mức 2 → không trả gì, lọc mức 4 → giữ nguyên', async () => {
+    const saHead: AuthUser = { ...adminUser, roles: ['SA_HEAD'] };
+    await service.list(saHead, { level: 2 });
+    await service.list(saHead, { level: 4 });
+    const [low] = findMany.mock.calls[0] as [AlertFindManyArgs];
+    const [high] = findMany.mock.calls[1] as [AlertFindManyArgs];
+    expect(low.where.level).toEqual({ in: [] });
+    expect(high.where.level).toBe(4);
+  });
+
+  it('người vừa là CTSV vừa là quản trị vẫn thấy mọi mức', async () => {
+    await service.list({ ...adminUser, roles: ['ADMIN', 'SA_HEAD'] }, {});
+    const [args] = findMany.mock.calls[0] as [AlertFindManyArgs];
+    expect(args.where.level).toBeUndefined();
   });
 
   it('không lọc kỳ/GV/lớp học phần thì không đụng quan hệ enrollments', async () => {
@@ -170,27 +220,73 @@ function createdData(create: jest.Mock): Record<string, unknown> {
   return args.data;
 }
 
-describe('AlertsService.raise — gắn lớp học phần của nhận xét', () => {
+interface RaiseSetup {
+  section?: { id: string; term: string } | null;
+  open?: { id: string; level: number; reason: string } | null;
+  risk?: { drsLevel: number; dataForcedLevel: number };
+  recipients?: string[];
+}
+
+function setupRaise({
+  section = null,
+  open = null,
+  risk = { drsLevel: 1, dataForcedLevel: 1 },
+  recipients = ['r1'],
+}: RaiseSetup = {}) {
   const student = { id: 'st', fullName: 'SV', studentCode: 'PK1' };
-  function setup(section: { id: string; term: string } | null) {
-    const create = jest.fn().mockResolvedValue({ id: 'al' });
-    const sectionFindFirst = jest.fn().mockResolvedValue(section);
-    const prisma = {
-      student: { findFirst: jest.fn().mockResolvedValue(student) },
-      classSection: { findFirst: sectionFindFirst },
-      alert: { create },
-    } as unknown as PrismaService;
-    const service = new AlertsService(
-      prisma,
-      {
-        computeRecipientIds: jest.fn().mockResolvedValue([]),
-      } as unknown as EscalationService,
-      { log: jest.fn() } as unknown as AuditService,
-      {} as NotificationDispatchService,
-      { on: jest.fn(), add: jest.fn() } as unknown as Queue<EscalationJobData>,
-    );
-    return { service, create, sectionFindFirst };
-  }
+  const create = jest.fn().mockResolvedValue({ id: 'al-moi', level: 0 });
+  const update = jest.fn(({ where }: { where: { id: string } }) =>
+    Promise.resolve({ id: where.id }),
+  );
+  const findFirst = jest.fn().mockResolvedValue(open);
+  const executeRaw = jest.fn().mockResolvedValue(1);
+  const tx = { $executeRaw: executeRaw, alert: { findFirst, create, update } };
+  const sectionFindFirst = jest.fn().mockResolvedValue(section);
+  const prisma = {
+    student: { findFirst: jest.fn().mockResolvedValue(student) },
+    classSection: { findFirst: sectionFindFirst },
+    $transaction: (fn: (client: typeof tx) => Promise<unknown>) => fn(tx),
+  } as unknown as PrismaService;
+  const computeRecipientIds = jest.fn().mockResolvedValue(recipients);
+  const enqueueOrDeliver = jest.fn().mockResolvedValue(undefined);
+  const forStudentTerm = jest.fn().mockResolvedValue(risk);
+  const log = jest.fn();
+  const service = new AlertsService(
+    prisma,
+    { computeRecipientIds } as unknown as EscalationService,
+    { log } as unknown as AuditService,
+    { enqueueOrDeliver } as unknown as NotificationDispatchService,
+    { on: jest.fn(), add: jest.fn() } as unknown as Queue<EscalationJobData>,
+    { forStudentTerm } as unknown as RiskScoreService,
+  );
+  return {
+    service,
+    create,
+    update,
+    findFirst,
+    executeRaw,
+    sectionFindFirst,
+    computeRecipientIds,
+    enqueueOrDeliver,
+    forStudentTerm,
+    log,
+  };
+}
+
+function dispatched(enqueueOrDeliver: jest.Mock): EscalationJobData {
+  const [, data] = enqueueOrDeliver.mock.calls[0] as [
+    unknown,
+    EscalationJobData,
+  ];
+  return data;
+}
+
+function updatedData(update: jest.Mock): Record<string, unknown> {
+  const [args] = update.mock.calls[0] as [{ data: Record<string, unknown> }];
+  return args.data;
+}
+
+describe('AlertsService.raise — gắn lớp học phần của nhận xét', () => {
   const dto = {
     studentId: 'st',
     level: 2,
@@ -198,9 +294,8 @@ describe('AlertsService.raise — gắn lớp học phần của nhận xét', (
   };
 
   it('lưu lớp + học kỳ khi sinh viên có học lớp đó', async () => {
-    const { service, create, sectionFindFirst } = setup({
-      id: 'cs',
-      term: 'FA26',
+    const { service, create, sectionFindFirst } = setupRaise({
+      section: { id: 'cs', term: 'FA26' },
     });
     await service.raise(lecturerUser, { ...dto, classSectionId: 'cs' });
     expect(sectionFindFirst).toHaveBeenCalledWith({
@@ -214,7 +309,7 @@ describe('AlertsService.raise — gắn lớp học phần của nhận xét', (
   });
 
   it('từ chối lớp mà sinh viên không học', async () => {
-    const { service, create } = setup(null);
+    const { service, create } = setupRaise();
     await expect(
       service.raise(lecturerUser, { ...dto, classSectionId: 'khac' }),
     ).rejects.toThrow('Sinh viên không học lớp học phần này.');
@@ -222,12 +317,145 @@ describe('AlertsService.raise — gắn lớp học phần của nhận xét', (
   });
 
   it('không gửi lớp thì giữ như cũ: không truy vấn lớp, không gắn lớp', async () => {
-    const { service, create, sectionFindFirst } = setup(null);
+    const { service, create, sectionFindFirst, forStudentTerm } = setupRaise();
     await service.raise(lecturerUser, dto);
     expect(sectionFindFirst).not.toHaveBeenCalled();
+    // Không có học kỳ thì không có điểm rủi ro để làm sàn.
+    expect(forStudentTerm).not.toHaveBeenCalled();
     expect(createdData(create)).toMatchObject({
       classSectionId: null,
       term: null,
+      level: 2,
+    });
+  });
+});
+
+describe('AlertsService.raise — không hạ dưới mức hệ thống, gộp cảnh báo đang mở', () => {
+  const section = { id: 'cs', term: 'FA26' };
+  const dto = {
+    studentId: 'st',
+    level: 1,
+    reason: 'Sinh viên học yếu cần theo dõi',
+    classSectionId: 'cs',
+  };
+
+  it('khoá theo sinh viên rồi tìm cảnh báo mở cùng SV + lớp + kỳ', async () => {
+    const { service, findFirst, executeRaw } = setupRaise({ section });
+    await service.raise(lecturerUser, dto);
+    expect(executeRaw).toHaveBeenCalled();
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          studentId: 'st',
+          classSectionId: 'cs',
+          term: 'FA26',
+          status: { not: 'RESOLVED' },
+        },
+      }),
+    );
+  });
+
+  it('giảng viên chọn mức 1, hệ thống tính mức 3 → tạo mức 3, ghi chú lý do nâng', async () => {
+    const { service, create, forStudentTerm, enqueueOrDeliver } = setupRaise({
+      section,
+      risk: { drsLevel: 3, dataForcedLevel: 1 },
+    });
+    const result = await service.raise(lecturerUser, dto);
+    expect(forStudentTerm).toHaveBeenCalledWith(lecturerUser, 'st', 'FA26');
+    expect(createdData(create)).toMatchObject({ level: 3 });
+    expect(createdData(create).reason).toContain(
+      'Hệ thống tự nâng từ mức 1 lên mức 3',
+    );
+    expect(dispatched(enqueueOrDeliver).title).toContain('Cao');
+    expect(result).toMatchObject({
+      decision: 'created',
+      requestedLevel: 1,
+      systemLevel: 3,
+      level: 3,
+    });
+  });
+
+  it('mức ép từ dữ liệu vắng cũng là sàn', async () => {
+    const { service, create } = setupRaise({
+      section,
+      risk: { drsLevel: 1, dataForcedLevel: 3 },
+    });
+    await service.raise(lecturerUser, dto);
+    expect(createdData(create)).toMatchObject({ level: 3 });
+  });
+
+  it('đang có cảnh báo mở thấp hơn → nâng tại chỗ, mở lại, báo lại cho mọi người', async () => {
+    const {
+      service,
+      create,
+      update,
+      enqueueOrDeliver,
+      computeRecipientIds,
+      log,
+    } = setupRaise({
+      section,
+      open: { id: 'al-cu', level: 2, reason: 'Vắng 2 buổi.' },
+      risk: { drsLevel: 4, dataForcedLevel: 1 },
+    });
+    const result = await service.raise(lecturerUser, {
+      ...dto,
+      level: 2,
+      reason: 'Sinh viên bỏ thi giữa kỳ, cần can thiệp ngay lập tức.',
+    });
+
+    expect(create).not.toHaveBeenCalled();
+    const data = updatedData(update);
+    expect(data).toMatchObject({
+      level: 4,
+      status: 'OPEN',
+      ownerCaredAt: null,
+    });
+    expect(data.reason).toMatch(
+      /^Vắng 2 buổi\.\n\n\[Cập nhật .*\] Sinh viên bỏ thi/,
+    );
+    expect(computeRecipientIds).toHaveBeenCalledWith('st', 4, 'l');
+    expect(dispatched(enqueueOrDeliver)).toMatchObject({
+      alertId: 'al-cu',
+      replay: true,
+    });
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'ALERT_ESCALATED',
+        entityId: 'al-cu',
+        metadata: expect.objectContaining({
+          fromLevel: 2,
+          level: 4,
+        }) as unknown,
+      }),
+    );
+    expect(result).toMatchObject({
+      id: 'al-cu',
+      decision: 'escalated',
+      previousLevel: 2,
+      level: 4,
+    });
+  });
+
+  it('mức mới không cao hơn cảnh báo đang mở → chỉ gộp lý do, KHÔNG báo ai', async () => {
+    const { service, create, update, enqueueOrDeliver, log } = setupRaise({
+      section,
+      open: { id: 'al-cu', level: 3, reason: 'Vắng 3 buổi.' },
+    });
+    const result = await service.raise(lecturerUser, { ...dto, level: 2 });
+
+    expect(create).not.toHaveBeenCalled();
+    const data = updatedData(update);
+    expect(data.level).toBeUndefined();
+    expect(data.reason).toContain('Sinh viên học yếu cần theo dõi');
+    expect(enqueueOrDeliver).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'ALERT_MERGED', entityId: 'al-cu' }),
+    );
+    expect(result).toMatchObject({
+      id: 'al-cu',
+      decision: 'merged',
+      level: 3,
+      notifiedCount: 0,
     });
   });
 });
@@ -298,6 +526,7 @@ describe('AlertsService.remove / deletionPreview — xoá cảnh báo kèm dữ 
       audit as unknown as AuditService,
       {} as NotificationDispatchService,
       { on: jest.fn(), add: jest.fn() } as unknown as Queue<EscalationJobData>,
+      {} as RiskScoreService,
     );
     return { service, prisma, tx, audit, calls, careLogCount, evaluationCount };
   }
@@ -518,6 +747,7 @@ describe('AlertsService.removeMany / deletionPreviewMany — xoá nhiều cảnh
       audit as unknown as AuditService,
       {} as NotificationDispatchService,
       { on: jest.fn(), add: jest.fn() } as unknown as Queue<EscalationJobData>,
+      {} as RiskScoreService,
     );
     return {
       service,
@@ -706,6 +936,7 @@ describe('AlertsService.resolve — chốt cảnh báo kèm kết quả Đạt /
       audit as unknown as AuditService,
       {} as NotificationDispatchService,
       { on: jest.fn(), add: jest.fn() } as unknown as Queue<EscalationJobData>,
+      {} as RiskScoreService,
     );
     return { service, update, audit };
   }

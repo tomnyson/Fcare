@@ -62,7 +62,11 @@ describe('PushService', () => {
       headings: { en: baseData.title, vi: baseData.title },
       contents: { en: baseData.body, vi: baseData.body },
       web_url: 'https://fcare.test/students/sv-1?tab=care',
-      idempotency_key: pushIdempotencyKey('alert-1', ['gv-b', 'gv-a']),
+      idempotency_key: pushIdempotencyKey(
+        'alert-1',
+        ['gv-b', 'gv-a'],
+        baseData.alertLevel,
+      ),
     });
   });
 
@@ -109,6 +113,18 @@ describe('PushService', () => {
   });
 });
 
+describe('PushService — NOTIFICATIONS_EXTERNAL_DISABLED', () => {
+  it('bật cờ chặn → không gọi OneSignal dù đã cấu hình', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    await makeService({
+      ...CONFIGURED,
+      NOTIFICATIONS_EXTERNAL_DISABLED: 'true',
+    }).sendAlertPush(baseData);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+});
+
 describe('pushIdempotencyKey', () => {
   it('ổn định, không phụ thuộc thứ tự người nhận, có dạng UUID', () => {
     const a = pushIdempotencyKey('alert-1', ['gv-a', 'gv-b']);
@@ -123,5 +139,11 @@ describe('pushIdempotencyKey', () => {
     const base = pushIdempotencyKey('alert-1', ['gv-a']);
     expect(pushIdempotencyKey('alert-2', ['gv-a'])).not.toBe(base);
     expect(pushIdempotencyKey('alert-1', ['gv-b'])).not.toBe(base);
+  });
+
+  it('cùng cảnh báo được nâng mức thì khác khoá — OneSignal không nuốt lượt báo lại', () => {
+    expect(pushIdempotencyKey('alert-1', ['gv-a'], 4)).not.toBe(
+      pushIdempotencyKey('alert-1', ['gv-a'], 3),
+    );
   });
 });

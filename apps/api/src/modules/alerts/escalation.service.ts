@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import type { RoleKey } from '@fcare/shared-types';
+import { SA_MIN_ALERT_LEVEL, type RoleKey } from '@fcare/shared-types';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
  * Ma trận báo tin theo độ khẩn — flow.png "WORKFLOW XÁC ĐỊNH ĐỘ KHẨN CẤP":
  * - Cấp 1: tất cả giảng viên đang dạy sinh viên.
- * - Cấp 2: + cán bộ phòng CTSV.
- * - Cấp 3: + trưởng bộ môn của sinh viên.
+ * - Cấp 3: + cán bộ phòng CTSV (CTSV chỉ nhận từ mức 3 — docs/plan-lert.md
+ *   mục 4) và trưởng bộ môn của sinh viên.
  * - Cấp 4: + trưởng phòng Đào tạo và trưởng phòng CTSV.
  */
 @Injectable()
@@ -33,7 +33,7 @@ export class EscalationService {
     });
     teachingLecturers.forEach((staff) => recipients.add(staff.id));
 
-    if (level >= 2) {
+    if (level >= SA_MIN_ALERT_LEVEL) {
       (await this.findActiveStaffByRoles(['SA_OFFICER'])).forEach((id) =>
         recipients.add(id),
       );

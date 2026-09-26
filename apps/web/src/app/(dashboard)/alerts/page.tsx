@@ -6,6 +6,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { AlertRowActionsCell } from '../../../components/alerts/alert-row-actions-cell';
+import { BulkSelectionBar } from '../../../components/alerts/bulk-selection-bar';
 import { DeleteAlertModal } from '../../../components/alerts/delete-alert-modal';
 import { DataTable, Td } from '../../../components/ui/data-table';
 import { FormError, Label, Select, Textarea } from '../../../components/ui/form';
@@ -31,16 +33,21 @@ import {
   formatDateTime,
 } from '../../../lib/labels';
 import {
-  ALERT_BULK_DELETE_MAX,
   ALERT_DELETE_INVALIDATION_KEYS,
   alertRowActions,
   toggleAllSelected,
   toggleSelected,
 } from '../../../lib/alert-actions';
 import {
+  alertLevelFilterOptions,
+  alertSortPatch,
   buildAlertListQuery,
   clearAlertFiltersPatch,
+  nextAlertSort,
   parseAlertFilters,
+  parseAlertSort,
+  type AlertSort,
+  type AlertSortField,
 } from '../../../lib/alert-filters';
 import type { Alert, Paginated, StudentFilterOptions } from '../../../lib/types';
 import { useCurrentTerm } from '../../../lib/use-current-term';
@@ -52,6 +59,18 @@ const PAGE_SIZE = 10;
 // Danh mục kỳ/lớp/ngành/GV/lớp học phần đổi theo học kỳ chứ không theo phút.
 // Dùng chung queryKey với trang /students để hai trang xài chung một lần gọi.
 const FILTER_OPTIONS_STALE_MS = 5 * 60_000;
+
+/** Trạng thái + hành động cho một tiêu đề cột sắp xếp được của `DataTable`. */
+function sortableColumn(
+  sort: AlertSort,
+  field: AlertSortField,
+  setFilters: (patch: Record<string, string | null>) => void,
+) {
+  return {
+    direction: sort?.by === field ? sort.dir : null,
+    onSort: () => setFilters(alertSortPatch(nextAlertSort(sort, field))),
+  };
+}
 
 function AlertsPageContent() {
   const queryClient = useQueryClient();
@@ -71,6 +90,7 @@ function AlertsPageContent() {
   // URL là nguồn sự thật của bộ lọc — link "cảnh báo mức 4 của lớp X" gửi được.
   const filters = parseAlertFilters(params);
   const page = parsePageParam(params.get('page'));
+  const sort = parseAlertSort(params);
   const submittedSearch = filters.search;
   const [search, setSearch] = useState(submittedSearch);
 
@@ -175,7 +195,7 @@ function AlertsPageContent() {
 
   const limitParam = parseInt(params.get('limit') ?? '10', 10);
   const limit = [10, 20, 50, 100].includes(limitParam) ? limitParam : PAGE_SIZE;
-  const listQuery = buildAlertListQuery(filters, limit, page).toString();
+  const listQuery = buildAlertListQuery(filters, limit, page, sort).toString();
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['alerts', listQuery],
     queryFn: () => apiFetch<Paginated<Alert>>(`/alerts?${listQuery}`),
@@ -274,6 +294,7 @@ function AlertsPageContent() {
 
       <FilterBar
         label="Bộ lọc cảnh báo"
+        collapsible
         activeCount={chips.filter((chip) => chip.key !== 'search').length}
         onSubmit={(event) => {
           event.preventDefault();
@@ -319,9 +340,9 @@ function AlertsPageContent() {
               onChange={(event) => setFilters({ level: event.target.value || null })}
             >
               <option value="">Mọi độ khẩn</option>
-              {Object.entries(ALERT_LEVEL_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  Mức {value} — {label}
+              {alertLevelFilterOptions(me?.user.roles).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </Select>
@@ -470,6 +491,10 @@ function AlertsPageContent() {
 
       <DataTable
         fitViewport
+        sortable={{
+          'Độ khẩn': sortableColumn(sort, 'level', setFilters),
+          'Thời điểm': sortableColumn(sort, 'createdAt', setFilters),
+        }}
         headers={[
           ...(canBulkDelete ? ['Chọn'] : []),
           'Độ khẩn',
@@ -649,81 +674,6 @@ function AlertsPageContent() {
   );
 }
 
-/**
- * Thanh chọn nhiều nằm ngay trên bảng: ô "chọn cả trang" thay cho checkbox ở
- * tiêu đề cột (DataTable chỉ nhận tiêu đề chữ), đếm đã chọn qua các trang và
- * nút xoá đỏ chỉ sáng khi có lựa chọn.
- */
-function BulkSelectionBar({
-  selectedCount,
-  pageCount,
-  pageAllSelected,
-  pageSomeSelected,
-  onTogglePage,
-  onClear,
-  onDeleteSelected,
-}: {
-  selectedCount: number;
-  pageCount: number;
-  pageAllSelected: boolean;
-  pageSomeSelected: boolean;
-  onTogglePage: () => void;
-  onClear: () => void;
-  onDeleteSelected: () => void;
-}) {
-  const hasSelection = selectedCount > 0;
-  return (
-    <div
-      role="toolbar"
-      aria-label="Chọn nhiều cảnh báo"
-      className={`mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[var(--radius-card)] border px-4 py-2.5 text-sm transition-colors ${
-        hasSelection ? 'border-danger/40 bg-danger/5' : 'border-border bg-white'
-      }`}
-    >
-      <label className="flex items-center gap-2 font-semibold text-ink">
-        <input
-          type="checkbox"
-          checked={pageAllSelected}
-          ref={(el) => {
-            if (el) el.indeterminate = pageSomeSelected && !pageAllSelected;
-          }}
-          disabled={pageCount === 0}
-          onChange={onTogglePage}
-          className="size-4 accent-danger"
-        />
-        Chọn cả trang
-        <span className="font-normal text-muted">({pageCount})</span>
-      </label>
-
-      <span
-        className={hasSelection ? 'font-semibold text-danger' : 'text-muted'}
-        aria-live="polite"
-      >
-        {hasSelection
-          ? `Đã chọn ${selectedCount}${selectedCount >= ALERT_BULK_DELETE_MAX ? ` (tối đa ${ALERT_BULK_DELETE_MAX} một lượt)` : ''}`
-          : 'Chưa chọn cảnh báo nào'}
-      </span>
-
-      <div className="ml-auto flex items-center gap-2">
-        {hasSelection ? (
-          <Button type="button" variant="ghost" className="h-8 px-2 text-xs" onClick={onClear}>
-            Bỏ chọn
-          </Button>
-        ) : null}
-        <Button
-          type="button"
-          variant="danger"
-          className="h-8 px-3 text-xs"
-          disabled={!hasSelection}
-          onClick={onDeleteSelected}
-        >
-          Xoá đã chọn{hasSelection ? ` (${selectedCount})` : ''}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 const OUTCOME_HINTS: Record<AlertOutcome, string> = {
   PASSED: 'Sinh viên đã cải thiện sau khi được chăm sóc.',
   EXAM_BANNED: 'Đã chăm sóc nhưng cuối cùng sinh viên vẫn bị cấm thi.',
@@ -765,54 +715,6 @@ function OutcomeFieldset() {
         })}
       </div>
     </fieldset>
-  );
-}
-
-/** Cột THAO TÁC: quyền đã tính sẵn ở `alertRowActions` — ở đây chỉ vẽ nút. */
-function AlertRowActionsCell({
-  actions,
-  onAcknowledge,
-  onResolve,
-  onDelete,
-}: {
-  actions: ReturnType<typeof alertRowActions>;
-  onAcknowledge: () => void;
-  onResolve: () => void;
-  onDelete: () => void;
-}) {
-  if (!actions.canAcknowledge && !actions.canResolve && !actions.canDelete) {
-    return <span className="text-xs text-muted">—</span>;
-  }
-  return (
-    <div className="flex gap-3">
-      {actions.canAcknowledge ? (
-        <button
-          type="button"
-          onClick={onAcknowledge}
-          className="text-xs font-semibold text-fpt-blue hover:underline"
-        >
-          Tiếp nhận
-        </button>
-      ) : null}
-      {actions.canResolve ? (
-        <button
-          type="button"
-          onClick={onResolve}
-          className="text-xs font-semibold text-success hover:underline"
-        >
-          Xử lý
-        </button>
-      ) : null}
-      {actions.canDelete ? (
-        <button
-          type="button"
-          onClick={onDelete}
-          className="text-xs font-semibold text-danger hover:underline"
-        >
-          Xoá
-        </button>
-      ) : null}
-    </div>
   );
 }
 
