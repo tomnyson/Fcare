@@ -120,7 +120,11 @@ export default function AdminMailPage() {
         </SurfaceCard>
         <div className="space-y-6">
           <MailStatusCard view={view} />
-          <MailTestPanel currentValues={draft ?? saved} dirty={dirty} />
+          <MailTestPanel
+            currentValues={draft ?? saved}
+            dirty={dirty}
+            blocked={view.externalDisabled}
+          />
         </div>
       </div>
     );

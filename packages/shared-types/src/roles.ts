@@ -28,3 +28,19 @@ export const EXCEL_IO_ROLES: readonly RoleKey[] = [
 export function canUseExcelIo(roles: readonly RoleKey[]): boolean {
   return roles.some((role) => EXCEL_IO_ROLES.includes(role));
 }
+
+/** docs/plan-lert.md mục 4: CTSV chỉ xem và nhận cảnh báo từ mức này trở lên. */
+export const SA_MIN_ALERT_LEVEL = 3;
+
+const SA_ROLES: readonly RoleKey[] = ['SA_OFFICER', 'SA_HEAD'];
+
+/**
+ * Mức cảnh báo thấp nhất người dùng được thấy. Chỉ người thuần CTSV bị giới
+ * hạn — kiêm thêm vai trò khác (quản trị, đào tạo, TBM, giảng viên) thì vai trò
+ * đó vẫn cần thấy đủ mọi mức.
+ */
+export function minVisibleAlertLevel(roles: readonly RoleKey[]): number {
+  const saOnly =
+    roles.length > 0 && roles.every((role) => SA_ROLES.includes(role));
+  return saOnly ? SA_MIN_ALERT_LEVEL : 1;
+}

@@ -312,6 +312,7 @@ function StudentsPageContent() {
 
       <FilterBar
         label="Bộ lọc sinh viên"
+        collapsible
         activeCount={chips.filter((chip) => chip.key !== 'search').length}
         onSubmit={(event) => {
           event.preventDefault();

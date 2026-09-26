@@ -12,6 +12,7 @@ import {
   ALERT_LEVEL_LABELS,
   MIN_CRITICAL_REASON_LENGTH,
   canCloseAlert,
+  minVisibleAlertLevel,
   type AlertLevel,
 } from '@fcare/shared-types';
 import { AuditService } from '../../audit/audit.service';
@@ -23,15 +24,48 @@ import {
   RaiseAlertDto,
   ResolveAlertDto,
 } from './dto/alert.dto';
+import { RiskScoreService } from '../evaluations/risk-score.service';
 import { EscalationService } from './escalation.service';
 import {
   ALERT_ESCALATION_QUEUE,
   NotificationDispatchService,
   type EscalationJobData,
 } from './notification-dispatch.service';
+import {
+  decideRaise,
+  mergedReason,
+  systemRaiseNote,
+  type RaiseDecision,
+} from './raise-decision';
 
 function levelLabel(level: number): string {
   return ALERT_LEVEL_LABELS[`L${level}` as AlertLevel] ?? `Mức ${level}`;
+}
+
+const RAISE_AUDIT_ACTIONS: Record<RaiseDecision['type'], string> = {
+  create: 'ALERT_RAISED',
+  escalate: 'ALERT_ESCALATED',
+  merge: 'ALERT_MERGED',
+};
+
+/** Kết quả trả về cho web để báo người dùng hệ thống đã làm gì. */
+const RAISE_RESULT = {
+  create: 'created',
+  escalate: 'escalated',
+  merge: 'merged',
+} as const satisfies Record<RaiseDecision['type'], string>;
+
+/**
+ * CTSV chỉ thấy cảnh báo từ mức 3 (docs/plan-lert.md mục 4): lọc mức thấp hơn
+ * thì trả rỗng thay vì lờ bộ lọc đi.
+ */
+export function visibleLevelFilter(
+  user: AuthUser,
+  level: number | undefined,
+): Prisma.IntFilter | number | undefined {
+  const min = minVisibleAlertLevel(user.roles);
+  if (level !== undefined) return level >= min ? level : { in: [] };
+  return min > 1 ? { gte: min } : undefined;
 }
 
 /** Giữ thứ tự xuất hiện đầu tiên — thứ tự này lọt vào audit và kết quả trả về. */
@@ -48,6 +82,23 @@ interface DeletableAlert {
   source: AlertSource;
 }
 
+/**
+ * Thứ tự danh sách cảnh báo (docs/plan-lert.md mục 2). Bỏ trống giữ thứ tự cũ;
+ * chọn cột thì cột đó là khoá chính, `id` chốt cuối để phân trang ổn định.
+ */
+export function alertOrderBy(
+  query: Pick<ListAlertsQuery, 'sortBy' | 'sortDir'>,
+): Prisma.AlertOrderByWithRelationInput[] {
+  const dir = query.sortDir ?? 'desc';
+  if (query.sortBy === 'level') {
+    return [{ level: dir }, { createdAt: 'desc' }, { id: 'asc' }];
+  }
+  if (query.sortBy === 'createdAt') {
+    return [{ createdAt: dir }, { id: 'asc' }];
+  }
+  return [{ status: 'asc' }, { level: 'desc' }, { createdAt: 'desc' }];
+}
+
 @Injectable()
 export class AlertsService {
   private readonly logger = new Logger(AlertsService.name);
@@ -59,6 +110,7 @@ export class AlertsService {
     private readonly dispatchService: NotificationDispatchService,
     @InjectQueue(ALERT_ESCALATION_QUEUE)
     private readonly escalationQueue: Queue<EscalationJobData>,
+    private readonly riskScoreService: RiskScoreService,
   ) {
     // Queue không có listener 'error' sẽ ném unhandled và crash tiến trình;
     // enqueue đã có fallback đồng bộ nên chỉ cần log cảnh báo.
@@ -106,7 +158,7 @@ export class AlertsService {
 
     const where: Prisma.AlertWhereInput = {
       status: query.openOnly ? { not: AlertStatus.RESOLVED } : query.status,
-      level: query.level,
+      level: visibleLevelFilter(user, query.level),
       source: query.source,
       studentId: query.studentId,
       student,
@@ -115,7 +167,7 @@ export class AlertsService {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.alert.findMany({
         where,
-        orderBy: [{ status: 'asc' }, { level: 'desc' }, { createdAt: 'desc' }],
+        orderBy: alertOrderBy(query),
         skip: (page - 1) * limit,
         take: limit,
         include: {
@@ -171,46 +223,148 @@ export class AlertsService {
     const section = dto.classSectionId
       ? await this.requireEnrolledSection(dto.studentId, dto.classSectionId)
       : null;
+    const term = section?.term ?? null;
+    const systemLevel = term
+      ? await this.systemLevelOf(user, dto.studentId, term)
+      : 1;
 
-    const recipientIds = await this.escalationService.computeRecipientIds(
-      dto.studentId,
-      dto.level,
-      user.id,
-    );
+    const outcome = await this.prisma.$transaction(async (tx) => {
+      // Khoá theo sinh viên để hai lần phát đồng thời không tạo hai cảnh báo mở.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`alert-raise:${dto.studentId}`}))`;
+      const open = await tx.alert.findFirst({
+        where: {
+          studentId: dto.studentId,
+          classSectionId: section?.id ?? null,
+          term,
+          status: { not: AlertStatus.RESOLVED },
+        },
+        orderBy: [{ level: 'desc' }, { createdAt: 'desc' }],
+        select: { id: true, level: true, reason: true },
+      });
+      const decision = decideRaise({
+        requestedLevel: dto.level,
+        systemLevel,
+        open,
+      });
 
-    const alert = await this.prisma.alert.create({
-      data: {
-        studentId: dto.studentId,
-        raisedById: user.id,
-        level: dto.level,
-        reason: dto.reason,
-        classSectionId: section?.id ?? null,
-        term: section?.term ?? null,
-      },
+      if (decision.type === 'create') {
+        const reason = decision.raisedBySystem
+          ? `${dto.reason}\n\n${systemRaiseNote(dto.level, decision.level)}`
+          : dto.reason;
+        const alert = await tx.alert.create({
+          data: {
+            studentId: dto.studentId,
+            raisedById: user.id,
+            level: decision.level,
+            reason,
+            classSectionId: section?.id ?? null,
+            term,
+          },
+        });
+        return { alert, decision, reason };
+      }
+
+      const now = new Date();
+      const addition =
+        decision.type === 'escalate' && decision.raisedBySystem
+          ? `${dto.reason}\n${systemRaiseNote(dto.level, decision.level)}`
+          : dto.reason;
+      const reason = mergedReason(open?.reason ?? '', addition, now);
+      const alert = await tx.alert.update({
+        where: { id: decision.alertId },
+        data:
+          decision.type === 'escalate'
+            ? {
+                level: decision.level,
+                reason,
+                status: AlertStatus.OPEN,
+                ownerCaredAt: null,
+              }
+            : { reason },
+      });
+      return { alert, decision, reason };
     });
 
+    const { alert, decision } = outcome;
+    const recipientIds =
+      decision.type === 'merge'
+        ? []
+        : await this.escalationService.computeRecipientIds(
+            dto.studentId,
+            decision.level,
+            user.id,
+          );
+
     if (recipientIds.length > 0) {
-      await this.dispatchNotifications({
-        alertId: alert.id,
-        recipientIds,
-        title: `Cảnh báo ${levelLabel(dto.level)} — ${student.fullName} (${student.studentCode})`,
-        body: dto.reason,
-      });
+      const who = `${student.fullName} (${student.studentCode})`;
+      await this.dispatchNotifications(
+        decision.type === 'escalate'
+          ? {
+              alertId: alert.id,
+              recipientIds,
+              title: `Nâng cảnh báo lên ${levelLabel(decision.level)} — ${who}`,
+              body: `Từ mức ${decision.fromLevel} lên mức ${decision.level}. ${dto.reason}`,
+              replay: true,
+            }
+          : {
+              alertId: alert.id,
+              recipientIds,
+              title: `Cảnh báo ${levelLabel(decision.level)} — ${who}`,
+              body: outcome.reason,
+            },
+      );
     }
 
     await this.auditService.log({
       staffId: user.id,
-      action: 'ALERT_RAISED',
+      action: RAISE_AUDIT_ACTIONS[decision.type],
       entity: 'Alert',
       entityId: alert.id,
       metadata: {
-        level: dto.level,
+        level: decision.level,
+        requestedLevel: dto.level,
+        systemLevel,
+        ...(decision.type === 'escalate'
+          ? { fromLevel: decision.fromLevel }
+          : {}),
         studentId: dto.studentId,
         recipients: recipientIds.length,
       },
     });
 
-    return { ...alert, notifiedCount: recipientIds.length };
+    return {
+      ...alert,
+      level: decision.level,
+      notifiedCount: recipientIds.length,
+      decision: RAISE_RESULT[decision.type],
+      requestedLevel: dto.level,
+      systemLevel,
+      previousLevel: decision.type === 'escalate' ? decision.fromLevel : null,
+    };
+  }
+
+  /**
+   * Mức hệ thống tự tính từ điểm rủi ro của học kỳ — làm sàn cho mức giảng
+   * viên chọn. Lỗi tính điểm không được chặn việc phát cảnh báo.
+   */
+  private async systemLevelOf(
+    user: AuthUser,
+    studentId: string,
+    term: string,
+  ): Promise<number> {
+    try {
+      const risk = await this.riskScoreService.forStudentTerm(
+        user,
+        studentId,
+        term,
+      );
+      return Math.max(risk.drsLevel, risk.dataForcedLevel);
+    } catch (error) {
+      this.logger.warn(
+        `Không tính được mức hệ thống cho sinh viên ${studentId} (${term}): ${(error as Error).message}`,
+      );
+      return 1;
+    }
   }
 
   /** Lớp gắn vào cảnh báo phải là lớp sinh viên đang học — không nhận id lạ. */

@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { AlertSource, AlertStatus, type Prisma } from '@prisma/client';
+import { minVisibleAlertLevel } from '@fcare/shared-types';
 import type { AuthUser } from '../../common/types/auth-user';
 import {
   isDeptScoped,
@@ -67,9 +68,12 @@ export class StatisticsService {
         { enrollments: { some: enrolledInTerm } },
       ],
     };
+    const minLevel = minVisibleAlertLevel(user.roles);
     const openAlertsInTerm: Prisma.AlertWhereInput[] = [
       { OR: [{ term: term.code }, { term: null, createdAt: range }] },
       { status: { not: AlertStatus.RESOLVED } },
+      // CTSV chỉ thấy cảnh báo từ mức 3 — docs/plan-lert.md mục 4.
+      ...(minLevel > 1 ? [{ level: { gte: minLevel } }] : []),
     ];
     const weekStart = new Date(
       Math.max(term.startDate.getTime(), Date.now() - SEVEN_DAYS_MS),

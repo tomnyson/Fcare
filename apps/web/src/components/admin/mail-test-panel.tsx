@@ -18,11 +18,13 @@ interface MailTestPanelProps {
   currentValues: MailSettingsFormValues;
   /** Form có khác bản đã lưu không → gửi kèm `draft`. */
   dirty: boolean;
+  /** .env đang chặn gửi ra ngoài → khoá nút, API cũng sẽ từ chối. */
+  blocked?: boolean;
 }
 
 const RECIPIENT_HINT = 'Chỉ nhận địa chỉ @fpt.edu.vn hoặc @fe.edu.vn.';
 
-export function MailTestPanel({ currentValues, dirty }: MailTestPanelProps) {
+export function MailTestPanel({ currentValues, dirty, blocked = false }: MailTestPanelProps) {
   const queryClient = useQueryClient();
   const [to, setTo] = useState('');
   const [error, setError] = useState('');
@@ -68,9 +70,7 @@ export function MailTestPanel({ currentValues, dirty }: MailTestPanelProps) {
           Gửi mail thử
         </h2>
         <p className="mt-1 text-sm text-muted">
-          {dirty
-            ? 'Sẽ thử bằng cấu hình đang nhập (chưa lưu).'
-            : 'Sẽ thử bằng cấu hình đã lưu.'}{' '}
+          {dirty ? 'Sẽ thử bằng cấu hình đang nhập (chưa lưu).' : 'Sẽ thử bằng cấu hình đã lưu.'}{' '}
           Tối đa 5 lần mỗi phút.
         </p>
       </div>
@@ -99,7 +99,10 @@ export function MailTestPanel({ currentValues, dirty }: MailTestPanelProps) {
           type="submit"
           variant="secondary"
           className="w-full"
-          disabled={testMutation.isPending || to.trim().length === 0}
+          disabled={blocked || testMutation.isPending || to.trim().length === 0}
+          title={
+            blocked ? 'Đang chặn gửi email ra ngoài (NOTIFICATIONS_EXTERNAL_DISABLED)' : undefined
+          }
         >
           {testMutation.isPending ? 'Đang gửi…' : 'Gửi mail thử'}
         </Button>

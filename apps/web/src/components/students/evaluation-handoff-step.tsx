@@ -4,6 +4,7 @@ import { Button } from '@fcare/ui-kit';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { ApiError, apiFetch } from '../../lib/api';
+import { describeRaiseResult, type RaiseAlertResult } from '../../lib/raise-result';
 import { FormError, FormSuccess, Textarea } from '../ui/form';
 import { SuggestedLevelBadge } from './evaluation-guidance';
 
@@ -22,10 +23,16 @@ export function raiseAlertBody({ classSectionId, ...rest }: RaiseAlertInput): Ra
 /**
  * Phát cảnh báo từ nhận xét rồi kích hoạt AI tổng hợp học kỳ. AI chưa bật trên
  * hệ thống thì bỏ qua — cảnh báo đã phát là đủ, không làm hỏng luồng lưu.
+ * Trả kết quả API để báo đúng việc đã xảy ra: tạo mới, nâng mức hay chỉ gộp lý do.
  */
-export async function raiseEvaluationAlert(input: RaiseAlertInput & { term: string }): Promise<void> {
+export async function raiseEvaluationAlert(
+  input: RaiseAlertInput & { term: string },
+): Promise<RaiseAlertResult> {
   const { term, ...alert } = input;
-  await apiFetch('/alerts', { method: 'POST', body: JSON.stringify(raiseAlertBody(alert)) });
+  const result = await apiFetch<RaiseAlertResult>('/alerts', {
+    method: 'POST',
+    body: JSON.stringify(raiseAlertBody(alert)),
+  });
   try {
     await apiFetch(`/students/${alert.studentId}/term-analyses`, {
       method: 'POST',
@@ -34,6 +41,7 @@ export async function raiseEvaluationAlert(input: RaiseAlertInput & { term: stri
   } catch {
     // AI chưa được kích hoạt — không chặn việc phát cảnh báo.
   }
+  return result;
 }
 
 interface AlertReasonInput {
@@ -124,7 +132,7 @@ export function EvaluationHandoffStep({
   const raiseAlertAndAiMutation = useMutation({
     mutationFn: async () => {
       setActionError(null);
-      await raiseEvaluationAlert({
+      return raiseEvaluationAlert({
         studentId,
         term,
         level: suggestedLevel,
@@ -132,13 +140,15 @@ export function EvaluationHandoffStep({
         classSectionId,
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['alerts'] }),
         queryClient.invalidateQueries({ queryKey: ['student-term-analysis'] }),
         queryClient.invalidateQueries({ queryKey: ['students'] }),
       ]);
-      setActionNotice(`Đã phát cảnh báo Mức ${suggestedLevel} và kích hoạt tổng hợp AI.`);
+      setActionNotice(
+        `${describeRaiseResult(result).text.replace(/\.$/, '')} và kích hoạt tổng hợp AI.`,
+      );
       setTimeout(() => onComplete(), 1200);
     },
     onError: (err) => {
@@ -193,8 +203,8 @@ export function EvaluationHandoffStep({
       <div className="rounded-lg border border-fpt-orange/30 bg-fpt-orange-50/50 p-4">
         <h3 className="font-semibold text-ink">Đề xuất bước xử lý tiếp theo</h3>
         <p className="mt-1 text-xs text-muted">
-          Dựa trên đánh giá của bạn, sinh viên này thuộc diện nguy cơ cần được can thiệp sớm. Để tiết
-          kiệm thời gian chuyển trang, bạn có thể thực hiện nhanh các bước dưới đây:
+          Dựa trên đánh giá của bạn, sinh viên này thuộc diện nguy cơ cần được can thiệp sớm. Để
+          tiết kiệm thời gian chuyển trang, bạn có thể thực hiện nhanh các bước dưới đây:
         </p>
 
         {criterionLabels.length > 0 ? (

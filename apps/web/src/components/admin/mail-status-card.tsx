@@ -1,7 +1,11 @@
 'use client';
 
 import { Badge, SurfaceCard } from '@fcare/ui-kit';
-import { describeTestState, type MailSettingsView, type TestStateTone } from '../../lib/mail-settings';
+import {
+  describeTestState,
+  type MailSettingsView,
+  type TestStateTone,
+} from '../../lib/mail-settings';
 
 const TEST_TEXT_CLASSES: Record<TestStateTone, string> = {
   muted: 'text-muted',
@@ -31,9 +35,25 @@ export function MailStatusCard({ view }: { view: MailSettingsView }) {
         Trạng thái hiện tại
       </h2>
 
+      {view.externalDisabled ? (
+        <p
+          role="alert"
+          data-external-disabled
+          className="rounded-md border-l-4 border-warning bg-warning/10 px-3 py-2 text-sm text-ink"
+        >
+          <strong className="font-semibold">Đang chặn email và thông báo đẩy.</strong> Máy chủ bật
+          biến <code className="font-mono text-xs">NOTIFICATIONS_EXTERNAL_DISABLED</code> — không
+          thư nào được gửi ra ngoài, kể cả gửi thử. Chuông thông báo trong app vẫn hoạt động.
+        </p>
+      ) : null}
+
       <div className="flex flex-wrap items-center gap-2">
-        <Badge tone={view.enabled ? 'success' : 'warning'}>
-          {view.enabled ? 'Đang gửi mail' : 'Đã tắt gửi mail'}
+        <Badge tone={view.externalDisabled ? 'danger' : view.enabled ? 'success' : 'warning'}>
+          {view.externalDisabled
+            ? 'Bị chặn bởi .env'
+            : view.enabled
+              ? 'Đang gửi mail'
+              : 'Đã tắt gửi mail'}
         </Badge>
         <Badge tone={view.source === 'DATABASE' ? 'info' : 'neutral'}>
           {view.source === 'DATABASE' ? 'Cấu hình trong hệ thống' : 'Đang dùng biến môi trường'}

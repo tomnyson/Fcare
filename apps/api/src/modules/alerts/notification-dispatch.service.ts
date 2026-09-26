@@ -19,6 +19,8 @@ export interface EscalationJobData {
   body: string;
   /** Link mở thẳng chỗ cần chăm sóc (cảnh báo điểm danh tự động). */
   targetUrl?: string;
+  /** Cảnh báo được nâng mức tại chỗ: báo lại cả người đã nhận trước đó. */
+  replay?: boolean;
 }
 
 export type NotificationSource =
@@ -41,7 +43,21 @@ export interface NotificationDeliveryData {
   title: string;
   body: string;
   source: NotificationSource;
+  /** Chỉ nguồn `alert`: làm mới thông báo cũ của cùng cảnh báo rồi báo lại. */
+  replay?: boolean;
 }
+
+const DELIVERED_SELECT = {
+  id: true,
+  recipientId: true,
+  alertId: true,
+  analysisVersionId: true,
+  discussionMessageId: true,
+  targetUrl: true,
+  title: true,
+  body: true,
+  createdAt: true,
+} as const satisfies Prisma.NotificationSelect;
 
 /**
  * Tạo bản ghi thông báo + phát sự kiện SSE cho người nhận.
@@ -100,23 +116,17 @@ export class NotificationDispatchService {
       return 0;
     }
 
-    const notifications = await this.prisma.notification.createManyAndReturn({
+    const inserted = await this.prisma.notification.createManyAndReturn({
       data: normalized.recipientIds.map((recipientId) =>
         this.buildRow(recipientId, normalized),
       ),
       skipDuplicates: true,
-      select: {
-        id: true,
-        recipientId: true,
-        alertId: true,
-        analysisVersionId: true,
-        discussionMessageId: true,
-        targetUrl: true,
-        title: true,
-        body: true,
-        createdAt: true,
-      },
+      select: DELIVERED_SELECT,
     });
+    const notifications = [
+      ...inserted,
+      ...(await this.refreshForReplay(normalized, inserted)),
+    ];
 
     const alertLevel =
       notifications.length > 0
@@ -142,8 +152,13 @@ export class NotificationDispatchService {
 
     this.logger.log(this.describeDelivery(normalized, notifications.length));
 
-    if (this.emailService) {
-      this.dispatchEmail(normalized).catch((err) =>
+    // Email chỉ tới người vừa được tạo/làm mới thông báo — queue retry không
+    // gửi trùng thư cho người đã nhận.
+    if (this.emailService && notifications.length > 0) {
+      this.dispatchEmail({
+        ...normalized,
+        recipientIds: notifications.map((row) => row.recipientId),
+      }).catch((err) =>
         this.logger.warn(
           `Lỗi gửi email thông báo: ${err instanceof Error ? err.message : 'Unknown error'}`,
         ),
@@ -172,6 +187,31 @@ export class NotificationDispatchService {
     }
 
     return notifications.length;
+  }
+
+  /**
+   * Cảnh báo được nâng mức tại chỗ: unique (alertId, recipientId) khiến người
+   * đã nhận bị skipDuplicates bỏ qua. Làm mới dòng cũ (chưa đọc, lên đầu danh
+   * sách, nội dung mới) để họ cũng được báo lại — docs/plan-lert.md mục 1.
+   */
+  private async refreshForReplay(
+    data: NotificationDeliveryData,
+    inserted: Array<{ recipientId: string }>,
+  ) {
+    if (!data.replay || data.source.kind !== 'alert') return [];
+    const insertedIds = new Set(inserted.map((row) => row.recipientId));
+    const remaining = data.recipientIds.filter((id) => !insertedIds.has(id));
+    if (remaining.length === 0) return [];
+    return this.prisma.notification.updateManyAndReturn({
+      where: { alertId: data.source.alertId, recipientId: { in: remaining } },
+      data: {
+        readAt: null,
+        createdAt: new Date(),
+        title: data.title,
+        body: data.body,
+      },
+      select: DELIVERED_SELECT,
+    });
   }
 
   /**
@@ -230,6 +270,7 @@ export class NotificationDispatchService {
         alertId: data.alertId,
         targetUrl: data.targetUrl,
       },
+      replay: data.replay,
     };
   }
 

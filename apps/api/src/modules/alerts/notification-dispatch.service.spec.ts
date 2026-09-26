@@ -4,6 +4,7 @@ import {
   type NotificationDeliveryData,
 } from './notification-dispatch.service';
 import { NotificationEventsService } from './notification-events.service';
+import type { EmailService } from '../email/email.service';
 import type { PushService } from '../push/push.service';
 
 describe('NotificationDispatchService — gửi thông báo idempotent', () => {
@@ -304,5 +305,110 @@ describe('NotificationDispatchService — nguồn discussion', () => {
       { payload: { discussionMessageId?: string | null } },
     ];
     expect(event.payload.discussionMessageId).toBe('msg-1');
+  });
+});
+
+describe('NotificationDispatchService — phát lại khi cảnh báo được nâng mức', () => {
+  const row = (id: string, recipientId: string) => ({
+    id,
+    recipientId,
+    alertId: 'alert-1',
+    title: 'Nâng cảnh báo',
+    body: 'lý do',
+    createdAt: new Date('2026-09-26T00:00:00Z'),
+  });
+
+  function makeReplay(
+    inserted: Array<ReturnType<typeof row>>,
+    refreshed: Array<ReturnType<typeof row>>,
+  ) {
+    const createManyAndReturn = jest.fn().mockResolvedValue(inserted);
+    const updateManyAndReturn = jest.fn().mockResolvedValue(refreshed);
+    const prisma = {
+      notification: { createManyAndReturn, updateManyAndReturn },
+      alert: { findUnique: jest.fn().mockResolvedValue({ level: 4 }) },
+    } as unknown as PrismaService;
+    const events = new NotificationEventsService();
+    const emit = jest.spyOn(events, 'emit');
+    const sendAlertPush = jest.fn().mockResolvedValue(undefined);
+    const sendAlertEmail = jest.fn().mockResolvedValue(undefined);
+    const service = new NotificationDispatchService(
+      prisma,
+      events,
+      { sendAlertEmail } as unknown as EmailService,
+      { sendAlertPush } as unknown as PushService,
+    );
+    return {
+      service,
+      updateManyAndReturn,
+      emit,
+      sendAlertPush,
+      sendAlertEmail,
+    };
+  }
+
+  const replayJob = {
+    alertId: 'alert-1',
+    recipientIds: ['tbm-se', 'dt-hoa'],
+    title: 'Nâng cảnh báo',
+    body: 'lý do',
+    replay: true,
+  };
+
+  it('người đã có thông báo cũ: làm mới thành chưa đọc, đưa lên đầu, rồi báo lại đủ kênh', async () => {
+    const {
+      service,
+      updateManyAndReturn,
+      emit,
+      sendAlertPush,
+      sendAlertEmail,
+    } = makeReplay([row('n-new', 'tbm-se')], [row('n-old', 'dt-hoa')]);
+
+    await expect(service.deliver(replayJob)).resolves.toBe(2);
+
+    expect(updateManyAndReturn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { alertId: 'alert-1', recipientId: { in: ['dt-hoa'] } },
+        data: {
+          readAt: null,
+          createdAt: expect.any(Date) as unknown,
+          title: 'Nâng cảnh báo',
+          body: 'lý do',
+        },
+      }),
+    );
+    expect(emit).toHaveBeenCalledTimes(2);
+    expect(sendAlertPush).toHaveBeenCalledWith(
+      expect.objectContaining({
+        alertLevel: 4,
+        recipientIds: ['tbm-se', 'dt-hoa'],
+      }),
+    );
+    // Chờ promise email chạy nền.
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(sendAlertEmail).toHaveBeenCalledWith('alert-1', [
+      'tbm-se',
+      'dt-hoa',
+    ]);
+  });
+
+  it('không replay: không làm mới thông báo cũ', async () => {
+    const { service, updateManyAndReturn } = makeReplay([], []);
+    await service.deliver({ ...replayJob, replay: false });
+    expect(updateManyAndReturn).not.toHaveBeenCalled();
+  });
+
+  it('retry không tạo thêm thông báo nào thì cũng không gửi email lại', async () => {
+    const { service, sendAlertEmail } = makeReplay([], []);
+    await service.deliver({ ...replayJob, replay: false });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(sendAlertEmail).not.toHaveBeenCalled();
+  });
+
+  it('email chỉ tới người vừa được tạo thông báo', async () => {
+    const { service, sendAlertEmail } = makeReplay([row('n-1', 'tbm-se')], []);
+    await service.deliver({ ...replayJob, replay: false });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(sendAlertEmail).toHaveBeenCalledWith('alert-1', ['tbm-se']);
   });
 });

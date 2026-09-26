@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   activeAlertFilterCount,
+  alertLevelFilterOptions,
+  alertSortPatch,
   buildAlertListQuery,
   clearAlertFiltersPatch,
+  nextAlertSort,
   parseAlertFilters,
+  parseAlertSort,
 } from './alert-filters';
 
 function params(init: Record<string, string> = {}) {
@@ -117,5 +121,64 @@ describe('clearAlertFiltersPatch', () => {
       'term',
     ]);
     expect(Object.values(patch).every((value) => value === null)).toBe(true);
+  });
+});
+
+describe('sắp xếp cảnh báo theo độ khẩn / thời điểm', () => {
+  it('URL chưa chọn cột → mặc định độ khẩn giảm dần (khẩn nhất lên đầu)', () => {
+    expect(parseAlertSort(params())).toEqual({ by: 'level', dir: 'desc' });
+    expect(parseAlertSort(params({ sortBy: 'bogus' }))).toEqual({ by: 'level', dir: 'desc' });
+  });
+
+  it('đọc cột + chiều từ URL', () => {
+    expect(parseAlertSort(params({ sortBy: 'createdAt', sortDir: 'asc' }))).toEqual({
+      by: 'createdAt',
+      dir: 'asc',
+    });
+  });
+
+  it('bấm tiêu đề: cột khác → giảm dần; cùng cột giảm → tăng; tăng → bỏ', () => {
+    const level = { by: 'level', dir: 'desc' } as const;
+    expect(nextAlertSort(level, 'createdAt')).toEqual({ by: 'createdAt', dir: 'desc' });
+    expect(nextAlertSort(level, 'level')).toEqual({ by: 'level', dir: 'asc' });
+    expect(nextAlertSort({ by: 'level', dir: 'asc' }, 'level')).toBeNull();
+  });
+
+  it('đổi sắp xếp quay về trang 1', () => {
+    expect(alertSortPatch({ by: 'createdAt', dir: 'asc' })).toEqual({
+      sortBy: 'createdAt',
+      sortDir: 'asc',
+      page: null,
+    });
+    expect(alertSortPatch(null)).toEqual({ sortBy: null, sortDir: null, page: null });
+  });
+
+  it('gửi sortBy/sortDir lên API', () => {
+    const query = buildAlertListQuery(parseAlertFilters(params()), 10, 1, {
+      by: 'level',
+      dir: 'asc',
+    });
+    expect(query.get('sortBy')).toBe('level');
+    expect(query.get('sortDir')).toBe('asc');
+  });
+});
+
+describe('alertLevelFilterOptions — CTSV chỉ thấy mức 3 trở lên', () => {
+  it('CTSV thuần chỉ có mức 3 và 4', () => {
+    expect(alertLevelFilterOptions(['SA_OFFICER']).map((o) => o.value)).toEqual(['3', '4']);
+    expect(alertLevelFilterOptions(['SA_HEAD', 'SA_OFFICER']).map((o) => o.value)).toEqual([
+      '3',
+      '4',
+    ]);
+  });
+
+  it('vai trò khác (kể cả kiêm CTSV) và lúc chưa tải xong vai trò thấy đủ 1–4', () => {
+    expect(alertLevelFilterOptions(['LECTURER']).map((o) => o.value)).toEqual(['1', '2', '3', '4']);
+    expect(alertLevelFilterOptions(['ADMIN', 'SA_HEAD'])).toHaveLength(4);
+    expect(alertLevelFilterOptions(undefined)).toHaveLength(4);
+  });
+
+  it('nhãn kèm tên mức', () => {
+    expect(alertLevelFilterOptions(['SA_OFFICER'])[0].label).toMatch(/^Mức 3 — /);
   });
 });

@@ -21,6 +21,8 @@ interface FilterToggleState {
   toggle: () => void;
   gridId: string;
   activeCount: number;
+  /** true → thu gọn ở mọi cỡ màn hình, không chỉ điện thoại. */
+  collapsible: boolean;
 }
 
 const FilterToggleContext = createContext<FilterToggleState | null>(null);
@@ -37,12 +39,19 @@ export function FilterBar({
   label,
   onSubmit,
   activeCount = 0,
+  collapsible = false,
   children,
 }: {
   label: string;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   /** Số bộ lọc phụ đang bật — hiện trên nút để biết đang lọc dù lưới đang ẩn. */
   activeCount?: number;
+  /**
+   * Ẩn lưới ô lọc ở MỌI cỡ màn hình cho tới khi bấm nút "Bộ lọc" — dành cho
+   * trang cần nhường tối đa chỗ cho bảng (docs/plan-lert.md mục 3). Ô tìm kiếm
+   * và dải chip vẫn luôn hiện nên vẫn biết đang lọc gì.
+   */
+  collapsible?: boolean;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -52,6 +61,7 @@ export function FilterBar({
     toggle: () => setOpen((value) => !value),
     gridId,
     activeCount,
+    collapsible,
   };
 
   return (
@@ -66,11 +76,11 @@ export function FilterBar({
   );
 }
 
-/** Nút bật/tắt lưới ô lọc — chỉ hiện dưới `sm`. */
+/** Nút bật/tắt lưới ô lọc — chỉ hiện dưới `sm`, trừ khi FilterBar `collapsible`. */
 function FilterToggle({ className = '' }: { className?: string }) {
   const state = useContext(FilterToggleContext);
   if (!state) return null;
-  const { open, toggle, gridId, activeCount } = state;
+  const { open, toggle, gridId, activeCount, collapsible } = state;
 
   return (
     <button
@@ -79,7 +89,7 @@ function FilterToggle({ className = '' }: { className?: string }) {
       onClick={toggle}
       aria-expanded={open}
       aria-controls={gridId}
-      className={`inline-flex h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border px-3 text-sm font-semibold transition-colors duration-[var(--duration-fast)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fpt-blue sm:hidden ${
+      className={`inline-flex h-11 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border px-3 text-sm font-semibold transition-colors duration-[var(--duration-fast)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fpt-blue ${collapsible ? '' : 'sm:hidden'} ${
         open || activeCount > 0
           ? 'border-fpt-blue/30 bg-fpt-blue/5 text-fpt-blue-700'
           : 'border-border bg-white text-ink hover:bg-surface'
@@ -131,12 +141,14 @@ function FilterToggle({ className = '' }: { className?: string }) {
  * thứ tự DOM nên thứ tự Tab khớp với thứ tự nhìn thấy.
  */
 export function FilterSearchRow({ children }: { children: ReactNode }) {
-  const open = useContext(FilterToggleContext)?.open ?? true;
+  const state = useContext(FilterToggleContext);
+  const open = state?.open ?? true;
+  const collapsedBorder = state?.collapsible ? 'border-b-0' : 'max-sm:border-b-0';
   return (
     <div
       data-filter-search-row
       className={`flex flex-wrap items-center gap-2 border-b border-border bg-surface px-4 py-3 sm:flex-nowrap max-sm:[&>button[type=submit]]:flex-1 max-sm:[&>button[type=submit]]:whitespace-nowrap max-sm:[&>button[type=submit]]:px-3 ${
-        open ? '' : 'max-sm:border-b-0'
+        open ? '' : collapsedBorder
       }`}
     >
       {children}
@@ -184,9 +196,9 @@ export function FilterGrid({ children }: { children: ReactNode }) {
       {state && (
         <div
           data-filter-grid-toggle
-          className={`px-4 py-3 group-has-[[data-filter-search-row]]/filter:hidden sm:hidden ${
-            open ? 'border-b border-border' : ''
-          }`}
+          className={`px-4 py-3 group-has-[[data-filter-search-row]]/filter:hidden ${
+            state.collapsible ? '' : 'sm:hidden'
+          } ${open ? 'border-b border-border' : ''}`}
         >
           <FilterToggle className="w-full" />
         </div>
@@ -195,7 +207,7 @@ export function FilterGrid({ children }: { children: ReactNode }) {
         id={state?.gridId}
         data-filter-grid
         className={`grid grid-cols-1 gap-x-4 gap-y-3.5 px-4 py-4 sm:grid-cols-2 lg:grid-cols-4 ${
-          open ? '' : 'max-sm:hidden'
+          open ? '' : state?.collapsible ? 'hidden' : 'max-sm:hidden'
         }`}
       >
         {children}

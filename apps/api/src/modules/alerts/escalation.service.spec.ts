@@ -47,16 +47,16 @@ describe('EscalationService — ma trận báo tin theo độ khẩn', () => {
     expect(recipients.sort()).toEqual(['gv-chi']);
   });
 
-  it('cấp 2: thêm cán bộ phòng CTSV', async () => {
+  it('cấp 2: CTSV chưa nhận — CTSV chỉ nhận từ mức 3 (docs/plan-lert.md mục 4)', async () => {
     const recipients = await makeService().computeRecipientIds(
       'sv-1',
       2,
       RAISER,
     );
-    expect(recipients.sort()).toEqual(['ctsv-lan', 'gv-chi']);
+    expect(recipients.sort()).toEqual(['gv-chi']);
   });
 
-  it('cấp 3: thêm trưởng bộ môn của sinh viên', async () => {
+  it('cấp 3: thêm cán bộ CTSV và trưởng bộ môn của sinh viên', async () => {
     const recipients = await makeService().computeRecipientIds(
       'sv-1',
       3,
@@ -90,7 +90,12 @@ describe('EscalationService — ma trận báo tin theo độ khẩn', () => {
   });
 
   it('cảnh báo do hệ thống phát (không có raisedById) → không loại ai', async () => {
-    const recipients = await makeService().computeRecipientIds('sv-1', 2);
-    expect(recipients.sort()).toEqual(['ctsv-lan', 'gv-binh', 'gv-chi']);
+    const recipients = await makeService().computeRecipientIds('sv-1', 3);
+    expect(recipients.sort()).toEqual([
+      'ctsv-lan',
+      'gv-binh',
+      'gv-chi',
+      'tbm-se',
+    ]);
   });
 });

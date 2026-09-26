@@ -77,6 +77,24 @@ describe('EmailService', () => {
       transportFactory;
   });
 
+  it('NOTIFICATIONS_EXTERNAL_DISABLED=true → chặn mọi mail, không đọc cấu hình', async () => {
+    const blocked = new EmailService(
+      {
+        get: jest.fn((key: string, fallback?: string) =>
+          key === 'NOTIFICATIONS_EXTERNAL_DISABLED' ? 'true' : fallback,
+        ),
+      } as unknown as ConfigService,
+      prisma as unknown as PrismaService,
+      mailSettings as unknown as MailSettingsService,
+    );
+    (blocked as unknown as { transportFactory: MockFn }).transportFactory =
+      transportFactory;
+
+    await expect(blocked.sendMail(baseMail)).resolves.toBe(false);
+    expect(mailSettings.getEffectiveConfig).not.toHaveBeenCalled();
+    expect(sendMailMock).not.toHaveBeenCalled();
+  });
+
   it('enabled=false → không gửi, trả false', async () => {
     mailSettings.getEffectiveConfig.mockResolvedValueOnce({
       ...effective,

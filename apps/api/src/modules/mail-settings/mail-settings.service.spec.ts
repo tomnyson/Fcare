@@ -136,6 +136,19 @@ describe('MailSettingsService', () => {
     expect(view.source).toBe('DATABASE');
   });
 
+  it('getView báo externalDisabled theo biến NOTIFICATIONS_EXTERNAL_DISABLED', async () => {
+    const off = await build(
+      { SETTINGS_ENCRYPTION_KEY: KEY },
+      dbRow,
+    ).service.getView();
+    expect(off.externalDisabled).toBe(false);
+    const on = await build(
+      { SETTINGS_ENCRYPTION_KEY: KEY, NOTIFICATIONS_EXTERNAL_DISABLED: '1' },
+      null,
+    ).service.getView();
+    expect(on.externalDisabled).toBe(true);
+  });
+
   it('update mã hoá mật khẩu trước khi lưu và ghi audit không kèm giá trị', async () => {
     const { service, prisma, audit } = build(
       { SETTINGS_ENCRYPTION_KEY: KEY },
@@ -257,6 +270,26 @@ describe('MailSettingsService.sendTest', () => {
         .transportFactory,
     };
   }
+
+  it('NOTIFICATIONS_EXTERNAL_DISABLED=true → từ chối gửi thử, không mở kết nối SMTP', async () => {
+    const transport = { verify: jest.fn(), sendMail: jest.fn() };
+    const built = build(
+      { SETTINGS_ENCRYPTION_KEY: KEY, NOTIFICATIONS_EXTERNAL_DISABLED: 'true' },
+      dbRow,
+    );
+    const factory = jest.fn(() => transport);
+    (
+      built.service as unknown as { transportFactory: unknown }
+    ).transportFactory = factory;
+    await expect(
+      built.service.sendTest('admin-1', { to: 'admin@fpt.edu.vn' }),
+    ).rejects.toMatchObject({
+      /* eslint-disable-next-line @typescript-eslint/no-unsafe-assignment */
+      response: expect.objectContaining({ code: 'MAIL_EXTERNAL_DISABLED' }),
+    });
+    expect(factory).not.toHaveBeenCalled();
+    expect(transport.sendMail).not.toHaveBeenCalled();
+  });
 
   it('từ chối email nhận ngoài miền FPT', async () => {
     const { service } = withTransport(dbRow, {

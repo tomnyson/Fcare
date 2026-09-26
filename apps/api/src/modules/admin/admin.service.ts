@@ -133,6 +133,7 @@ export class AdminService {
       where: { id },
       select: {
         email: true,
+        fullName: true,
         departmentId: true,
         roles: { select: { role: { select: { key: true } } } },
       },
@@ -141,6 +142,11 @@ export class AdminService {
       throw new NotFoundException('Không tìm thấy nhân viên.');
     }
     this.assertNotSelfLockout(adminId, id, dto);
+
+    const fullName = dto.fullName?.trim();
+    if (fullName === '') {
+      throw new BadRequestException('Họ tên không được để trống.');
+    }
 
     const roleRecords = dto.roles ? await this.requireRoles(dto.roles) : null;
     // Kiểm tra trên trạng thái SAU khi cập nhật: đổi vai trò và đổi bộ môn có
@@ -200,7 +206,10 @@ export class AdminService {
           data: { email: null },
         });
       }
+      // Chỉ gỡ liên kết Google khi email thật sự đổi — không gửi email (đổi tên,
+      // vai trò, bộ môn…) thì `emailToUpdate` là undefined, không được coi là đổi.
       if (
+        emailToUpdate !== undefined &&
         existing.email &&
         existing.email.toLowerCase().trim() !== emailToUpdate
       ) {
@@ -213,7 +222,7 @@ export class AdminService {
       return tx.staff.update({
         where: { id },
         data: {
-          fullName: dto.fullName,
+          fullName,
           email: emailToUpdate,
           departmentId: dto.departmentId,
           isActive: dto.isActive,
@@ -237,6 +246,9 @@ export class AdminService {
               departmentIdBefore: existing.departmentId,
               departmentIdAfter: dto.departmentId,
             }
+          : {}),
+        ...(fullName && fullName !== existing.fullName
+          ? { fullNameBefore: existing.fullName, fullNameAfter: fullName }
           : {}),
       },
     });

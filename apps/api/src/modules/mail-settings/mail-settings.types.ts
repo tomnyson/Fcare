@@ -21,6 +21,8 @@ export interface MailSettingsView {
   enabled: boolean;
   source: 'DATABASE' | 'ENV';
   encryptionReady: boolean;
+  /** true khi .env bật NOTIFICATIONS_EXTERNAL_DISABLED — mọi mail/push bị chặn. */
+  externalDisabled: boolean;
   lastTestedAt: string | null;
   lastTestOk: boolean | null;
   updatedAt: string | null;

@@ -19,6 +19,7 @@ import type {
   SendTestMailResult,
   UpdateMailSettingsInput,
 } from './mail-settings.types';
+import { isExternalNotificationsDisabled } from '../../common/utils/external-notifications';
 
 const SETTINGS_ID = 'default';
 const CACHE_TTL_MS = 60_000;
@@ -87,6 +88,7 @@ export class MailSettingsService {
         enabled: true,
         source: 'ENV',
         encryptionReady,
+        externalDisabled: isExternalNotificationsDisabled(this.config),
         lastTestedAt: null,
         lastTestOk: null,
         updatedAt: null,
@@ -111,6 +113,7 @@ export class MailSettingsService {
       enabled: row.enabled,
       source: 'DATABASE',
       encryptionReady,
+      externalDisabled: isExternalNotificationsDisabled(this.config),
       lastTestedAt: row.lastTestedAt?.toISOString() ?? null,
       lastTestOk: row.lastTestOk,
       updatedAt: row.updatedAt.toISOString(),
@@ -252,6 +255,13 @@ export class MailSettingsService {
     actorId: string,
     input: SendTestMailInput,
   ): Promise<SendTestMailResult> {
+    if (isExternalNotificationsDisabled(this.config)) {
+      throw new BadRequestException({
+        code: 'MAIL_EXTERNAL_DISABLED',
+        message:
+          'Hệ thống đang chặn gửi email ra ngoài (NOTIFICATIONS_EXTERNAL_DISABLED). Tắt biến này rồi thử lại.',
+      });
+    }
     const to = input.to.trim().toLowerCase();
     if (!isAllowedStaffEmail(to)) {
       throw new BadRequestException({
