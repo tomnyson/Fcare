@@ -8,6 +8,7 @@ import { AlertsTab } from '../../../../components/students/alerts-tab';
 import { CareLogsTab } from '../../../../components/students/care-logs-tab';
 import { DiscussionTab } from '../../../../components/students/discussion-tab';
 import { EnrollmentsTab } from '../../../../components/students/enrollments-tab';
+import { TermSectionsCard } from '../../../../components/students/term-sections-card';
 import {
   EvaluationsTab,
   type EvaluateRequest,
@@ -91,6 +92,7 @@ function StudentDetailContent() {
           <dt className="text-xs font-bold uppercase tracking-wide text-muted">Bộ môn</dt>
           <dd className="mt-1 font-medium text-ink">{student.department?.name ?? '—'}</dd>
         </div>
+        <TermSectionsCard studentId={studentId} term={requestedTerm} meId={me.user.id} />
       </dl>
 
       <div role="tablist" aria-label="Hồ sơ sinh viên" className="mb-5 flex flex-wrap gap-1 border-b border-border">
@@ -147,7 +149,7 @@ function StudentDetailContent() {
           evaluateRequest={evaluateRequest}
         />
       ) : null}
-      {tab === 'care-logs' ? <CareLogsTab studentId={studentId} /> : null}
+      {tab === 'care-logs' ? <CareLogsTab studentId={studentId} term={requestedTerm} /> : null}
       {tab === 'alerts' ? <AlertsTab studentId={studentId} user={me.user} /> : null}
       {tab === 'discussion' ? (
         <DiscussionTab studentId={studentId} currentStaffId={me.user.id} />

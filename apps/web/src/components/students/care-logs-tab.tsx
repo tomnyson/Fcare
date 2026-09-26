@@ -6,10 +6,11 @@ import { useState } from 'react';
 import { apiFetch } from '../../lib/api';
 import { ALERT_LEVEL_TONES, CARE_CHANNEL_LABELS, formatDateTime } from '../../lib/labels';
 import type { CareLog } from '../../lib/types';
+import { CareContextTag } from '../care-logs/care-context-tag';
 import { DeleteCareLogButton } from '../care-logs/delete-care-log-button';
 import { CareLogFormModal } from './care-log-form-modal';
 
-export function CareLogsTab({ studentId }: { studentId: string }) {
+export function CareLogsTab({ studentId, term = '' }: { studentId: string; term?: string }) {
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState('');
 
@@ -64,6 +65,10 @@ export function CareLogsTab({ studentId }: { studentId: string }) {
                   <DeleteCareLogButton log={log} onDeleted={setNotice} />
                 </div>
               </div>
+              <CareContextTag
+                section={log.classSection}
+                fallbackCode={log.alert?.classSection?.code}
+              />
               <p className="mt-3 text-sm text-ink">{log.content}</p>
               {log.outcome ? (
                 <p className="mt-2 text-sm text-muted">
@@ -80,7 +85,12 @@ export function CareLogsTab({ studentId }: { studentId: string }) {
         </ol>
       )}
 
-      <CareLogFormModal studentId={studentId} open={open} onClose={() => setOpen(false)} />
+      <CareLogFormModal
+        studentId={studentId}
+        term={term}
+        open={open}
+        onClose={() => setOpen(false)}
+      />
     </>
   );
 }

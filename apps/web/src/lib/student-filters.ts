@@ -14,7 +14,11 @@ interface StudentFilters {
   lecturerId: string;
   sectionId: string;
   missingMajor: boolean;
+  /** '' | 'any' | '1'..'4' — khớp `ALERT_LEVEL_FILTERS` phía API. */
+  alertLevel: string;
 }
+
+export const ALERT_LEVEL_FILTERS = ['any', '1', '2', '3', '4'] as const;
 
 /** Khóa query string của từng bộ lọc, dùng chung cho đọc URL và xóa lọc. */
 const STUDENT_FILTER_KEYS = [
@@ -27,6 +31,7 @@ const STUDENT_FILTER_KEYS = [
   'lecturerId',
   'sectionId',
   'missingMajor',
+  'alertLevel',
 ] as const;
 
 export function parseStudentFilters(params: URLSearchParams): StudentFilters {
@@ -40,7 +45,12 @@ export function parseStudentFilters(params: URLSearchParams): StudentFilters {
     lecturerId: params.get('lecturerId') ?? '',
     sectionId: params.get('sectionId') ?? '',
     missingMajor: params.get('missingMajor') === 'true',
+    alertLevel: parseAlertLevel(params.get('alertLevel')),
   };
+}
+
+function parseAlertLevel(value: string | null): string {
+  return (ALERT_LEVEL_FILTERS as readonly (string | null)[]).includes(value) ? value! : '';
 }
 
 /**
@@ -53,7 +63,7 @@ function effectiveMajorId(filters: StudentFilters): string {
 }
 
 /** Cột sắp xếp được — khớp `STUDENT_SORT_FIELDS` phía API. */
-export const STUDENT_SORT_FIELDS = ['absentSessions', 'openAlerts'] as const;
+export const STUDENT_SORT_FIELDS = ['absentSessions', 'openAlerts', 'risk'] as const;
 export type StudentSortField = (typeof STUDENT_SORT_FIELDS)[number];
 export type StudentSort = { by: StudentSortField; dir: 'asc' | 'desc' } | null;
 
@@ -61,10 +71,16 @@ function isSortField(value: string | null): value is StudentSortField {
   return (STUDENT_SORT_FIELDS as readonly (string | null)[]).includes(value);
 }
 
-/** Sắp xếp nằm ngoài `StudentFilters`: không phải bộ lọc, "Xóa bộ lọc" giữ nguyên nó. */
+/** Mặc định: sinh viên nguy cơ cao (mức cảnh báo mở cao nhất) lên đầu. */
+export const DEFAULT_STUDENT_SORT = { by: 'risk', dir: 'desc' } as const satisfies StudentSort;
+
+/**
+ * Sắp xếp nằm ngoài `StudentFilters`: không phải bộ lọc, "Xóa bộ lọc" giữ nguyên nó.
+ * URL chưa chọn cột (hoặc vừa bỏ sắp xếp cột) → quay về mặc định theo nguy cơ.
+ */
 export function parseStudentSort(params: URLSearchParams): StudentSort {
   const by = params.get('sortBy');
-  if (!isSortField(by)) return null;
+  if (!isSortField(by)) return { ...DEFAULT_STUDENT_SORT };
   return { by, dir: params.get('sortDir') === 'asc' ? 'asc' : 'desc' };
 }
 
@@ -99,6 +115,7 @@ export function buildStudentListQuery(
     ['lecturerId', filters.lecturerId],
     ['sectionId', filters.sectionId],
     ['missingMajor', filters.missingMajor ? 'true' : ''],
+    ['alertLevel', filters.alertLevel],
   ];
   for (const [key, value] of entries) {
     if (value) query.set(key, value);
@@ -122,6 +139,7 @@ export function activeFilterCount(filters: StudentFilters): number {
     filters.lecturerId,
     filters.sectionId,
     filters.missingMajor ? 'true' : '',
+    filters.alertLevel,
   ];
   return values.filter(Boolean).length;
 }
@@ -151,4 +169,16 @@ export function studentCareHref(studentId: string, term: string): string {
   const query = new URLSearchParams({ tab: 'care-logs' });
   if (term) query.set('term', term);
   return `/students/${studentId}?${query.toString()}`;
+}
+
+/** Vai trò xem toàn phạm vi — không tự thu hẹp về lớp mình dạy. */
+const WIDE_SCOPE_ROLES = ['ADMIN', 'HEAD_OF_DEPT'];
+
+/**
+ * Giảng viên mở trang lần đầu thấy sẵn chip "Giảng viên: mình" — biết ngay đang
+ * xem sinh viên lớp mình dạy. Trưởng bộ môn/admin kiêm dạy vẫn xem toàn bộ môn.
+ */
+export function defaultLecturerFilter(roles: readonly string[], userId: string): string {
+  if (!roles.includes('LECTURER')) return '';
+  return roles.some((role) => WIDE_SCOPE_ROLES.includes(role)) ? '' : userId;
 }

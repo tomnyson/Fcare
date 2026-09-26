@@ -1,11 +1,13 @@
 'use client';
 
 import { Button } from '@fcare/ui-kit';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { apiFetch, ApiError } from '../../lib/api';
+import { careSectionGroups, defaultCareSectionId } from '../../lib/care-context';
+import { useMe } from '../../lib/hooks';
 import { CARE_CHANNEL_LABELS } from '../../lib/labels';
-import type { CareLog } from '../../lib/types';
+import type { CareLog, Enrollment } from '../../lib/types';
 import { FormError, Label, Select, Textarea } from '../ui/form';
 import { Modal } from '../ui/modal';
 
@@ -14,6 +16,8 @@ interface CareLogFormModalProps {
   /** Gắn nhật ký vào cảnh báo (điểm danh) — API sẽ đánh dấu "GV lớp đã chăm sóc" nếu người ghi là GV đứng lớp. */
   alertId?: string;
   defaultContent?: string;
+  /** Học kỳ đang xem — chọn sẵn lớp học phần của kỳ này. */
+  term?: string;
   open: boolean;
   onClose: () => void;
   onSaved?: (log: CareLog) => void;
@@ -24,18 +28,33 @@ export function CareLogFormModal({
   studentId,
   alertId,
   defaultContent,
+  term = '',
   open,
   onClose,
   onSaved,
 }: CareLogFormModalProps) {
   const queryClient = useQueryClient();
   const [error, setError] = useState('');
+  /** null = chưa đổi, dùng lớp chọn sẵn; '' = để trống (chỉ khi gắn cảnh báo). */
+  const [pickedSectionId, setPickedSectionId] = useState<string | null>(null);
+  const { data: me } = useMe();
+  const { data: enrollments } = useQuery({
+    queryKey: ['enrollments', studentId],
+    queryFn: () => apiFetch<Enrollment[]>(`/enrollments?studentId=${studentId}`),
+    enabled: open,
+  });
+  const sectionGroups = careSectionGroups(enrollments ?? []);
+  // Gắn cảnh báo thì mặc định theo lớp của cảnh báo (API tự lấy) — không đoán lớp khác.
+  const sectionId =
+    pickedSectionId ??
+    (alertId ? '' : defaultCareSectionId(sectionGroups, { term, userId: me?.user.id }));
 
   const createMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
       apiFetch<CareLog>('/care-logs', { method: 'POST', body: JSON.stringify(payload) }),
     onSuccess: async (log) => {
       setError('');
+      setPickedSectionId(null);
       onClose();
       onSaved?.(log);
       await Promise.all([
@@ -57,6 +76,7 @@ export function CareLogFormModal({
       channel: form.get('channel'),
       content: form.get('content'),
       ...(alertId ? { alertId } : {}),
+      ...(sectionId ? { classSectionId: sectionId } : {}),
       ...(form.get('outcome') ? { outcome: form.get('outcome') } : {}),
       ...(form.get('nextAction') ? { nextAction: form.get('nextAction') } : {}),
     });
@@ -64,6 +84,7 @@ export function CareLogFormModal({
 
   function close() {
     setError('');
+    setPickedSectionId(null);
     onClose();
   }
 
@@ -71,6 +92,38 @@ export function CareLogFormModal({
     <Modal title="Ghi nhật ký chăm sóc" open={open} onClose={close}>
       <form onSubmit={onSubmit} className="space-y-4">
         <FormError>{error}</FormError>
+        {sectionGroups.length > 0 ? (
+          <div>
+            <Label htmlFor="care-section">Chăm sóc trong lớp học phần</Label>
+            <Select
+              id="care-section"
+              name="classSectionId"
+              required={!alertId}
+              value={sectionId}
+              onChange={(event) => setPickedSectionId(event.target.value)}
+              aria-describedby="care-section-hint"
+            >
+              <option value="" disabled={!alertId}>
+                {alertId ? 'Theo lớp của cảnh báo' : 'Chọn lớp học phần'}
+              </option>
+              {sectionGroups.map((group) => (
+                <optgroup key={group.term} label={`Học kỳ ${group.term}`}>
+                  {group.sections.map((section) => (
+                    <option key={section.id} value={section.id}>
+                      {/* Kỳ ghi cả trong option: select đóng lại thì nhãn optgroup không hiện. */}
+                      {section.term} · {section.code}
+                      {section.subject ? ` — ${section.subject.name}` : ''}
+                      {section.lecturerId === me?.user.id ? ' (lớp bạn dạy)' : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </Select>
+            <p id="care-section-hint" className="mt-1 text-xs text-muted">
+              Ghi rõ học kỳ và môn học để người đọc biết bối cảnh của lượt trao đổi.
+            </p>
+          </div>
+        ) : null}
         <div>
           <Label htmlFor="care-channel">Hình thức trao đổi</Label>
           <Select id="care-channel" name="channel" required defaultValue="IN_PERSON">

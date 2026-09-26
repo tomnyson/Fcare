@@ -10,7 +10,7 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { AlertsController } from './alerts.controller';
 import { AlertsService } from './alerts.service';
-import { BulkAlertIdsDto } from './dto/alert.dto';
+import { BulkAlertIdsDto, ResolveAlertDto } from './dto/alert.dto';
 
 const base = { consented: true, mustChangePassword: false };
 const admin: AuthUser = {
@@ -100,8 +100,14 @@ describe('AlertsController — xoá cảnh báo chỉ dành cho ADMIN', () => {
     expect(allowed(handler, user)).toBe(false);
   });
 
-  it('resolve vẫn mở cho TBM (không siết nhầm quyền cũ)', () => {
+  it('resolve mở cho TBM và GV (service kiểm GV có đứng lớp không)', () => {
     expect(allowed('resolve', headOfDept)).toBe(true);
+    expect(allowed('resolve', lecturer)).toBe(true);
+  });
+
+  it('acknowledge dùng quyền riêng — GV không tiếp nhận', () => {
+    expect(allowed('acknowledge', headOfDept)).toBe(true);
+    expect(allowed('acknowledge', lecturer)).toBe(false);
   });
 
   it('uỷ quyền xuống service với user + id', async () => {
@@ -144,5 +150,26 @@ describe('BulkAlertIdsDto — danh sách id xoá một lượt', () => {
     expect(await errorsOf({ ids: ['al-1'] })).not.toHaveLength(0);
     expect(await errorsOf({ ids: uuid(1) })).not.toHaveLength(0);
     expect(await errorsOf({})).not.toHaveLength(0);
+  });
+});
+
+describe('ResolveAlertDto — bắt buộc chọn kết quả chốt', () => {
+  const check = (body: object) =>
+    validate(plainToInstance(ResolveAlertDto, body));
+
+  it('nhận kết quả hợp lệ + ghi chú', async () => {
+    expect(
+      await check({ outcome: 'PASSED', resolutionNote: 'Đã đi học lại.' }),
+    ).toHaveLength(0);
+  });
+
+  it('thiếu hoặc sai kết quả → lỗi ở outcome', async () => {
+    for (const body of [
+      { resolutionNote: 'x' },
+      { outcome: 'MAYBE', resolutionNote: 'x' },
+    ]) {
+      const errors = await check(body);
+      expect(errors.map((e) => e.property)).toContain('outcome');
+    }
   });
 });

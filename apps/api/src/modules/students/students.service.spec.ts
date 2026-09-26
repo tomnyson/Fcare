@@ -228,6 +228,7 @@ interface ListFindManyArgs {
     AND?: unknown[];
     OR?: unknown[];
     classCode?: string;
+    alerts?: unknown;
     enrollments?: {
       some: {
         classSectionId?: string;
@@ -317,6 +318,28 @@ describe('StudentsService.list — lọc theo ngành, kỳ, giảng viên', () =
     // Scope nằm trong AND nên tồn tại song song với OR của tìm kiếm.
     expect(args.where.AND).toEqual(LECTURER_SCOPE);
     expect(args.where.OR).toHaveLength(2);
+  });
+
+  it('alertLevel=any: chỉ sinh viên đang có cảnh báo chưa chốt', async () => {
+    await service.list(adminUser, { alertLevel: 'any' });
+    const [args] = findMany.mock.calls[0] as [ListFindManyArgs];
+    expect(args.where.alerts).toEqual({
+      some: { status: { not: 'RESOLVED' } },
+    });
+  });
+
+  it('alertLevel=3: chỉ sinh viên có cảnh báo MỞ đúng mức 3', async () => {
+    await service.list(adminUser, { alertLevel: '3' });
+    const [args] = findMany.mock.calls[0] as [ListFindManyArgs];
+    expect(args.where.alerts).toEqual({
+      some: { status: { not: 'RESOLVED' }, level: 3 },
+    });
+  });
+
+  it('RULE 2: lọc mức cảnh báo không nuốt scope giảng viên', async () => {
+    await service.list(lecturerUser, { alertLevel: '2' });
+    const [args] = findMany.mock.calls[0] as [ListFindManyArgs];
+    expect(args.where.AND).toEqual(LECTURER_SCOPE);
   });
 
   it('count dùng đúng where với findMany để phân trang không lệch', async () => {
@@ -528,6 +551,28 @@ describe('StudentsService.list — cột số buổi vắng', () => {
     });
   });
 
+  it('kèm mức cảnh báo MỞ cao nhất của từng sinh viên', async () => {
+    transaction.mockResolvedValueOnce([
+      [
+        { id: 's1', enrollments: [], alerts: [{ level: 3 }] },
+        { id: 's2', enrollments: [], alerts: [] },
+      ],
+      2,
+    ]);
+    const result = await service.list(adminUser, {});
+    const [args] = findMany.mock.calls[0] as [
+      { include: { alerts: unknown } },
+    ];
+    expect(args.include.alerts).toEqual({
+      where: { status: { not: 'RESOLVED' } },
+      select: { level: true },
+      orderBy: { level: 'desc' },
+      take: 1,
+    });
+    expect(result.items.map((s) => s.maxOpenAlertLevel)).toEqual([3, null]);
+    expect(result.items[0]).not.toHaveProperty('alerts');
+  });
+
   it('cộng tổng buổi vắng, lấy max theo lớp HP và bỏ mảng enrollments thô', async () => {
     transaction.mockResolvedValueOnce([
       [
@@ -546,9 +591,9 @@ describe('StudentsService.list — cột số buổi vắng', () => {
     ]);
     const result = await service.list(adminUser, { term: 'FA26' });
     expect(result.items).toEqual([
-      { id: 's1', absentSessions: 5, maxSectionAbsent: 3 },
-      { id: 's2', absentSessions: null, maxSectionAbsent: null },
-      { id: 's3', absentSessions: null, maxSectionAbsent: null },
+      { id: 's1', absentSessions: 5, maxSectionAbsent: 3, maxOpenAlertLevel: null },
+      { id: 's2', absentSessions: null, maxSectionAbsent: null, maxOpenAlertLevel: null },
+      { id: 's3', absentSessions: null, maxSectionAbsent: null, maxOpenAlertLevel: null },
     ]);
   });
 });
@@ -696,6 +741,36 @@ describe('StudentsService.list — sắp xếp theo số buổi vắng / cảnh 
       studentCode: true,
       classCode: true,
     });
+  });
+
+  it('risk: mức cảnh báo mở cao nhất lên đầu toàn danh sách (không gom theo lớp), hoà thì nhiều cảnh báo hơn', async () => {
+    idsFindMany.mockReset();
+    idsFindMany.mockResolvedValueOnce([
+      { id: 's1', studentCode: 'SE001', classCode: 'SE1901' },
+      { id: 's2', studentCode: 'SE002', classCode: 'SE1901' },
+      { id: 's3', studentCode: 'SE003', classCode: 'SE1902' },
+      { id: 's4', studentCode: 'SE004', classCode: 'SE1902' },
+    ]);
+    idsFindMany.mockImplementationOnce(
+      ({ where }: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(where.id.in.map((id) => ({ id, enrollments: [] }))),
+    );
+    alertGroupBy.mockResolvedValueOnce([
+      { studentId: 's1', _max: { level: 2 }, _count: { _all: 3 } },
+      { studentId: 's3', _max: { level: 4 }, _count: { _all: 1 } },
+      { studentId: 's4', _max: { level: 2 }, _count: { _all: 1 } },
+    ]);
+    const result = await sortService.list(adminUser, {
+      sortBy: 'risk',
+      sortDir: 'desc',
+    });
+    // s3 (M4) > s1 (M2, 3 cảnh báo) > s4 (M2, 1) > s2 (không có)
+    expect(result.items.map((s) => s.id)).toEqual(['s3', 's1', 's4', 's2']);
+    const [groupArgs] = alertGroupBy.mock.calls[0] as [
+      { where: { status: unknown }; _max: unknown },
+    ];
+    expect(groupArgs.where.status).toEqual({ not: 'RESOLVED' });
+    expect(groupArgs._max).toEqual({ level: true });
   });
 
   it('cảnh báo mở gom theo phạm vi và bỏ cảnh báo đã xử lý', async () => {

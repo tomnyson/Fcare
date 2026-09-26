@@ -1,4 +1,5 @@
 import type {
+  AlertOutcome,
   AlertSource,
   EvaluationCriterion,
   ForcedEscalationRule,
@@ -143,6 +144,8 @@ export interface Student {
   absentSessions?: number | null;
   /** Số buổi vắng cao nhất trong một lớp học phần — dùng tô màu theo ngưỡng cảnh báo 2/3 buổi. */
   maxSectionAbsent?: number | null;
+  /** Mức cảnh báo chưa chốt cao nhất (1..4); null = không có cảnh báo mở. */
+  maxOpenAlertLevel?: number | null;
 }
 
 /** Nguồn cấp option cho bộ lọc trang danh sách sinh viên (`/students/filter-options`). */
@@ -233,6 +236,13 @@ export interface CareLog {
     source: AlertSource;
     classSection: { code: string } | null;
   } | null;
+  /** Lớp học phần đang chăm sóc (→ học kỳ + môn); null với nhật ký cũ. */
+  classSection?: {
+    id: string;
+    code: string;
+    term: string;
+    subject: { code: string; name: string };
+  } | null;
 }
 
 export interface Alert {
@@ -241,6 +251,8 @@ export interface Alert {
   reason: string;
   status: AlertStatus;
   resolutionNote: string | null;
+  /** Kết quả chốt; null khi chưa chốt hoặc chốt trước khi có trường này. */
+  outcome: AlertOutcome | null;
   createdAt: string;
   resolvedAt: string | null;
   source: AlertSource;
@@ -248,7 +260,12 @@ export interface Alert {
   absentSessions: number | null;
   /** Thời điểm giảng viên đứng lớp ghi nhật ký cho cảnh báo này. */
   ownerCaredAt: string | null;
-  classSection?: { id: string; code: string; subject?: { name: string } } | null;
+  classSection?: {
+    id: string;
+    code: string;
+    lecturerId?: string | null;
+    subject?: { name: string };
+  } | null;
   student?: Student & { department?: { code: string; name: string } };
   /** null khi cảnh báo do hệ thống tự phát. */
   raisedBy?: StaffRef | null;

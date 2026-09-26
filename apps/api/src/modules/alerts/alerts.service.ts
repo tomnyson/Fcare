@@ -11,6 +11,7 @@ import type { Queue } from 'bullmq';
 import {
   ALERT_LEVEL_LABELS,
   MIN_CRITICAL_REASON_LENGTH,
+  canCloseAlert,
   type AlertLevel,
 } from '@fcare/shared-types';
 import { AuditService } from '../../audit/audit.service';
@@ -130,10 +131,12 @@ export class AlertsService {
           // Cảnh báo tự động không có người tạo (raisedBy null) — web hiện "Hệ thống".
           raisedBy: { select: { id: true, staffCode: true, fullName: true } },
           resolvedBy: { select: { id: true, staffCode: true, fullName: true } },
+          // lecturerId để web biết ai được chốt (`canCloseAlert`).
           classSection: {
             select: {
               id: true,
               code: true,
+              lecturerId: true,
               subject: { select: { name: true } },
             },
           },
@@ -244,6 +247,17 @@ export class AlertsService {
     if (alert.status === AlertStatus.RESOLVED) {
       throw new BadRequestException('Cảnh báo đã được xử lý trước đó.');
     }
+    const closable = canCloseAlert({
+      userId: user.id,
+      roles: user.roles,
+      sectionLecturerId: alert.classSection?.lecturerId,
+      raisedById: alert.raisedById,
+    });
+    if (!closable) {
+      throw new ForbiddenException(
+        'Chỉ giảng viên phụ trách lớp của sinh viên (hoặc Trưởng bộ môn, Quản trị) mới được chốt cảnh báo.',
+      );
+    }
     const resolved = await this.prisma.alert.update({
       where: { id },
       data: {
@@ -251,6 +265,7 @@ export class AlertsService {
         resolvedById: user.id,
         resolvedAt: new Date(),
         resolutionNote: dto.resolutionNote,
+        outcome: dto.outcome,
       },
     });
 
@@ -259,6 +274,7 @@ export class AlertsService {
       action: 'ALERT_RESOLVED',
       entity: 'Alert',
       entityId: id,
+      metadata: { outcome: dto.outcome },
     });
 
     return resolved;
@@ -493,6 +509,7 @@ export class AlertsService {
         student: {
           select: { departmentId: true, studentCode: true, fullName: true },
         },
+        classSection: { select: { lecturerId: true } },
       },
     });
     if (!alert) {

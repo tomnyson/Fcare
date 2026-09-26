@@ -2,7 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import type { AuditService } from '../../audit/audit.service';
 import type { AuthUser } from '../../common/types/auth-user';
 import type { PrismaService } from '../../prisma/prisma.service';
-import { CareLogsService } from './care-logs.service';
+import { careLogSectionSelect, CareLogsService } from './care-logs.service';
 
 /* `expect.objectContaining`/`expect.any` trả về any trong @types/jest → bọc lại. */
 const containing = (value: unknown): unknown => expect.objectContaining(value);
@@ -25,8 +25,12 @@ const dto = {
   content: 'Đã gọi em lên trao đổi về việc nghỉ học',
 };
 
-function setup(alert: Record<string, unknown> | null = null) {
+function setup(
+  alert: Record<string, unknown> | null = null,
+  enrollment: Record<string, unknown> | null = { id: 'en-1' },
+) {
   const tx = {
+    enrollment: { findUnique: jest.fn().mockResolvedValue(enrollment) },
     alert: {
       findUnique: jest.fn().mockResolvedValue(alert),
       update: jest.fn().mockResolvedValue({}),
@@ -69,7 +73,7 @@ describe('CareLogsService.create — gắn cảnh báo điểm danh', () => {
     });
     expect(tx.careLog.create).toHaveBeenCalledWith(
       containing({
-        data: { ...dto, staffId: 'gv-chi' },
+        data: { ...dto, classSectionId: null, staffId: 'gv-chi' },
       }),
     );
     expect(tx.alert.findUnique).not.toHaveBeenCalled();
@@ -81,7 +85,12 @@ describe('CareLogsService.create — gắn cảnh báo điểm danh', () => {
     await service.create(owner, { ...dto, alertId: 'alert-1' });
     expect(tx.careLog.create).toHaveBeenCalledWith(
       containing({
-        data: { ...dto, alertId: 'alert-1', staffId: 'gv-chi' },
+        data: {
+          ...dto,
+          alertId: 'alert-1',
+          classSectionId: null,
+          staffId: 'gv-chi',
+        },
       }),
     );
     expect(tx.alert.update).toHaveBeenCalledWith({
@@ -156,6 +165,42 @@ describe('CareLogsService.create — gắn cảnh báo điểm danh', () => {
   });
 });
 
+describe('CareLogsService.create — lớp học phần đang chăm sóc', () => {
+  it('ghi kèm lớp học phần sinh viên đang học (→ học kỳ + môn)', async () => {
+    const { service, tx } = setup();
+    await service.create(owner, { ...dto, classSectionId: 'cs-1' });
+    expect(tx.enrollment.findUnique).toHaveBeenCalledWith({
+      where: {
+        studentId_classSectionId: { studentId: 'sv-1', classSectionId: 'cs-1' },
+      },
+      select: { id: true },
+    });
+    expect(tx.careLog.create).toHaveBeenCalledWith(
+      containing({
+        data: containing({ classSectionId: 'cs-1' }),
+        include: containing({ classSection: careLogSectionSelect }),
+      }),
+    );
+  });
+
+  it('lớp sinh viên không học → 400, không ghi gì', async () => {
+    const { service, tx } = setup(null, null);
+    await expect(
+      service.create(owner, { ...dto, classSectionId: 'cs-x' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(tx.careLog.create).not.toHaveBeenCalled();
+  });
+
+  it('gắn cảnh báo mà không chọn lớp → lấy lớp của cảnh báo', async () => {
+    const { service, tx } = setup({ ...openAlert, classSectionId: 'cs-alert' });
+    await service.create(owner, { ...dto, alertId: 'alert-1' });
+    expect(tx.enrollment.findUnique).not.toHaveBeenCalled();
+    expect(tx.careLog.create).toHaveBeenCalledWith(
+      containing({ data: containing({ classSectionId: 'cs-alert' }) }),
+    );
+  });
+});
+
 describe('CareLogsService.list', () => {
   it('kèm thông tin cảnh báo gắn với nhật ký và lọc theo phạm vi', async () => {
     const { service, prisma } = setup();
@@ -183,6 +228,7 @@ describe('CareLogsService.list', () => {
               classSection: { select: { code: true } },
             },
           },
+          classSection: careLogSectionSelect,
         }),
       }),
     );

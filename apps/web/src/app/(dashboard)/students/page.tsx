@@ -19,11 +19,17 @@ import { FormError, FormSuccess, Select } from '../../../components/ui/form';
 import { PageHeader } from '../../../components/ui/page-header';
 import { ApiError, apiFetch } from '../../../lib/api';
 import { useMe } from '../../../lib/hooks';
-import { STUDENT_STATUS_LABELS, STUDENT_STATUS_TONES } from '../../../lib/labels';
+import {
+  ALERT_LEVEL_LABELS,
+  ALERT_LEVEL_TONES,
+  STUDENT_STATUS_LABELS,
+  STUDENT_STATUS_TONES,
+} from '../../../lib/labels';
 import { QuickEvaluationModal } from '../../../components/students/quick-evaluation-modal';
 import {
   buildStudentListQuery,
   clearFiltersPatch,
+  defaultLecturerFilter,
   majorsForClass,
   nextStudentSort,
   parseStudentFilters,
@@ -42,7 +48,24 @@ const PAGE_SIZE = 10;
 const SORT_LABELS: Record<StudentSortField, string> = {
   absentSessions: 'số buổi vắng',
   openAlerts: 'số cảnh báo mở',
+  risk: 'mức nguy cơ',
 };
+
+const ALERT_LEVEL_OPTIONS = [1, 2, 3, 4] as const;
+
+/** Mức cảnh báo mở cao nhất + số cảnh báo mở: nhìn là biết ai cần chăm sóc trước. */
+function OpenAlertsCell({ count, maxLevel }: { count: number; maxLevel?: number | null }) {
+  if (count === 0) return <span className="text-muted">0</span>;
+  if (!maxLevel) return <Badge tone="danger">{count}</Badge>;
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <Badge tone={ALERT_LEVEL_TONES[maxLevel] ?? 'danger'} pulse={maxLevel >= 3}>
+        Mức {maxLevel}
+      </Badge>
+      <span className="text-xs text-muted">{count} mở</span>
+    </span>
+  );
+}
 
 /** Trạng thái + hành động cho một tiêu đề cột sắp xếp được của `DataTable`. */
 function sortableColumn(
@@ -90,8 +113,8 @@ function StudentsPageContent() {
   const params = useSearchParams();
   const queryClient = useQueryClient();
   const { data: me } = useMe();
-  const { data: currentTerm } = useCurrentTerm();
-  const hasInitializedTermRef = useRef(false);
+  const { data: currentTerm, isPending: isCurrentTermPending } = useCurrentTerm();
+  const hasInitializedDefaultsRef = useRef(false);
   const canAssignMajor = me?.user.roles.some((role) => STUDENT_WRITE_ROLES.includes(role)) ?? false;
   const canEvaluate = me?.user.roles.some((role) => EVALUATION_ROLES.includes(role)) ?? false;
 
@@ -133,12 +156,21 @@ function StudentsPageContent() {
     [params, pathname, router],
   );
 
+  // Mặc định lần đầu mở trang: kỳ hiện tại + (giảng viên) lớp mình dạy. Ghi
+  // MỘT lần để hai patch không đè nhau; link đã có sẵn tham số thì giữ nguyên.
   useEffect(() => {
-    if (!hasInitializedTermRef.current && !params.has('term') && currentTerm?.code) {
-      hasInitializedTermRef.current = true;
-      setFilters({ term: currentTerm.code });
-    }
-  }, [currentTerm?.code, params, setFilters]);
+    if (hasInitializedDefaultsRef.current || !me || isCurrentTermPending) return;
+    hasInitializedDefaultsRef.current = true;
+    const term = params.has('term') ? '' : (currentTerm?.code ?? '');
+    const lecturerId = params.has('lecturerId')
+      ? ''
+      : defaultLecturerFilter(me.user.roles, me.user.id);
+    if (!term && !lecturerId) return;
+    setFilters({
+      ...(term ? { term } : {}),
+      ...(lecturerId ? { lecturerId } : {}),
+    });
+  }, [currentTerm?.code, isCurrentTermPending, me, params, setFilters]);
 
   // Back/forward đổi query param `search` trên URL mà không đi qua ô input —
   // đồng bộ lại state để ô tìm kiếm không giữ giá trị cũ.
@@ -238,6 +270,15 @@ function StudentsPageContent() {
       key: 'status',
       label: 'Trạng thái',
       value: (STUDENT_STATUS_LABELS as Record<string, string>)[filters.status] ?? filters.status,
+    });
+  if (filters.alertLevel)
+    chips.push({
+      key: 'alertLevel',
+      label: 'Cảnh báo',
+      value:
+        filters.alertLevel === 'any'
+          ? 'Đang có cảnh báo'
+          : `Mức ${filters.alertLevel} — ${ALERT_LEVEL_LABELS[Number(filters.alertLevel)] ?? ''}`,
     });
   if (missingMajor)
     chips.push({ key: 'missingMajor', label: 'Lọc riêng', value: 'Chưa gán ngành' });
@@ -398,6 +439,22 @@ function StudentsPageContent() {
             </Select>
           </FilterField>
 
+          <FilterField label="Mức cảnh báo" htmlFor="student-alert-level">
+            <Select
+              id="student-alert-level"
+              value={filters.alertLevel}
+              onChange={(event) => setFilters({ alertLevel: event.target.value || null })}
+            >
+              <option value="">Mọi sinh viên</option>
+              <option value="any">Đang có cảnh báo (mọi mức)</option>
+              {ALERT_LEVEL_OPTIONS.map((level) => (
+                <option key={level} value={level}>
+                  Mức {level} — {ALERT_LEVEL_LABELS[level]}
+                </option>
+              ))}
+            </Select>
+          </FilterField>
+
           {/* Ô duy nhất không phải dropdown — cho nó tự thành một ô của lưới để
               vẫn thẳng hàng đáy với các ô còn lại. */}
           <label className="flex min-w-0 cursor-pointer items-center gap-2 self-end rounded-md border border-border bg-surface px-3 py-2.5 text-sm font-semibold text-ink transition-colors duration-[var(--duration-fast)] hover:border-fpt-orange has-[:checked]:border-fpt-orange has-[:checked]:bg-fpt-orange-50">
@@ -510,7 +567,12 @@ function StudentsPageContent() {
         </section>
       ) : null}
 
-      {sort ? (
+      {sort?.by === 'risk' ? (
+        <p className="text-sm text-muted" role="status">
+          Sinh viên <strong className="font-semibold text-ink">nguy cơ cao</strong> lên đầu: mức
+          cảnh báo chưa chốt cao nhất trước, cùng mức thì nhiều cảnh báo hơn trước.
+        </p>
+      ) : sort ? (
         <p className="text-sm text-muted" role="status">
           Đang gom theo <strong className="font-semibold text-ink">lớp</strong>, trong từng lớp xếp
           theo <strong className="font-semibold text-ink">{SORT_LABELS[sort.by]}</strong>{' '}
@@ -598,13 +660,10 @@ function StudentsPageContent() {
               </Badge>
             </Td>
             <Td>
-              {(student._count?.alerts ?? 0) > 0 ? (
-                <Badge tone="danger" pulse={true}>
-                  {student._count?.alerts}
-                </Badge>
-              ) : (
-                <span className="text-muted">0</span>
-              )}
+              <OpenAlertsCell
+                count={student._count?.alerts ?? 0}
+                maxLevel={student.maxOpenAlertLevel}
+              />
             </Td>
             {canEvaluate ? (
               <Td>

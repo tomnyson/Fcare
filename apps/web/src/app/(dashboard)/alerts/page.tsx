@@ -1,5 +1,6 @@
 'use client';
 
+import { ALERT_OUTCOME_LABELS, ALERT_OUTCOMES, type AlertOutcome } from '@fcare/shared-types';
 import { Badge, Button } from '@fcare/ui-kit';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -188,10 +189,18 @@ function AlertsPageContent() {
   });
 
   const resolveMutation = useMutation({
-    mutationFn: ({ id, resolutionNote }: { id: string; resolutionNote: string }) =>
+    mutationFn: ({
+      id,
+      outcome,
+      resolutionNote,
+    }: {
+      id: string;
+      outcome: AlertOutcome;
+      resolutionNote: string;
+    }) =>
       apiFetch(`/alerts/${id}/resolve`, {
         method: 'PATCH',
-        body: JSON.stringify({ resolutionNote }),
+        body: JSON.stringify({ outcome, resolutionNote }),
       }),
     onSuccess: async () => {
       setResolving(null);
@@ -226,7 +235,14 @@ function AlertsPageContent() {
 
   const roles = me?.user.roles;
   // Cột chọn chỉ có ý nghĩa với người được xoá (ADMIN) — trạng thái không ảnh hưởng quyền xoá.
-  const canBulkDelete = alertRowActions({ roles, status: 'OPEN' }).canDelete;
+  const userId = me?.user.id;
+  const canBulkDelete = alertRowActions({
+    roles,
+    status: 'OPEN',
+    userId,
+    sectionLecturerId: null,
+    raisedById: null,
+  }).canDelete;
   const pageIds = (data?.items ?? []).map((alert) => alert.id);
   const pageAllSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
   const pageSomeSelected = pageIds.some((id) => selected.has(id));
@@ -237,8 +253,14 @@ function AlertsPageContent() {
       return;
     }
     const form = new FormData(event.currentTarget);
+    const outcome = String(form.get('outcome') ?? '');
+    if (!(ALERT_OUTCOMES as ReadonlyArray<string>).includes(outcome)) {
+      setError('Vui lòng chọn kết quả Đạt / Không đạt.');
+      return;
+    }
     resolveMutation.mutate({
       id: resolving.id,
+      outcome: outcome as AlertOutcome,
       resolutionNote: String(form.get('resolutionNote') ?? ''),
     });
   }
@@ -561,10 +583,23 @@ function AlertsPageContent() {
               >
                 {ALERT_STATUS_LABELS[alert.status]}
               </Badge>
+              {alert.outcome ? (
+                <span className="mt-1 block">
+                  <Badge tone={alert.outcome === 'PASSED' ? 'success' : 'danger'}>
+                    {ALERT_OUTCOME_LABELS[alert.outcome]}
+                  </Badge>
+                </span>
+              ) : null}
             </Td>
             <Td>
               <AlertRowActionsCell
-                actions={alertRowActions({ roles, status: alert.status })}
+                actions={alertRowActions({
+                  roles,
+                  status: alert.status,
+                  userId,
+                  sectionLecturerId: alert.classSection?.lecturerId,
+                  raisedById: alert.raisedBy?.id,
+                })}
                 onAcknowledge={() => acknowledgeMutation.mutate(alert.id)}
                 onResolve={() => setResolving(alert)}
                 onDelete={() => setDeletingIds([alert.id])}
@@ -585,10 +620,12 @@ function AlertsPageContent() {
         title={`Xử lý cảnh báo — ${resolving?.student?.fullName ?? ''}`}
         open={resolving !== null}
         onClose={() => setResolving(null)}
+        size="lg"
       >
         <form onSubmit={onResolveSubmit} className="space-y-4">
           <FormError>{error}</FormError>
           <p className="rounded-md bg-surface p-3 text-sm text-muted">{resolving?.reason}</p>
+          <OutcomeFieldset />
           <div>
             <Label htmlFor="resolutionNote">Ghi chú xử lý</Label>
             <Textarea
@@ -603,7 +640,7 @@ function AlertsPageContent() {
               Hủy
             </Button>
             <Button type="submit" disabled={resolveMutation.isPending}>
-              {resolveMutation.isPending ? 'Đang lưu…' : 'Đánh dấu đã xử lý'}
+              {resolveMutation.isPending ? 'Đang lưu…' : 'Chốt cảnh báo'}
             </Button>
           </div>
         </form>
@@ -658,7 +695,10 @@ function BulkSelectionBar({
         <span className="font-normal text-muted">({pageCount})</span>
       </label>
 
-      <span className={hasSelection ? 'font-semibold text-danger' : 'text-muted'} aria-live="polite">
+      <span
+        className={hasSelection ? 'font-semibold text-danger' : 'text-muted'}
+        aria-live="polite"
+      >
         {hasSelection
           ? `Đã chọn ${selectedCount}${selectedCount >= ALERT_BULK_DELETE_MAX ? ` (tối đa ${ALERT_BULK_DELETE_MAX} một lượt)` : ''}`
           : 'Chưa chọn cảnh báo nào'}
@@ -681,6 +721,50 @@ function BulkSelectionBar({
         </Button>
       </div>
     </div>
+  );
+}
+
+const OUTCOME_HINTS: Record<AlertOutcome, string> = {
+  PASSED: 'Sinh viên đã cải thiện sau khi được chăm sóc.',
+  EXAM_BANNED: 'Đã chăm sóc nhưng cuối cùng sinh viên vẫn bị cấm thi.',
+  FAILED: 'Đã chăm sóc nhưng cuối cùng sinh viên vẫn rớt môn.',
+};
+
+/** Kết quả chốt: Đạt (xanh) hoặc Không đạt — cấm thi / rớt môn (đỏ). Bắt buộc chọn. */
+function OutcomeFieldset() {
+  return (
+    <fieldset>
+      <legend className="mb-1.5 text-sm font-semibold text-ink">Kết quả chăm sóc</legend>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {ALERT_OUTCOMES.map((outcome) => {
+          const passed = outcome === 'PASSED';
+          return (
+            <label
+              key={outcome}
+              className={`flex cursor-pointer items-start gap-2 rounded-md border border-border px-2.5 py-2 text-sm text-ink transition-colors hover:bg-surface-raised focus-within:ring-2 focus-within:ring-fpt-blue/40 ${
+                passed
+                  ? 'has-[:checked]:border-success has-[:checked]:bg-success/10'
+                  : 'has-[:checked]:border-danger has-[:checked]:bg-danger/10'
+              }`}
+            >
+              <input
+                type="radio"
+                name="outcome"
+                value={outcome}
+                required
+                className="mt-0.5 shrink-0"
+              />
+              <span>
+                <span className="font-semibold">{ALERT_OUTCOME_LABELS[outcome]}</span>
+                <span className="mt-0.5 block text-xs leading-snug text-muted">
+                  {OUTCOME_HINTS[outcome]}
+                </span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }
 

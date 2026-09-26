@@ -1,3 +1,4 @@
+import { canCloseAlert } from '@fcare/shared-types';
 import type {
   AlertBulkDeletionPreview,
   AlertDeletionCounts,
@@ -8,8 +9,8 @@ import type {
 /** Trần một lượt xoá — phải khớp `ALERT_BULK_DELETE_MAX` của API (bằng cỡ trang lớn nhất). */
 export const ALERT_BULK_DELETE_MAX = 100;
 
-/** Vai trò được "Tiếp nhận"/"Xử lý" cảnh báo — khớp CASL `resolve Alert` phía API. */
-export const RESOLVER_ROLES = ['ADMIN', 'HEAD_OF_DEPT', 'TRAINING_OFFICER', 'SA_HEAD'] as const;
+/** Vai trò được "Tiếp nhận" cảnh báo — khớp CASL `acknowledge Alert` phía API. */
+export const ACKNOWLEDGER_ROLES = ['ADMIN', 'HEAD_OF_DEPT', 'TRAINING_OFFICER', 'SA_HEAD'] as const;
 
 /** Chỉ ADMIN có `delete Alert` (CASL `manage all`); web chặn thêm bằng PIN hệ thống. */
 const DELETER_ROLES = ['ADMIN'] as const;
@@ -22,20 +23,34 @@ export interface AlertRowActions {
 
 /**
  * Nút nào hiện ở cột THAO TÁC cho một dòng cảnh báo. Thuần để test được mà
- * không phải dựng trang: quyền theo vai + trạng thái hiện tại của cảnh báo.
+ * không phải dựng trang: quyền theo vai + trạng thái + GV phụ trách lớp.
  * Xoá cho phép ở MỌI trạng thái (kể cả đã xử lý) — mục đích là dọn dữ liệu.
  */
 export function alertRowActions(input: {
   roles: ReadonlyArray<string> | undefined;
   status: AlertStatus;
+  userId: string | undefined;
+  /** GV đứng lớp học phần của cảnh báo — người được chốt (xem `canCloseAlert`). */
+  sectionLecturerId: string | null | undefined;
+  raisedById: string | null | undefined;
 }): AlertRowActions {
   const roles = input.roles ?? [];
-  const isResolver = roles.some((role) => (RESOLVER_ROLES as ReadonlyArray<string>).includes(role));
+  const isAcknowledger = roles.some((role) =>
+    (ACKNOWLEDGER_ROLES as ReadonlyArray<string>).includes(role),
+  );
   const isDeleter = roles.some((role) => (DELETER_ROLES as ReadonlyArray<string>).includes(role));
   const unresolved = input.status !== 'RESOLVED';
+  const isCloser =
+    input.userId !== undefined &&
+    canCloseAlert({
+      userId: input.userId,
+      roles,
+      sectionLecturerId: input.sectionLecturerId,
+      raisedById: input.raisedById,
+    });
   return {
-    canAcknowledge: isResolver && input.status === 'OPEN',
-    canResolve: isResolver && unresolved,
+    canAcknowledge: isAcknowledger && input.status === 'OPEN',
+    canResolve: isCloser && unresolved,
     canDelete: isDeleter,
   };
 }

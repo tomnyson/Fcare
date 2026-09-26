@@ -15,6 +15,7 @@ export type Action =
   | 'import'
   | 'export'
   | 'resolve'
+  | 'acknowledge'
   | 'review';
 
 export type Subjects =
@@ -65,7 +66,7 @@ export class AbilityFactory {
             ['create', 'update'],
             ['Student', 'Evaluation', 'CareLog', 'Alert'],
           );
-          can('resolve', 'Alert');
+          can(['acknowledge', 'resolve'], 'Alert');
           can(['import', 'export'], 'Excel');
           can(['read', 'create'], 'Discussion');
           break;
@@ -79,6 +80,8 @@ export class AbilityFactory {
             'Statistics',
           ]);
           can(['create', 'update'], ['Evaluation', 'CareLog', 'Alert']);
+          // Chỉ chốt cảnh báo của lớp mình đứng — service kiểm từng cảnh báo.
+          can('resolve', 'Alert');
           can(['read', 'create'], 'Discussion');
           break;
         case 'TRAINING_OFFICER':
@@ -91,7 +94,7 @@ export class AbilityFactory {
           ]);
           can(['create', 'update'], 'Student');
           can('manage', 'MasterData');
-          can('resolve', 'Alert');
+          can('acknowledge', 'Alert');
           // Bước 2 FLOW 2: Đào tạo nhập điểm danh nên được chạy lại rà soát tay.
           can('review', 'AttendanceAlert');
           can(['import', 'export'], 'Excel');
@@ -119,7 +122,7 @@ export class AbilityFactory {
             'Statistics',
           ]);
           can('create', 'CareLog');
-          can('resolve', 'Alert');
+          can('acknowledge', 'Alert');
           can(['import', 'export'], 'Excel');
           can(['read', 'create'], 'Discussion');
           break;

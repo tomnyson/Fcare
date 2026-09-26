@@ -9,6 +9,7 @@ import {
   studentCareHref,
   studentSortPatch,
   parseStudentFilters,
+  defaultLecturerFilter,
 } from './student-filters';
 
 function params(init: Record<string, string>) {
@@ -28,6 +29,7 @@ describe('parseStudentFilters', () => {
           lecturerId: 'gv-1',
           sectionId: 'cs-1',
           missingMajor: 'true',
+          alertLevel: '3',
         }),
       ),
     ).toEqual({
@@ -40,6 +42,7 @@ describe('parseStudentFilters', () => {
       lecturerId: 'gv-1',
       sectionId: 'cs-1',
       missingMajor: true,
+      alertLevel: '3',
     });
   });
 
@@ -55,7 +58,13 @@ describe('parseStudentFilters', () => {
       lecturerId: '',
       sectionId: '',
       missingMajor: false,
+      alertLevel: '',
     });
+  });
+
+  it('mức cảnh báo lạ trong URL bị bỏ qua', () => {
+    expect(parseStudentFilters(params({ alertLevel: '9' })).alertLevel).toBe('');
+    expect(parseStudentFilters(params({ alertLevel: 'any' })).alertLevel).toBe('any');
   });
 
   it('missingMajor chỉ bật với đúng chuỗi "true"', () => {
@@ -123,6 +132,10 @@ describe('activeFilterCount', () => {
     ).toBe(3);
   });
 
+  it('đếm cả bộ lọc mức cảnh báo', () => {
+    expect(activeFilterCount(parseStudentFilters(params({ alertLevel: 'any' })))).toBe(1);
+  });
+
   it('majorId bị vô hiệu bởi missingMajor thì không được tính hai lần', () => {
     expect(
       activeFilterCount(parseStudentFilters(params({ majorId: 'mj-1', missingMajor: 'true' }))),
@@ -135,6 +148,7 @@ describe('clearFiltersPatch', () => {
     const patch = clearFiltersPatch();
     expect(Object.values(patch).every((value) => value === null)).toBe(true);
     expect(Object.keys(patch).sort()).toEqual([
+      'alertLevel',
       'classCode',
       'departmentId',
       'lecturerId',
@@ -199,12 +213,45 @@ describe('parseStudentSort', () => {
   });
 
   it('bỏ qua giá trị lạ trong URL — không gửi rác lên API', () => {
-    expect(parseStudentSort(params({ sortBy: 'fullName' }))).toBeNull();
-    expect(parseStudentSort(params({}))).toBeNull();
+    expect(parseStudentSort(params({ sortBy: 'fullName' }))).toEqual({ by: 'risk', dir: 'desc' });
     expect(parseStudentSort(params({ sortBy: 'openAlerts', sortDir: 'up' }))).toEqual({
       by: 'openAlerts',
       dir: 'desc',
     });
+  });
+});
+
+describe('parseStudentSort — mặc định theo nguy cơ', () => {
+  it('URL chưa chọn sắp xếp → sinh viên nguy cơ cao lên đầu', () => {
+    expect(parseStudentSort(params({}))).toEqual({ by: 'risk', dir: 'desc' });
+  });
+
+  it('bỏ sắp xếp cột (patch null) thì quay về mặc định nguy cơ', () => {
+    const cleared = params({});
+    for (const [key, value] of Object.entries(studentSortPatch(null))) {
+      if (value) cleared.set(key, value);
+    }
+    expect(parseStudentSort(cleared)).toEqual({ by: 'risk', dir: 'desc' });
+  });
+});
+
+describe('buildStudentListQuery — mức cảnh báo', () => {
+  it('gửi alertLevel khi có', () => {
+    const query = buildStudentListQuery(parseStudentFilters(params({ alertLevel: '2' })), 1, 20);
+    expect(query.get('alertLevel')).toBe('2');
+  });
+});
+
+describe('defaultLecturerFilter — giảng viên mặc định xem lớp mình dạy', () => {
+  it('giảng viên thuần → chính mình', () => {
+    expect(defaultLecturerFilter(['LECTURER'], 'gv-1')).toBe('gv-1');
+  });
+
+  it('trưởng bộ môn / admin / đào tạo / CTSV → không mặc định (xem toàn phạm vi)', () => {
+    expect(defaultLecturerFilter(['LECTURER', 'HEAD_OF_DEPT'], 'h')).toBe('');
+    expect(defaultLecturerFilter(['ADMIN'], 'a')).toBe('');
+    expect(defaultLecturerFilter(['TRAINING_OFFICER'], 't')).toBe('');
+    expect(defaultLecturerFilter(['SA_OFFICER'], 's')).toBe('');
   });
 });
 

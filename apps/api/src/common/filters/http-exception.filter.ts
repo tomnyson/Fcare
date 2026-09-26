@@ -4,8 +4,10 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { toVietnameseError } from './error-messages';
 
 interface ErrorEnvelope {
   success: false;
@@ -18,31 +20,38 @@ interface ErrorEnvelope {
 /** Chuẩn hóa mọi lỗi về envelope { success: false, data: null, error, code }. */
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpExceptionFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<Response>();
 
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       const body = exception.getResponse();
+      const detail =
+        typeof body === 'object' && body !== null
+          ? (body as { message?: string | string[]; code?: string })
+          : {};
+      const messages = Array.isArray(detail.message)
+        ? detail.message
+        : [
+            typeof detail.message === 'string'
+              ? detail.message
+              : exception.message,
+          ];
+      const translated = messages.map(toVietnameseError);
+      if (translated.some((message, index) => message !== messages[index])) {
+        // Giữ câu gốc của framework trong log để gỡ lỗi; người dùng chỉ thấy tiếng Việt.
+        this.logger.debug(`${status} ${messages.join('; ')}`);
+      }
+
       const envelope: ErrorEnvelope = {
         success: false,
         data: null,
-        error: exception.message,
+        error: translated.join('; '),
         statusCode: status,
+        ...(typeof detail.code === 'string' ? { code: detail.code } : {}),
       };
-
-      if (typeof body === 'object' && body !== null) {
-        const detail = body as { message?: string | string[]; code?: string };
-        if (Array.isArray(detail.message)) {
-          envelope.error = detail.message.join('; ');
-        } else if (typeof detail.message === 'string') {
-          envelope.error = detail.message;
-        }
-        if (typeof detail.code === 'string') {
-          envelope.code = detail.code;
-        }
-      }
-
       response.status(status).json(envelope);
       return;
     }

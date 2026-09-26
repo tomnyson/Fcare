@@ -5,47 +5,78 @@ import {
   alertRowActions,
   bulkDeletionPreviewLines,
   deletionPreviewLines,
-  RESOLVER_ROLES,
+  ACKNOWLEDGER_ROLES,
   toggleAllSelected,
   toggleSelected,
 } from './alert-actions';
 import type { AlertBulkDeletionPreview, AlertDeletionPreview } from './types';
 
 describe('alertRowActions', () => {
-  it('ADMIN: tiếp nhận khi OPEN, xử lý khi chưa RESOLVED, xoá ở mọi trạng thái', () => {
-    expect(alertRowActions({ roles: ['ADMIN'], status: 'OPEN' })).toEqual({
+  const row = {
+    userId: 'me',
+    sectionLecturerId: 'gv-lop' as string | null,
+    raisedById: 'nguoi-tao' as string | null,
+  };
+
+  it('ADMIN: tiếp nhận khi OPEN, chốt khi chưa RESOLVED, xoá ở mọi trạng thái', () => {
+    expect(alertRowActions({ ...row, roles: ['ADMIN'], status: 'OPEN' })).toEqual({
       canAcknowledge: true,
       canResolve: true,
       canDelete: true,
     });
-    expect(alertRowActions({ roles: ['ADMIN'], status: 'RESOLVED' })).toEqual({
+    expect(alertRowActions({ ...row, roles: ['ADMIN'], status: 'RESOLVED' })).toEqual({
       canAcknowledge: false,
       canResolve: false,
       canDelete: true,
     });
   });
 
-  it('TBM/CBĐT/Trưởng CTSV: xử lý được nhưng KHÔNG xoá', () => {
-    for (const role of RESOLVER_ROLES.filter((r) => r !== 'ADMIN')) {
-      expect(alertRowActions({ roles: [role], status: 'ACKNOWLEDGED' })).toEqual({
-        canAcknowledge: false,
-        canResolve: true,
+  it('TBM: chốt được cảnh báo của lớp người khác, không xoá', () => {
+    expect(alertRowActions({ ...row, roles: ['HEAD_OF_DEPT'], status: 'ACKNOWLEDGED' })).toEqual({
+      canAcknowledge: false,
+      canResolve: true,
+      canDelete: false,
+    });
+  });
+
+  it('CB Đào tạo / Trưởng CTSV: chỉ tiếp nhận, KHÔNG chốt', () => {
+    for (const role of ['TRAINING_OFFICER', 'SA_HEAD']) {
+      expect(alertRowActions({ ...row, roles: [role], status: 'OPEN' })).toEqual({
+        canAcknowledge: true,
+        canResolve: false,
         canDelete: false,
       });
     }
+    expect(ACKNOWLEDGER_ROLES).not.toContain('LECTURER');
   });
 
-  it('giảng viên / CB CTSV: không thao tác gì', () => {
-    expect(alertRowActions({ roles: ['LECTURER'], status: 'OPEN' })).toEqual({
+  it('GV đứng lớp của cảnh báo chốt được; GV khác thì không', () => {
+    const own = { ...row, sectionLecturerId: 'me' };
+    expect(alertRowActions({ ...own, roles: ['LECTURER'], status: 'OPEN' })).toEqual({
+      canAcknowledge: false,
+      canResolve: true,
+      canDelete: false,
+    });
+    expect(alertRowActions({ ...row, roles: ['LECTURER'], status: 'OPEN' }).canResolve).toBe(false);
+  });
+
+  it('cảnh báo không có GV lớp: người tạo (GV) chốt', () => {
+    const noSection = { ...row, sectionLecturerId: null, raisedById: 'me' };
+    expect(alertRowActions({ ...noSection, roles: ['LECTURER'], status: 'OPEN' }).canResolve).toBe(
+      true,
+    );
+  });
+
+  it('CB CTSV: không thao tác gì', () => {
+    expect(alertRowActions({ ...row, roles: ['SA_OFFICER'], status: 'OPEN' })).toEqual({
       canAcknowledge: false,
       canResolve: false,
       canDelete: false,
     });
-    expect(alertRowActions({ roles: ['SA_OFFICER'], status: 'OPEN' }).canDelete).toBe(false);
   });
 
   it('roles undefined (chưa tải /auth/me) → không thao tác gì', () => {
-    expect(alertRowActions({ roles: undefined, status: 'OPEN' })).toEqual({
+    expect(alertRowActions({ ...row, roles: undefined, status: 'OPEN' })).toEqual({
       canAcknowledge: false,
       canResolve: false,
       canDelete: false,
@@ -173,8 +204,8 @@ describe('chọn nhiều cảnh báo', () => {
     const page = Array.from({ length: 5 }, (_, i) => `id-${i}`);
     const nearFull = new Set(Array.from({ length: 98 }, (_, i) => `x-${i}`));
     expect(toggleAllSelected(nearFull, page).size).toBe(100);
-    expect(toggleSelected(new Set(Array.from({ length: 100 }, (_, i) => `x-${i}`)), 'new').size).toBe(
-      100,
-    );
+    expect(
+      toggleSelected(new Set(Array.from({ length: 100 }, (_, i) => `x-${i}`)), 'new').size,
+    ).toBe(100);
   });
 });
