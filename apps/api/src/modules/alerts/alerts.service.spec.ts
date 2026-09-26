@@ -147,7 +147,12 @@ describe('AlertsService.list — lọc nhiều tiêu chí', () => {
     ];
     expect(args.where.source).toBe('AUTO_ATTENDANCE');
     expect(args.include.classSection).toEqual({
-      select: { id: true, code: true, subject: { select: { name: true } } },
+      select: {
+        id: true,
+        code: true,
+        lecturerId: true,
+        subject: { select: { name: true } },
+      },
     });
   });
 
@@ -658,5 +663,115 @@ describe('AlertsService.removeMany / deletionPreviewMany — xoá nhiều cảnh
     expect(careLogCount).toHaveBeenCalledWith({
       where: { alertId: { in: ['al-3', 'al-1', 'al-2'] } },
     });
+  });
+});
+
+describe('AlertsService.resolve — chốt cảnh báo kèm kết quả Đạt / Không đạt', () => {
+  const headOfDept: AuthUser = {
+    ...adminUser,
+    id: 'hd',
+    roles: ['HEAD_OF_DEPT'],
+    departmentId: 'dept-se',
+  };
+  const otherLecturer: AuthUser = { ...lecturerUser, id: 'l-2' };
+  const saHead: AuthUser = { ...adminUser, id: 'sa', roles: ['SA_HEAD'] };
+  const trainingOfficer: AuthUser = {
+    ...adminUser,
+    id: 'to',
+    roles: ['TRAINING_OFFICER'],
+  };
+
+  const baseAlert = {
+    id: 'al-1',
+    studentId: 'st-1',
+    status: 'ACKNOWLEDGED',
+    raisedById: 'raiser',
+    classSection: { lecturerId: 'l' },
+    student: { departmentId: 'dept-se' },
+  };
+
+  function setup(found: Record<string, unknown> | null = baseAlert) {
+    const update = jest.fn(({ data }: { data: object }) =>
+      Promise.resolve({ id: 'al-1', ...data }),
+    );
+    const prisma = {
+      alert: { findUnique: jest.fn().mockResolvedValue(found), update },
+      // Sinh viên luôn trong phạm vi — test này chỉ kiểm quyền CHỐT.
+      student: { count: jest.fn().mockResolvedValue(1) },
+    } as unknown as PrismaService;
+    const audit = { log: jest.fn().mockResolvedValue(undefined) };
+    const service = new AlertsService(
+      prisma,
+      {} as EscalationService,
+      audit as unknown as AuditService,
+      {} as NotificationDispatchService,
+      { on: jest.fn(), add: jest.fn() } as unknown as Queue<EscalationJobData>,
+    );
+    return { service, update, audit };
+  }
+
+  const dto = { outcome: 'EXAM_BANNED' as const, resolutionNote: 'Đã gọi.' };
+
+  it('GV đứng lớp chốt được: lưu kết quả + ghi chú + người chốt', async () => {
+    const { service, update } = setup();
+    await service.resolve(lecturerUser, 'al-1', dto);
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'al-1' },
+        data: expect.objectContaining({
+          status: 'RESOLVED',
+          outcome: 'EXAM_BANNED',
+          resolutionNote: 'Đã gọi.',
+          resolvedById: 'l',
+        }) as object,
+      }),
+    );
+  });
+
+  it.each([
+    ['ADMIN', adminUser],
+    ['HEAD_OF_DEPT', headOfDept],
+  ])('%s chốt được cảnh báo của lớp người khác', async (_role, user) => {
+    const { service, update } = setup();
+    await service.resolve(user, 'al-1', dto);
+    expect(update).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['GV khác lớp', otherLecturer],
+    ['Trưởng CTSV', saHead],
+    ['Cán bộ Đào tạo', trainingOfficer],
+  ])('%s → 403, không cập nhật gì', async (_label, user) => {
+    const { service, update } = setup();
+    await expect(service.resolve(user, 'al-1', dto)).rejects.toThrow(
+      'Chỉ giảng viên phụ trách lớp',
+    );
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('cảnh báo không gắn lớp: người tạo (GV) chốt được, GV khác thì không', async () => {
+    const noSection = { ...baseAlert, raisedById: 'l', classSection: null };
+    await setup(noSection).service.resolve(lecturerUser, 'al-1', dto);
+    await expect(
+      setup(noSection).service.resolve(otherLecturer, 'al-1', dto),
+    ).rejects.toThrow('Chỉ giảng viên phụ trách lớp');
+  });
+
+  it('đã RESOLVED → 400', async () => {
+    const { service } = setup({ ...baseAlert, status: 'RESOLVED' });
+    await expect(service.resolve(adminUser, 'al-1', dto)).rejects.toThrow(
+      'đã được xử lý',
+    );
+  });
+
+  it('audit ALERT_RESOLVED kèm kết quả', async () => {
+    const { service, audit } = setup();
+    await service.resolve(lecturerUser, 'al-1', dto);
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'ALERT_RESOLVED',
+        metadata: { outcome: 'EXAM_BANNED' },
+      }),
+    );
   });
 });

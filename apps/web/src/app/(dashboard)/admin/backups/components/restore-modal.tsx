@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { FormError, Input, Label } from '../../../../../components/ui/form';
 import { Modal } from '../../../../../components/ui/modal';
 import { PinCodeInput } from '../../../../../components/ui/pin-code-input';
+import { ApiError } from '../../../../../lib/api';
 import {
   checkRestoreGate,
   RESTORE_CONFIRMATION_KEYWORD,
@@ -74,13 +75,15 @@ export function RestoreModal({ backup, open, onClose, onConfirmRestore }: Restor
       setInput('');
       onClose();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Phục hồi database thất bại';
-      // "Failed to fetch" = mất kết nối tới API giữa chừng (API tắt/khởi động lại),
-      // không phải API từ chối. Diễn giải cho người dùng thay vì in lỗi thô.
+      // status 0 = mất kết nối tới API giữa chừng (API tắt/khởi động lại), không
+      // phải API từ chối — phục hồi có thể đã chạy xong, cần kiểm tra trước khi thử lại.
+      const lostConnection = err instanceof ApiError && err.status === 0;
       setError(
-        /failed to fetch|network/i.test(msg)
+        lostConnection
           ? 'Mất kết nối tới máy chủ trong lúc phục hồi. Kiểm tra trạng thái API và Nhật ký hành động trước khi thử lại.'
-          : msg,
+          : err instanceof Error
+            ? err.message
+            : 'Phục hồi database thất bại',
       );
       setInput('');
     } finally {

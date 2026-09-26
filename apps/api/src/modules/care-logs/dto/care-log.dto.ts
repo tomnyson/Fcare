@@ -45,6 +45,14 @@ export class CreateCareLogDto {
   @IsOptional()
   @IsUUID()
   alertId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Lớp học phần đang chăm sóc (→ học kỳ + môn). Bỏ trống khi gắn cảnh báo thì lấy lớp của cảnh báo',
+  })
+  @IsOptional()
+  @IsUUID()
+  classSectionId?: string;
 }
 
 export class ListCareLogsQuery {

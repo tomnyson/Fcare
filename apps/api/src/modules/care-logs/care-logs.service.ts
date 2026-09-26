@@ -23,6 +23,16 @@ const alertSummarySelect = {
   classSection: { select: { code: true } },
 } as const;
 
+/** Lớp học phần của lượt chăm sóc: học kỳ + môn học để người đọc biết bối cảnh. */
+export const careLogSectionSelect = {
+  select: {
+    id: true,
+    code: true,
+    term: true,
+    subject: { select: { code: true, name: true } },
+  },
+} as const;
+
 /** Đủ để xoá một lượt và biết có phải lượt "GV đứng lớp đã chăm sóc" không. */
 const deletableSelect = {
   id: true,
@@ -46,6 +56,7 @@ interface LinkedAlert {
   studentId: string;
   status: AlertStatus;
   ownerCaredAt: Date | null;
+  classSectionId: string | null;
   classSection: { lecturerId: string | null } | null;
 }
 
@@ -77,6 +88,7 @@ export class CareLogsService {
           },
         },
         alert: { select: alertSummarySelect },
+        classSection: careLogSectionSelect,
       },
     });
   }
@@ -98,9 +110,19 @@ export class CareLogsService {
         const alert = dto.alertId
           ? await this.requireLinkedAlert(tx, dto.alertId, dto.studentId)
           : null;
+        const classSectionId = dto.classSectionId
+          ? await this.requireEnrolledSection(
+              tx,
+              dto.studentId,
+              dto.classSectionId,
+            )
+          : (alert?.classSectionId ?? null);
         const created = await tx.careLog.create({
-          data: { ...dto, staffId: user.id },
-          include: { staff: { select: staffSelect } },
+          data: { ...dto, classSectionId, staffId: user.id },
+          include: {
+            staff: { select: staffSelect },
+            classSection: careLogSectionSelect,
+          },
         });
         const cared = alert
           ? await this.markOwnerCared(tx, alert, user.id)
@@ -188,6 +210,7 @@ export class CareLogsService {
         studentId: true,
         status: true,
         ownerCaredAt: true,
+        classSectionId: true,
         classSection: { select: { lecturerId: true } },
       },
     });
@@ -200,6 +223,24 @@ export class CareLogsService {
       );
     }
     return alert;
+  }
+
+  /** Chỉ gắn được lớp học phần sinh viên thực sự học — tránh bối cảnh sai môn/kỳ. */
+  private async requireEnrolledSection(
+    tx: Prisma.TransactionClient,
+    studentId: string,
+    classSectionId: string,
+  ): Promise<string> {
+    const enrollment = await tx.enrollment.findUnique({
+      where: { studentId_classSectionId: { studentId, classSectionId } },
+      select: { id: true },
+    });
+    if (!enrollment) {
+      throw new BadRequestException(
+        'Sinh viên không học lớp học phần đã chọn.',
+      );
+    }
+    return classSectionId;
   }
 
   /**

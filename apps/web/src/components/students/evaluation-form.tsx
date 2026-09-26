@@ -25,8 +25,12 @@ import {
 } from '../../lib/evaluation-absence';
 import type { ClassSection, Evaluation } from '../../lib/types';
 import { FormError, Input, Label, Select, Textarea } from '../ui/form';
-import { EvaluationGuidancePanel } from './evaluation-guidance';
-import { EvaluationHandoffStep } from './evaluation-handoff-step';
+import { EvaluationGuidancePanel, SuggestedLevelBadge } from './evaluation-guidance';
+import {
+  buildAlertReason,
+  EvaluationHandoffStep,
+  raiseEvaluationAlert,
+} from './evaluation-handoff-step';
 
 /**
  * Form nhập nhận xét theo tiêu chí DRS. Giảng viên chọn DẢI điểm (đúng ghi chú
@@ -43,12 +47,8 @@ const BAND_SCORE: Record<ScoreBand, number> = {
 
 const DEFAULT_BAND: ScoreBand = '8-7';
 
-const PERSONAL_CRITERIA = EVALUATION_CRITERIA.filter((criterion) =>
-  criterion.startsWith('P_'),
-);
-const ACADEMIC_CRITERIA = EVALUATION_CRITERIA.filter((criterion) =>
-  criterion.startsWith('H_'),
-);
+const PERSONAL_CRITERIA = EVALUATION_CRITERIA.filter((criterion) => criterion.startsWith('P_'));
+const ACADEMIC_CRITERIA = EVALUATION_CRITERIA.filter((criterion) => criterion.startsWith('H_'));
 
 function BandGroup({
   name,
@@ -135,6 +135,95 @@ function CriteriaGroup({
   );
 }
 
+function RaiseAlertToggle({
+  checked,
+  level,
+  onChange,
+}: {
+  checked: boolean;
+  level: number;
+  onChange: (checked: boolean) => void;
+}) {
+  // Khối nổi bật nhất form: nền cam, viền nhấn trái, chuông và công tắc lớn —
+  // giảng viên hay bỏ sót ô tích nhỏ ở cuối form.
+  return (
+    <label
+      data-raise-alert-callout
+      className={`group flex cursor-pointer items-center gap-3.5 rounded-lg border-2 border-l-4 px-4 py-3.5 transition-[background-color,border-color,box-shadow] duration-200 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-fpt-orange has-[:focus-visible]:ring-offset-2 ${
+        checked
+          ? 'border-fpt-orange bg-fpt-orange-50 shadow-[0_0_0_4px_rgb(242_114_39/0.15)]'
+          : 'border-fpt-orange/50 border-l-fpt-orange bg-fpt-orange-50 hover:border-fpt-orange hover:shadow-md'
+      }`}
+    >
+      <span
+        data-raise-alert-bell
+        aria-hidden="true"
+        className={`relative hidden size-10 shrink-0 place-items-center sm:grid rounded-full transition-colors ${
+          checked
+            ? 'bg-fpt-orange text-white'
+            : 'bg-white text-fpt-orange ring-1 ring-fpt-orange/40'
+        }`}
+      >
+        {!checked && level >= 3 ? (
+          <span className="absolute inset-0 rounded-full bg-fpt-orange/30 motion-safe:animate-ping" />
+        ) : null}
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          className="relative size-5"
+        >
+          <path
+            d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-2 text-base font-bold text-fpt-blue-900">
+          Phát cảnh báo khi lưu
+          <SuggestedLevelBadge level={level} />
+        </span>
+        <span
+          className={`mt-0.5 block text-xs font-semibold ${checked ? 'text-fpt-orange-600' : 'text-ink'}`}
+        >
+          {checked
+            ? `Đang bật — lưu xong sẽ phát cảnh báo Mức ${level}.`
+            : 'Đang tắt — chỉ lưu nhận xét, chưa phát cảnh báo.'}
+        </span>
+        <span className="mt-0.5 block text-xs leading-snug text-muted">
+          Hệ thống tự phát cảnh báo theo mức đề xuất từ điểm và tiêu chí bạn vừa nhập, gắn lớp học
+          phần này và kích hoạt AI tổng hợp học kỳ. Đổi điểm thì mức cảnh báo cập nhật theo.
+        </span>
+      </span>
+      <input
+        type="checkbox"
+        role="switch"
+        aria-checked={checked}
+        data-raise-alert-toggle
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="peer sr-only"
+      />
+      <span
+        aria-hidden="true"
+        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors duration-200 ${
+          checked ? 'bg-fpt-orange' : 'bg-border group-hover:bg-fpt-orange/40'
+        }`}
+      >
+        <span
+          className={`absolute top-1 left-1 size-5 rounded-full bg-white shadow transition-transform duration-200 ${
+            checked ? 'translate-x-5' : 'translate-x-0'
+          }`}
+        />
+      </span>
+    </label>
+  );
+}
+
 interface EvaluationFormProps {
   studentId: string;
   term: string;
@@ -171,10 +260,8 @@ export function EvaluationForm({
   const [error, setError] = useState('');
 
   const defaultSectionId =
-    (initialSectionId && sections.some((s) => s.id === initialSectionId)
-      ? initialSectionId
-      : '') ||
-    (sections.length === 1 ? sections[0]?.id ?? '' : '');
+    (initialSectionId && sections.some((s) => s.id === initialSectionId) ? initialSectionId : '') ||
+    (sections.length === 1 ? (sections[0]?.id ?? '') : '');
 
   const existingInitial = defaultSectionId
     ? ownEvaluations.find((evaluation) => evaluation.classSectionId === defaultSectionId)
@@ -197,11 +284,15 @@ export function EvaluationForm({
 
   const [handoffStep, setHandoffStep] = useState(false);
   const [submittedNote, setSubmittedNote] = useState('');
+  /** Bật thì lưu xong tự phát cảnh báo theo mức hệ thống đề xuất từ điểm vừa nhập. */
+  const [raiseAlert, setRaiseAlert] = useState(false);
+  const [handoffError, setHandoffError] = useState<string | null>(null);
 
   const academicScore = BAND_SCORE[academicBand];
   const attitudeScore = BAND_SCORE[attitudeBand];
   const absentSessions = parseAbsentInput(absentInput);
   const guidanceScores = { academicScore, attitudeScore, criteria: [...criteria], absentSessions };
+  const suggestedLevel = evaluationGuidance(guidanceScores).suggestedLevel;
   const existing = ownEvaluations.find(
     (evaluation) => evaluation.classSectionId === classSectionId,
   );
@@ -217,13 +308,20 @@ export function EvaluationForm({
             method: 'POST',
             body: JSON.stringify(payload),
           }),
-    onSuccess: async () => {
+    onSuccess: async (_saved, payload) => {
       setError('');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['evaluations', studentId] }),
         queryClient.invalidateQueries({ queryKey: ['risk-score', studentId, term] }),
       ]);
       const currentGuidance = evaluationGuidance(guidanceScores);
+      if (raiseAlert) {
+        await raiseAlertAfterSave(
+          currentGuidance,
+          typeof payload.note === 'string' ? payload.note : '',
+        );
+        return;
+      }
       // Nếu đề xuất mức 3 (Nguy cơ cao) hoặc 4 (Khẩn cấp), chuyển sang bước tương tác tiếp theo
       if (currentGuidance.suggestedLevel >= 3) {
         setHandoffStep(true);
@@ -234,18 +332,53 @@ export function EvaluationForm({
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Có lỗi xảy ra.'),
   });
 
+  /**
+   * Nhận xét đã lưu — phát cảnh báo đúng mức hệ thống đề xuất. Lỗi thì chuyển sang
+   * bước tiếp theo (có nút phát lại) thay vì mất cảnh báo trong im lặng.
+   */
+  async function raiseAlertAfterSave(
+    guidance: ReturnType<typeof evaluationGuidance>,
+    note: string,
+  ) {
+    try {
+      await raiseEvaluationAlert({
+        studentId,
+        term,
+        level: guidance.suggestedLevel,
+        classSectionId: classSectionId || undefined,
+        reason: buildAlertReason({
+          term,
+          criterionLabels: guidance.criterionLabels,
+          note,
+          suggestedLevel: guidance.suggestedLevel,
+          academicDescription: guidance.academicDescription,
+          attitudeDescription: guidance.attitudeDescription,
+        }),
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['alerts'] }),
+        queryClient.invalidateQueries({ queryKey: ['students'] }),
+        queryClient.invalidateQueries({ queryKey: ['student-term-analysis'] }),
+      ]);
+      onSaved(term);
+    } catch (err) {
+      setHandoffError(
+        `Đã lưu nhận xét nhưng chưa phát được cảnh báo${
+          err instanceof ApiError ? `: ${err.message}` : '.'
+        } Bấm "Phát cảnh báo" bên dưới để thử lại.`,
+      );
+      setHandoffStep(true);
+    }
+  }
+
   /** Đổi lớp thì nạp lại nội dung bản nhận xét cũ của lớp đó (nếu có). */
   function selectSection(id: string) {
     setClassSectionId(id);
     setError('');
-    const current = ownEvaluations.find(
-      (evaluation) => evaluation.classSectionId === id,
-    );
+    const current = ownEvaluations.find((evaluation) => evaluation.classSectionId === id);
     setAcademicBand(current ? scoreBand(current.academicScore) : DEFAULT_BAND);
     setAttitudeBand(current ? scoreBand(current.attitudeScore) : DEFAULT_BAND);
-    setCriteria(
-      new Set(current ? current.criteria.map((mark) => mark.criterion) : []),
-    );
+    setCriteria(new Set(current ? current.criteria.map((mark) => mark.criterion) : []));
     setAbsentInput(initialAbsentValue(current?.absentSessions, systemAbsences[id]));
   }
 
@@ -291,6 +424,7 @@ export function EvaluationForm({
         attitudeDescription={currentGuidance.attitudeDescription}
         lecturerActions={currentGuidance.lecturerActions}
         studentAffairsActions={currentGuidance.studentAffairsActions}
+        initialError={handoffError}
         onComplete={() => onSaved(term)}
       />
     );
@@ -323,9 +457,7 @@ export function EvaluationForm({
                 <option key={section.id} value={section.id}>
                   {section.code}
                   {section.subject ? ` — ${section.subject.name}` : ''}
-                  {ownEvaluations.some(
-                    (evaluation) => evaluation.classSectionId === section.id,
-                  )
+                  {ownEvaluations.some((evaluation) => evaluation.classSectionId === section.id)
                     ? ' (đã nhận xét)'
                     : ''}
                 </option>
@@ -393,10 +525,7 @@ export function EvaluationForm({
         />
       </div>
 
-      <EvaluationGuidancePanel
-        scores={guidanceScores}
-        showHandoffHint
-      />
+      <EvaluationGuidancePanel scores={guidanceScores} showHandoffHint />
 
       <div>
         <Label htmlFor="note">Nhận xét</Label>
@@ -408,10 +537,12 @@ export function EvaluationForm({
           defaultValue={existing?.note ?? ''}
         />
         <p className="mt-1 text-xs text-muted">
-          Nội dung này được gửi tới AI để tổng hợp — <strong>không ghi số điện thoại, email
-          hay địa chỉ</strong> của sinh viên.
+          Nội dung này được gửi tới AI để tổng hợp —{' '}
+          <strong>không ghi số điện thoại, email hay địa chỉ</strong> của sinh viên.
         </p>
       </div>
+
+      <RaiseAlertToggle checked={raiseAlert} level={suggestedLevel} onChange={setRaiseAlert} />
 
       <div className="flex justify-end gap-3">
         <Button variant="ghost" type="button" onClick={onCancel}>
@@ -419,10 +550,12 @@ export function EvaluationForm({
         </Button>
         <Button type="submit" disabled={saveMutation.isPending || sections.length === 0}>
           {saveMutation.isPending
-            ? 'Đang lưu…'
-            : existing
-              ? 'Cập nhật nhận xét'
-              : 'Lưu nhận xét'}
+            ? raiseAlert
+              ? 'Đang lưu & phát cảnh báo…'
+              : 'Đang lưu…'
+            : `${existing ? 'Cập nhật nhận xét' : 'Lưu nhận xét'}${
+                raiseAlert ? ` & phát cảnh báo Mức ${suggestedLevel}` : ''
+              }`}
         </Button>
       </div>
     </form>

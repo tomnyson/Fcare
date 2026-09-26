@@ -42,7 +42,7 @@ export class AlertsController {
   }
 
   @Patch(':id/acknowledge')
-  @CheckPolicies((ability: AppAbility) => ability.can('resolve', 'Alert'))
+  @CheckPolicies((ability: AppAbility) => ability.can('acknowledge', 'Alert'))
   acknowledge(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,

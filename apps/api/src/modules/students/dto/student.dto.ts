@@ -19,8 +19,15 @@ import {
 } from 'class-validator';
 
 /** Cột sắp xếp được trên bảng sinh viên — không có thì mặc định theo MSSV. */
-export const STUDENT_SORT_FIELDS = ['absentSessions', 'openAlerts'] as const;
+export const STUDENT_SORT_FIELDS = [
+  'absentSessions',
+  'openAlerts',
+  'risk',
+] as const;
 export type StudentSortField = (typeof STUDENT_SORT_FIELDS)[number];
+/** `any` = có cảnh báo chưa chốt ở bất kỳ mức nào; '1'..'4' = đúng mức đó. */
+export const ALERT_LEVEL_FILTERS = ['any', '1', '2', '3', '4'] as const;
+export type AlertLevelFilter = (typeof ALERT_LEVEL_FILTERS)[number];
 export const SORT_DIRECTIONS = ['asc', 'desc'] as const;
 export type SortDirection = (typeof SORT_DIRECTIONS)[number];
 
@@ -127,6 +134,15 @@ export class ListStudentsQuery {
   @IsUUID()
   sectionId?: string;
 
+  @ApiPropertyOptional({
+    enum: ALERT_LEVEL_FILTERS,
+    description:
+      'Chỉ lấy sinh viên đang có cảnh báo chưa chốt (any) hoặc đúng mức 1–4',
+  })
+  @IsOptional()
+  @IsIn(ALERT_LEVEL_FILTERS)
+  alertLevel?: AlertLevelFilter;
+
   @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   @Type(() => Number)
@@ -153,7 +169,7 @@ export class ListStudentsQuery {
   @ApiPropertyOptional({
     enum: STUDENT_SORT_FIELDS,
     description:
-      'Sắp xếp theo tổng buổi vắng (trong phạm vi kỳ/lớp HP đang lọc) hoặc số cảnh báo đang mở',
+      'Sắp xếp theo tổng buổi vắng (trong phạm vi kỳ/lớp HP đang lọc), số cảnh báo đang mở, hoặc mức nguy cơ (mức cảnh báo mở cao nhất, toàn danh sách)',
   })
   @IsOptional()
   @IsIn(STUDENT_SORT_FIELDS)

@@ -50,8 +50,8 @@ function ErrorBody({ code, eyebrow, title, children, actions }: ErrorScreenProps
   );
 }
 
-/** 404 toàn trang — hiện cả khi chưa đăng nhập nên không dựa vào khung dashboard. */
-export function PageNotFound() {
+/** Khung toàn trang (logo + chân trang) — dùng khi không có khung dashboard. */
+function FullPageShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-surface">
       <header className="bg-fpt-blue-900 px-4 py-4 sm:px-8">
@@ -63,26 +63,7 @@ export function PageNotFound() {
           <span className="font-[family-name:var(--font-display)] text-lg font-bold">FCare</span>
         </Link>
       </header>
-      <main className="flex flex-1 items-center px-4 py-12 sm:px-8 lg:px-16">
-        <ErrorBody
-          code="404"
-          eyebrow="Sai đường dẫn"
-          title="Không tìm thấy trang"
-          actions={
-            <>
-              <Link href="/dashboard" className={ACTION_PRIMARY}>
-                Về Tổng quan
-              </Link>
-              <Link href="/" className={ACTION_GHOST}>
-                Trang chủ
-              </Link>
-            </>
-          }
-        >
-          <p>Đường dẫn bạn mở không tồn tại hoặc đã được đổi.</p>
-          <p>Hãy kiểm tra lại địa chỉ, hoặc quay về Tổng quan để tìm từ menu.</p>
-        </ErrorBody>
-      </main>
+      <main className="flex flex-1 items-center px-4 py-12 sm:px-8 lg:px-16">{children}</main>
       <footer className="px-4 pb-6 text-xs text-muted sm:px-8">
         FPT Education · Hệ thống nội bộ
       </footer>
@@ -90,10 +71,81 @@ export function PageNotFound() {
   );
 }
 
+/** Khung nằm trong dashboard — người dùng vẫn thấy menu. */
+function FramedShell({ children }: { children: ReactNode }) {
+  return (
+    <section className="rounded-[var(--radius-card)] border-l-4 border-fpt-orange bg-surface-raised p-6 shadow-[var(--shadow-card)] sm:p-10">
+      {children}
+    </section>
+  );
+}
+
+/** 404 toàn trang — hiện cả khi chưa đăng nhập nên không dựa vào khung dashboard. */
+export function PageNotFound() {
+  return (
+    <FullPageShell>
+      <ErrorBody
+        code="404"
+        eyebrow="Sai đường dẫn"
+        title="Không tìm thấy trang"
+        actions={
+          <>
+            <Link href="/dashboard" className={ACTION_PRIMARY}>
+              Về Tổng quan
+            </Link>
+            <Link href="/" className={ACTION_GHOST}>
+              Trang chủ
+            </Link>
+          </>
+        }
+      >
+        <p>Đường dẫn bạn mở không tồn tại hoặc đã được đổi.</p>
+        <p>Hãy kiểm tra lại địa chỉ, hoặc quay về Tổng quan để tìm từ menu.</p>
+      </ErrorBody>
+    </FullPageShell>
+  );
+}
+
+/**
+ * Lỗi giao diện không lường trước (error boundary của Next) — thay màn
+ * "Application error: a client-side exception…" tiếng Anh mặc định.
+ */
+export function UnexpectedError({
+  onRetry,
+  fullPage = false,
+}: {
+  onRetry: () => void;
+  fullPage?: boolean;
+}) {
+  const Shell = fullPage ? FullPageShell : FramedShell;
+  return (
+    <Shell>
+      <ErrorBody
+        code="500"
+        eyebrow="Sự cố bất ngờ"
+        title="Đã xảy ra lỗi"
+        actions={
+          <>
+            <button type="button" onClick={onRetry} className={ACTION_PRIMARY}>
+              Thử lại
+            </button>
+            <Link href="/dashboard" className={ACTION_GHOST}>
+              Về Tổng quan
+            </Link>
+          </>
+        }
+      >
+        <p>Trang gặp sự cố khi hiển thị. Dữ liệu bạn đã lưu trước đó không bị ảnh hưởng.</p>
+        <p>Hãy bấm “Thử lại”. Nếu lỗi vẫn lặp lại, hãy báo cho quản trị viên.</p>
+      </ErrorBody>
+    </Shell>
+  );
+}
+
 /** 403 nằm trong khung dashboard — người dùng vẫn thấy menu những trang mình được mở. */
 export function AccessDenied() {
   return (
-    <section className="rounded-[var(--radius-card)] border-l-4 border-fpt-orange bg-surface-raised p-6 shadow-[var(--shadow-card)] sm:p-10">
+    <FramedShell>
       <ErrorBody
         code="403"
         eyebrow="Không đủ quyền"
@@ -109,6 +161,6 @@ export function AccessDenied() {
           Nếu bạn cần dùng chức năng này, hãy liên hệ quản trị viên để được cấp vai trò phù hợp.
         </p>
       </ErrorBody>
-    </section>
+    </FramedShell>
   );
 }

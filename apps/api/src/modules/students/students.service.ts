@@ -34,10 +34,16 @@ const SECTION_OPTIONS_LIMIT = 500;
  * biệt với "0 buổi"; `maxSectionAbsent` là số vắng cao nhất trong một lớp học
  * phần — ngưỡng cảnh báo tự động (2 → L2, ≥ 3 → L3) tính theo từng lớp.
  */
+/** Trọng số mức cảnh báo khi xếp nguy cơ — lớn hơn mọi số cảnh báo mở thực tế. */
+const RISK_LEVEL_WEIGHT = 1000;
+
 function withAbsenceSummary<
-  T extends { enrollments: { absentSessions: number | null }[] },
+  T extends {
+    enrollments: { absentSessions: number | null }[];
+    alerts?: { level: number }[];
+  },
 >(student: T) {
-  const { enrollments, ...rest } = student;
+  const { enrollments, alerts, ...rest } = student;
   const recorded = enrollments
     .map((enrollment) => enrollment.absentSessions)
     .filter((value): value is number => value !== null);
@@ -48,6 +54,8 @@ function withAbsenceSummary<
         ? recorded.reduce((sum, value) => sum + value, 0)
         : null,
     maxSectionAbsent: recorded.length > 0 ? Math.max(...recorded) : null,
+    // Include chỉ lấy 1 cảnh báo mở mức cao nhất — đủ để tô mức nguy cơ.
+    maxOpenAlertLevel: alerts?.[0]?.level ?? null,
   };
 }
 
@@ -61,11 +69,12 @@ function rankStudentIds(
   students: readonly { id: string; studentCode: string; classCode: string }[],
   valueOf: (studentId: string) => number | null,
   direction: SortDirection,
+  groupByClass = true,
 ): string[] {
   const sign = direction === 'asc' ? 1 : -1;
   return [...students]
     .sort((a, b) => {
-      const byClass = a.classCode.localeCompare(b.classCode);
+      const byClass = groupByClass ? a.classCode.localeCompare(b.classCode) : 0;
       if (byClass !== 0) return byClass;
       const left = valueOf(a.id);
       const right = valueOf(b.id);
@@ -142,6 +151,18 @@ export class StudentsService {
         ? { enrollments: { some: enrollmentWhere } }
         : {}),
       ...(query.status ? { status: query.status } : {}),
+      ...(query.alertLevel
+        ? {
+            alerts: {
+              some: {
+                status: { not: 'RESOLVED' as const },
+                ...(query.alertLevel === 'any'
+                  ? {}
+                  : { level: Number(query.alertLevel) }),
+              },
+            },
+          }
+        : {}),
       ...(query.search
         ? {
             OR: [
@@ -161,6 +182,12 @@ export class StudentsService {
       enrollments: {
         where: enrollmentWhere,
         select: { absentSessions: true },
+      },
+      alerts: {
+        where: { status: { not: 'RESOLVED' as const } },
+        select: { level: true },
+        orderBy: { level: 'desc' as const },
+        take: 1,
       },
     } satisfies Prisma.StudentInclude;
 
@@ -219,6 +246,8 @@ export class StudentsService {
       students,
       (id) => metric.values.get(id) ?? metric.missing,
       query.sortDir ?? 'desc',
+      // Nguy cơ xếp trên TOÀN danh sách: SV mức 4 phải lên đầu dù lớp nào.
+      query.sortBy !== 'risk',
     );
     const pageIds = rankedIds.slice((page - 1) * limit, page * limit);
     const rows = await this.prisma.student.findMany({
@@ -242,6 +271,24 @@ export class StudentsService {
     enrollmentWhere: Prisma.EnrollmentWhereInput,
     sortBy: NonNullable<ListStudentsQuery['sortBy']>,
   ): Promise<{ values: Map<string, number | null>; missing: number | null }> {
+    if (sortBy === 'risk') {
+      const rows = await this.prisma.alert.groupBy({
+        by: ['studentId'],
+        where: { status: { not: 'RESOLVED' }, student: where },
+        _max: { level: true },
+        _count: { _all: true },
+      });
+      // Mức cao nhất quyết định (1..4); cùng mức thì nhiều cảnh báo mở hơn trước.
+      return {
+        values: new Map(
+          rows.map((row) => [
+            row.studentId,
+            (row._max.level ?? 0) * RISK_LEVEL_WEIGHT + row._count._all,
+          ]),
+        ),
+        missing: 0,
+      };
+    }
     if (sortBy === 'openAlerts') {
       const rows = await this.prisma.alert.groupBy({
         by: ['studentId'],

@@ -19,6 +19,56 @@ export function raiseAlertBody({ classSectionId, ...rest }: RaiseAlertInput): Ra
   return classSectionId ? { ...rest, classSectionId } : rest;
 }
 
+/**
+ * Phát cảnh báo từ nhận xét rồi kích hoạt AI tổng hợp học kỳ. AI chưa bật trên
+ * hệ thống thì bỏ qua — cảnh báo đã phát là đủ, không làm hỏng luồng lưu.
+ */
+export async function raiseEvaluationAlert(input: RaiseAlertInput & { term: string }): Promise<void> {
+  const { term, ...alert } = input;
+  await apiFetch('/alerts', { method: 'POST', body: JSON.stringify(raiseAlertBody(alert)) });
+  try {
+    await apiFetch(`/students/${alert.studentId}/term-analyses`, {
+      method: 'POST',
+      body: JSON.stringify({ term, idempotencyKey: crypto.randomUUID() }),
+    });
+  } catch {
+    // AI chưa được kích hoạt — không chặn việc phát cảnh báo.
+  }
+}
+
+interface AlertReasonInput {
+  term: string;
+  criterionLabels: readonly string[];
+  note?: string;
+  suggestedLevel: number;
+  academicDescription: string;
+  attitudeDescription: string;
+}
+
+/** Lý do cảnh báo tự sinh từ nhận xét — dùng chung cho bước tiếp theo và nút "Phát cảnh báo" trong form. */
+export function buildAlertReason({
+  term,
+  criterionLabels,
+  note,
+  suggestedLevel,
+  academicDescription,
+  attitudeDescription,
+}: AlertReasonInput): string {
+  const parts = [
+    `Nhận xét DRS học kỳ ${term}:`,
+    criterionLabels.length > 0 ? `Tiêu chí ghi nhận: ${criterionLabels.join(', ')}.` : '',
+    note?.trim() ? `Ghi chú GV: ${note.trim()}.` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  // Cảnh báo mức 4 khẩn cấp yêu cầu tối thiểu 40 ký tự
+  if (suggestedLevel === 4 && parts.length < 40) {
+    return `${parts} Khả năng học tập: ${academicDescription}. Thái độ: ${attitudeDescription}.`;
+  }
+  return parts;
+}
+
 interface EvaluationHandoffStepProps {
   studentId: string;
   term: string;
@@ -31,6 +81,8 @@ interface EvaluationHandoffStepProps {
   attitudeDescription: string;
   lecturerActions: readonly string[];
   studentAffairsActions: readonly string[];
+  /** Lỗi mang sang từ form (vd. tự phát cảnh báo khi lưu thất bại). */
+  initialError?: string | null;
   onComplete: () => void;
 }
 
@@ -45,60 +97,40 @@ export function EvaluationHandoffStep({
   attitudeDescription,
   lecturerActions,
   studentAffairsActions,
+  initialError = null,
   onComplete,
 }: EvaluationHandoffStepProps) {
   const queryClient = useQueryClient();
 
-  const defaultReason = useMemo(() => {
-    const parts = [
-      `Nhận xét DRS học kỳ ${term}:`,
-      criterionLabels.length > 0 ? `Tiêu chí ghi nhận: ${criterionLabels.join(', ')}.` : '',
-      note?.trim() ? `Ghi chú GV: ${note.trim()}.` : '',
-    ]
-      .filter(Boolean)
-      .join(' ');
-
-    // Cảnh báo mức 4 khẩn cấp yêu cầu tối thiểu 40 ký tự
-    if (suggestedLevel === 4 && parts.length < 40) {
-      return `${parts} Khả năng học tập: ${academicDescription}. Thái độ: ${attitudeDescription}.`;
-    }
-    return parts;
-  }, [term, criterionLabels, note, suggestedLevel, academicDescription, attitudeDescription]);
+  const defaultReason = useMemo(
+    () =>
+      buildAlertReason({
+        term,
+        criterionLabels,
+        note,
+        suggestedLevel,
+        academicDescription,
+        attitudeDescription,
+      }),
+    [term, criterionLabels, note, suggestedLevel, academicDescription, attitudeDescription],
+  );
 
   const [reason, setReason] = useState(defaultReason);
   const [showEditReason, setShowEditReason] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(initialError);
 
   // Mutation 1: Phát cảnh báo + Kích hoạt AI phân tích
   const raiseAlertAndAiMutation = useMutation({
     mutationFn: async () => {
       setActionError(null);
-      // 1. Phát cảnh báo
-      await apiFetch('/alerts', {
-        method: 'POST',
-        body: JSON.stringify(
-          raiseAlertBody({
-            studentId,
-            level: suggestedLevel,
-            reason: reason.trim() || defaultReason,
-            classSectionId,
-          }),
-        ),
+      await raiseEvaluationAlert({
+        studentId,
+        term,
+        level: suggestedLevel,
+        reason: reason.trim() || defaultReason,
+        classSectionId,
       });
-
-      // 2. Kích hoạt phân tích AI (nếu khả dụng)
-      try {
-        await apiFetch(`/students/${studentId}/term-analyses`, {
-          method: 'POST',
-          body: JSON.stringify({
-            term,
-            idempotencyKey: crypto.randomUUID(),
-          }),
-        });
-      } catch {
-        // Nếu AI chưa bật trên hệ thống, không làm gián đoạn flow
-      }
     },
     onSuccess: async () => {
       await Promise.all([

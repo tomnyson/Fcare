@@ -10,6 +10,7 @@ import { apiFetch } from '../../lib/api';
 import { ALERT_LEVEL_TONES, CARE_CHANNEL_LABELS, formatDateTime } from '../../lib/labels';
 import { pageCount, parsePageParam } from '../../lib/pagination';
 import type { CareLog, CareStaffLogs, StaffRef } from '../../lib/types';
+import { CareContextTag } from '../care-logs/care-context-tag';
 import { DeleteCareLogButton } from '../care-logs/delete-care-log-button';
 import { PageHeader } from '../ui/page-header';
 import { Pagination } from '../ui/pagination';
@@ -58,6 +59,7 @@ function LogItem({ log, staff, onDeleted }: LogItemProps) {
         </div>
       </div>
       <p className="mt-1 text-xs text-muted">{formatDateTime(log.createdAt)}</p>
+      <CareContextTag section={log.classSection} fallbackCode={log.alert?.classSection?.code} />
       <p className="mt-3 text-sm text-ink">{log.content}</p>
       {log.outcome ? (
         <p className="mt-2 text-sm text-muted">

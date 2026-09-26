@@ -60,3 +60,45 @@ export const raiseAlertSchema = z
   );
 
 export type RaiseAlertInput = z.infer<typeof raiseAlertSchema>;
+
+/**
+ * Kết quả chốt cảnh báo — khớp enum `AlertOutcome` trong Prisma. "Không đạt"
+ * nghĩa là sinh viên ĐÃ được chăm sóc nhưng cuối cùng vẫn bị cấm thi / rớt môn.
+ */
+export const ALERT_OUTCOMES = ['PASSED', 'EXAM_BANNED', 'FAILED'] as const;
+export type AlertOutcome = (typeof ALERT_OUTCOMES)[number];
+
+export const ALERT_OUTCOME_LABELS: Record<AlertOutcome, string> = {
+  PASSED: 'Đạt',
+  EXAM_BANNED: 'Không đạt — bị cấm thi',
+  FAILED: 'Không đạt — rớt môn',
+};
+
+/** Vai trò được chốt MỌI cảnh báo trong phạm vi của mình. */
+export const ALERT_CLOSER_ROLES = ['ADMIN', 'HEAD_OF_DEPT'] as const;
+
+export interface AlertCloseInput {
+  userId: string;
+  roles: ReadonlyArray<string>;
+  /** GV đứng lớp học phần phát sinh cảnh báo; null khi không gắn lớp / lớp chưa phân công. */
+  sectionLecturerId: string | null | undefined;
+  raisedById: string | null | undefined;
+}
+
+/**
+ * Ai được chốt cảnh báo: ADMIN + Trưởng bộ môn luôn được; giảng viên CHỈ khi
+ * đứng lớp học phần của cảnh báo (cảnh báo không có GV lớp → người đã tạo nó).
+ * CTSV, Đào tạo và giảng viên khác không được chốt. Phạm vi sinh viên vẫn do
+ * API kiểm tra riêng.
+ */
+export function canCloseAlert(input: AlertCloseInput): boolean {
+  const { userId, roles } = input;
+  if (roles.some((role) => (ALERT_CLOSER_ROLES as ReadonlyArray<string>).includes(role))) {
+    return true;
+  }
+  if (!roles.includes('LECTURER')) {
+    return false;
+  }
+  const owner = input.sectionLecturerId ?? input.raisedById;
+  return owner === userId;
+}

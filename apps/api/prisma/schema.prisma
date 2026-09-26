@@ -96,6 +96,7 @@ model ClassSection {
   enrollments Enrollment[]
   evaluations Evaluation[]
   alerts      Alert[]
+  careLogs    CareLog[]
 
   @@unique([code, term])
   @@map("class_sections")
@@ -435,24 +436,29 @@ enum CareChannel {
 }
 
 model CareLog {
-  id         String      @id @default(uuid())
-  studentId  String
-  staffId    String
-  channel    CareChannel
-  content    String
-  outcome    String?
-  nextAction String?
+  id             String      @id @default(uuid())
+  studentId      String
+  staffId        String
+  channel        CareChannel
+  content        String
+  outcome        String?
+  nextAction     String?
   /// Nhật ký này là phản hồi cho cảnh báo nào (tuỳ chọn). Với cảnh báo điểm danh:
   /// staff == classSection.lecturerId → tắt cảnh báo "liên tục" của GV đó.
-  alertId    String?
-  createdAt  DateTime    @default(now())
+  alertId        String?
+  /// Lớp học phần đang chăm sóc — cho biết học kỳ + môn học của lượt trao đổi.
+  /// Null với nhật ký cũ (trước khi có trường này).
+  classSectionId String?
+  createdAt      DateTime    @default(now())
 
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  staff   Staff   @relation(fields: [staffId], references: [id])
-  alert   Alert?  @relation(fields: [alertId], references: [id], onDelete: SetNull)
+  student      Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  staff        Staff         @relation(fields: [staffId], references: [id])
+  alert        Alert?        @relation(fields: [alertId], references: [id], onDelete: SetNull)
+  classSection ClassSection? @relation(fields: [classSectionId], references: [id], onDelete: SetNull)
 
   @@index([studentId, createdAt])
   @@index([alertId])
+  @@index([classSectionId])
   @@map("care_logs")
 }
 
@@ -464,6 +470,13 @@ enum AlertStatus {
 
 /// Nguồn phát cảnh báo: người bấm gửi (MANUAL) hay hệ thống rà soát điểm danh
 /// sau import GRADE_ATTENDANCE (AUTO_ATTENDANCE — FLOW 2 module chăm sóc).
+/// Kết quả chốt cảnh báo: Đạt, hoặc đã chăm sóc nhưng vẫn cấm thi / rớt môn.
+enum AlertOutcome {
+  PASSED
+  EXAM_BANNED
+  FAILED
+}
+
 enum AlertSource {
   MANUAL
   AUTO_ATTENDANCE
@@ -471,14 +484,14 @@ enum AlertSource {
 
 // Cảnh báo mức độ khẩn 1-4; mức 4 yêu cầu lý do >= 40 ký tự (validate tầng DTO)
 model Alert {
-  id             String      @id @default(uuid())
+  id             String        @id @default(uuid())
   studentId      String
   /// null khi hệ thống tự phát (source = AUTO_ATTENDANCE) — UI hiện "Hệ thống".
   raisedById     String?
   level          Int // 1..4
   reason         String
-  status         AlertStatus @default(OPEN)
-  source         AlertSource @default(MANUAL)
+  status         AlertStatus   @default(OPEN)
+  source         AlertSource   @default(MANUAL)
   /// Lớp học phần phát sinh cảnh báo điểm danh; GV đứng lớp này bị "đeo" cảnh báo
   /// liên tục cho tới khi chính họ ghi CareLog gắn alertId (ownerCaredAt).
   classSectionId String?
@@ -488,8 +501,10 @@ model Alert {
   resolvedById   String?
   resolvedAt     DateTime?
   resolutionNote String?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  /// null với cảnh báo chốt trước khi có trường này.
+  outcome        AlertOutcome?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   student          Student                      @relation(fields: [studentId], references: [id], onDelete: Cascade)
   raisedBy         Staff?                       @relation("AlertRaisedBy", fields: [raisedById], references: [id])

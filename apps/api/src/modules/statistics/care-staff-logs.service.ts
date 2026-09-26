@@ -9,6 +9,7 @@ import {
   statsStudentScope,
 } from '../../common/utils/dept-scope';
 import { PrismaService } from '../../prisma/prisma.service';
+import { careLogSectionSelect } from '../care-logs/care-logs.service';
 import { TermsService } from '../master-data/terms.service';
 import type { CareStaffLogsQuery } from './dto/statistics-query.dto';
 import type { TermWindow } from './statistics.service';
@@ -93,6 +94,7 @@ export class CareStaffLogsService {
             },
           },
           alert: { select: alertSummarySelect },
+          classSection: careLogSectionSelect,
         },
       }),
       this.prisma.careLog.count({ where }),

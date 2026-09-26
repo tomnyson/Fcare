@@ -41,7 +41,32 @@ describe('AbilityFactory — ma trận phân quyền theo Quy định chung', ()
     expect(ability.can('create', 'CareLog')).toBe(true);
     expect(ability.can('create', 'Alert')).toBe(true);
     expect(ability.can('update', 'MasterData')).toBe(false);
-    expect(ability.can('resolve', 'Alert')).toBe(false);
+    // Được gọi chốt; service chặn tiếp nếu không đứng lớp của cảnh báo.
+    expect(ability.can('resolve', 'Alert')).toBe(true);
+    expect(ability.can('acknowledge', 'Alert')).toBe(false);
+  });
+
+  it('chốt cảnh báo: chỉ ADMIN, TBM, GV — CTSV và Đào tạo chỉ tiếp nhận', () => {
+    for (const role of ['ADMIN', 'HEAD_OF_DEPT', 'LECTURER'] as const) {
+      expect(
+        factory.createForUser(makeUser([role])).can('resolve', 'Alert'),
+      ).toBe(true);
+    }
+    for (const role of ['TRAINING_OFFICER', 'SA_OFFICER', 'SA_HEAD'] as const) {
+      expect(
+        factory.createForUser(makeUser([role])).can('resolve', 'Alert'),
+      ).toBe(false);
+    }
+    for (const role of [
+      'ADMIN',
+      'HEAD_OF_DEPT',
+      'TRAINING_OFFICER',
+      'SA_HEAD',
+    ] as const) {
+      expect(
+        factory.createForUser(makeUser([role])).can('acknowledge', 'Alert'),
+      ).toBe(true);
+    }
   });
 
   it('chỉ admin được quản trị người dùng', () => {

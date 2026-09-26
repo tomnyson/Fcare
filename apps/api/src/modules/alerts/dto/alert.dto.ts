@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AlertSource, AlertStatus } from '@prisma/client';
+import { AlertOutcome, AlertSource, AlertStatus } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -67,6 +67,13 @@ export class RaiseAlertDto {
 }
 
 export class ResolveAlertDto {
+  @ApiProperty({
+    enum: AlertOutcome,
+    description: 'Đạt, hoặc đã chăm sóc nhưng vẫn bị cấm thi / rớt môn',
+  })
+  @IsEnum(AlertOutcome, { message: 'Vui lòng chọn kết quả Đạt / Không đạt.' })
+  outcome!: AlertOutcome;
+
   @ApiProperty({ description: 'Ghi chú xử lý' })
   @IsString()
   @IsNotEmpty()
