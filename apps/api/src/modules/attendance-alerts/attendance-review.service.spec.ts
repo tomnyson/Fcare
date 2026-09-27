@@ -34,6 +34,8 @@ function setup(
       source?: 'MANUAL' | 'AUTO_ATTENDANCE';
       reason?: string;
     }>;
+    /** Số cảnh báo tự động bị đóng vì môn không cấm thi do điểm danh. */
+    closed?: number;
   } = {},
 ) {
   // Mặc định là cảnh báo điểm danh tự động — test nguồn khác thì ghi đè.
@@ -55,6 +57,7 @@ function setup(
           Promise.resolve({ id: 'alert-new', ...data }),
         ),
       update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: options.closed ?? 0 }),
     },
   };
   const prisma = {
@@ -87,7 +90,17 @@ describe('AttendanceReviewService.reviewTerm', () => {
       expect.objectContaining({
         where: {
           absentSessions: { gte: 2 },
-          classSection: { term: 'FA26', lecturerId: { not: null } },
+          classSection: {
+            term: 'FA26',
+            lecturerId: { not: null },
+            // Môn "Tỷ lệ phải đi học" = 0 không cấm thi do điểm danh → không cảnh báo vắng.
+            subject: {
+              OR: [
+                { attendanceRateRequired: null },
+                { attendanceRateRequired: { gt: 0 } },
+              ],
+            },
+          },
           student: { status: { in: ['STUDYING', 'WARNED'] } },
         },
       }),
@@ -118,6 +131,7 @@ describe('AttendanceReviewService.reviewTerm', () => {
       upgraded: 0,
       unchanged: 0,
       notified: 2,
+      closed: 0,
     });
     expect(prisma.alert.create).toHaveBeenCalledWith({
       data: {
@@ -151,6 +165,7 @@ describe('AttendanceReviewService.reviewTerm', () => {
         upgraded: 0,
         unchanged: 0,
         notified: 2,
+        closed: 0,
       },
     });
   });
@@ -220,6 +235,7 @@ describe('AttendanceReviewService.reviewTerm', () => {
       upgraded: 1,
       unchanged: 0,
       notified: 2,
+      closed: 0,
     });
     expect(prisma.alert.create).not.toHaveBeenCalled();
     expect(prisma.alert.update).toHaveBeenCalledWith({
@@ -347,6 +363,7 @@ describe('AttendanceReviewService.reviewTerm', () => {
       upgraded: 0,
       unchanged: 1,
       notified: 0,
+      closed: 0,
     });
     expect(dispatch.enqueueOrDeliver).not.toHaveBeenCalled();
   });
@@ -371,6 +388,7 @@ describe('AttendanceReviewService.reviewTerm', () => {
       upgraded: 0,
       unchanged: 0,
       notified: 2,
+      closed: 0,
     });
   });
 
@@ -382,5 +400,51 @@ describe('AttendanceReviewService.reviewTerm', () => {
     const result = await service.reviewTerm('FA26');
     expect(result).toMatchObject({ created: 1, notified: 0 });
     expect(dispatch.enqueueOrDeliver).not.toHaveBeenCalled();
+  });
+});
+
+describe('AttendanceReviewService.reviewTerm — môn không cấm thi do điểm danh', () => {
+  it('mỗi lượt rà soát tự đóng cảnh báo điểm danh tự động còn mở của môn tỷ lệ phải đi học = 0', async () => {
+    const { service, prisma, audit } = setup({ closed: 5 });
+    const result = await service.reviewTerm('FA26', {
+      batchId: 'batch-1',
+      actorId: 'dt-1',
+    });
+    const [call] = prisma.alert.updateMany.mock.calls[0] as [
+      { where: unknown; data: Record<string, unknown> },
+    ];
+    expect(call.where).toEqual({
+      term: 'FA26',
+      // Chỉ cảnh báo hệ thống tự phát — cảnh báo giảng viên phát tay giữ nguyên.
+      source: 'AUTO_ATTENDANCE',
+      status: { not: 'RESOLVED' },
+      classSection: { subject: { attendanceRateRequired: 0 } },
+    });
+    expect(call.data).toMatchObject({
+      status: 'RESOLVED',
+      resolvedById: 'dt-1',
+    });
+    expect(call.data.resolvedAt).toBeInstanceOf(Date);
+    expect(call.data.resolutionNote).toContain('tỷ lệ phải đi học = 0');
+    expect(result).toMatchObject({ closed: 5 });
+    const [entry] = audit.log.mock.calls[0] as [{ metadata: unknown }];
+    expect(entry.metadata).toMatchObject({ term: 'FA26', closed: 5 });
+  });
+
+  it('hệ thống tự chạy (không có người bấm) → resolvedById null', async () => {
+    const { service, prisma } = setup();
+    await service.reviewTerm('FA26');
+    const [call] = prisma.alert.updateMany.mock.calls[0] as [
+      { data: Record<string, unknown> },
+    ];
+    expect(call.data.resolvedById).toBeNull();
+  });
+
+  it('đóng trước khi nạp cảnh báo mở để không gộp nhầm vào cảnh báo vừa đóng', async () => {
+    const { service, prisma } = setup();
+    await service.reviewTerm('FA26');
+    expect(prisma.alert.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      prisma.alert.findMany.mock.invocationCallOrder[0],
+    );
   });
 });

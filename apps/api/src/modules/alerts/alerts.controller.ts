@@ -21,6 +21,7 @@ import {
   BulkAlertIdsDto,
   ListAlertsQuery,
   RaiseAlertDto,
+  RecipientsPreviewQuery,
   ResolveAlertDto,
 } from './dto/alert.dto';
 
@@ -33,6 +34,16 @@ export class AlertsController {
   @CheckPolicies((ability: AppAbility) => ability.can('read', 'Alert'))
   list(@CurrentUser() user: AuthUser, @Query() query: ListAlertsQuery) {
     return this.alertsService.list(user, query);
+  }
+
+  /** Chọn mức N thì ai nhận thông báo — form nhận xét hiện trước khi phát. */
+  @Get('recipients-preview')
+  @CheckPolicies((ability: AppAbility) => ability.can('create', 'Alert'))
+  recipientsPreview(
+    @CurrentUser() user: AuthUser,
+    @Query() query: RecipientsPreviewQuery,
+  ) {
+    return this.alertsService.previewRecipients(user, query.studentId);
   }
 
   @Post()

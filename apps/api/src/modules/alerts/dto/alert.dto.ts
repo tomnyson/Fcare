@@ -193,3 +193,9 @@ export class ListAlertsQuery {
   @Max(100)
   limit?: number;
 }
+
+export class RecipientsPreviewQuery {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID()
+  studentId!: string;
+}

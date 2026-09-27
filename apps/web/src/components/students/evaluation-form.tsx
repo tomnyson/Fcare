@@ -25,7 +25,10 @@ import {
 } from '../../lib/evaluation-absence';
 import type { ClassSection, Evaluation } from '../../lib/types';
 import { FormError, Input, Label, Select, Textarea } from '../ui/form';
+import { AlertLevelPicker } from './alert-level-picker';
+import { AlertRecipientsPreview } from './alert-recipients-preview';
 import { EvaluationGuidancePanel, SuggestedLevelBadge } from './evaluation-guidance';
+import { NoteAiAssist } from './note-ai-assist';
 import {
   buildAlertReason,
   EvaluationHandoffStep,
@@ -136,91 +139,106 @@ function CriteriaGroup({
 }
 
 function RaiseAlertToggle({
+  studentId,
   checked,
   level,
+  suggestedLevel,
   onChange,
+  onLevelChange,
 }: {
+  studentId: string;
   checked: boolean;
+  /** Mức sẽ phát: mặc định theo đề xuất, giảng viên được đổi khi công tắc bật. */
   level: number;
+  suggestedLevel: number;
   onChange: (checked: boolean) => void;
+  onLevelChange: (level: number) => void;
 }) {
   // Khối nổi bật nhất form: nền cam, viền nhấn trái, chuông và công tắc lớn —
   // giảng viên hay bỏ sót ô tích nhỏ ở cuối form.
   return (
-    <label
+    <div
       data-raise-alert-callout
-      className={`group flex cursor-pointer items-center gap-3.5 rounded-lg border-2 border-l-4 px-4 py-3.5 transition-[background-color,border-color,box-shadow] duration-200 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-fpt-orange has-[:focus-visible]:ring-offset-2 ${
+      className={`rounded-lg border-2 border-l-4 px-4 py-3.5 transition-[background-color,border-color,box-shadow] duration-200 ${
         checked
           ? 'border-fpt-orange bg-fpt-orange-50 shadow-[0_0_0_4px_rgb(242_114_39/0.15)]'
           : 'border-fpt-orange/50 border-l-fpt-orange bg-fpt-orange-50 hover:border-fpt-orange hover:shadow-md'
       }`}
     >
-      <span
-        data-raise-alert-bell
-        aria-hidden="true"
-        className={`relative hidden size-10 shrink-0 place-items-center sm:grid rounded-full transition-colors ${
-          checked
-            ? 'bg-fpt-orange text-white'
-            : 'bg-white text-fpt-orange ring-1 ring-fpt-orange/40'
-        }`}
-      >
-        {!checked && level >= 3 ? (
-          <span className="absolute inset-0 rounded-full bg-fpt-orange/30 motion-safe:animate-ping" />
-        ) : null}
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          className="relative size-5"
-        >
-          <path
-            d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-2 text-base font-bold text-fpt-blue-900">
-          Phát cảnh báo khi lưu
-          <SuggestedLevelBadge level={level} />
-        </span>
+      <label className="group flex cursor-pointer items-center gap-3.5">
         <span
-          className={`mt-0.5 block text-xs font-semibold ${checked ? 'text-fpt-orange-600' : 'text-ink'}`}
-        >
-          {checked
-            ? `Đang bật — lưu xong sẽ phát cảnh báo Mức ${level}.`
-            : 'Đang tắt — chỉ lưu nhận xét, chưa phát cảnh báo.'}
-        </span>
-        <span className="mt-0.5 block text-xs leading-snug text-muted">
-          Hệ thống tự phát cảnh báo theo mức đề xuất từ điểm và tiêu chí bạn vừa nhập, gắn lớp học
-          phần này và kích hoạt AI tổng hợp học kỳ. Đổi điểm thì mức cảnh báo cập nhật theo.
-        </span>
-      </span>
-      <input
-        type="checkbox"
-        role="switch"
-        aria-checked={checked}
-        data-raise-alert-toggle
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        className="peer sr-only"
-      />
-      <span
-        aria-hidden="true"
-        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors duration-200 ${
-          checked ? 'bg-fpt-orange' : 'bg-border group-hover:bg-fpt-orange/40'
-        }`}
-      >
-        <span
-          className={`absolute top-1 left-1 size-5 rounded-full bg-white shadow transition-transform duration-200 ${
-            checked ? 'translate-x-5' : 'translate-x-0'
+          data-raise-alert-bell
+          aria-hidden="true"
+          className={`relative hidden size-10 shrink-0 place-items-center sm:grid rounded-full transition-colors ${
+            checked
+              ? 'bg-fpt-orange text-white'
+              : 'bg-white text-fpt-orange ring-1 ring-fpt-orange/40'
           }`}
+        >
+          {!checked && suggestedLevel >= 3 ? (
+            <span className="absolute inset-0 rounded-full bg-fpt-orange/30 motion-safe:animate-ping" />
+          ) : null}
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            className="relative size-5"
+          >
+            <path
+              d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-2 text-base font-bold text-fpt-blue-900">
+            Phát cảnh báo khi lưu
+            <SuggestedLevelBadge level={suggestedLevel} />
+          </span>
+          <span
+            className={`mt-0.5 block text-xs font-semibold ${checked ? 'text-fpt-orange-600' : 'text-ink'}`}
+          >
+            {checked
+              ? `Đang bật — lưu xong sẽ phát cảnh báo Mức ${level}.`
+              : 'Đang tắt — chỉ lưu nhận xét, chưa phát cảnh báo.'}
+          </span>
+          <span className="mt-0.5 block text-xs leading-snug text-muted">
+            Hệ thống đề xuất mức từ điểm và tiêu chí bạn vừa nhập — bật lên để chọn mức khác nếu
+            cần. Cảnh báo gắn lớp học phần này và kích hoạt AI tổng hợp học kỳ.
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          aria-checked={checked}
+          data-raise-alert-toggle
+          checked={checked}
+          onChange={(event) => onChange(event.target.checked)}
+          className="peer sr-only"
         />
-      </span>
-    </label>
+        <span
+          aria-hidden="true"
+          className={`relative h-7 w-12 shrink-0 rounded-full transition-colors duration-200 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-fpt-orange ${
+            checked ? 'bg-fpt-orange' : 'bg-border group-hover:bg-fpt-orange/40'
+          }`}
+        >
+          <span
+            className={`absolute top-1 left-1 size-5 rounded-full bg-white shadow transition-transform duration-200 ${
+              checked ? 'translate-x-5' : 'translate-x-0'
+            }`}
+          />
+        </span>
+      </label>
+      {checked ? (
+        <div className="mt-3 space-y-3 border-t border-fpt-orange/30 pt-3">
+          <AlertLevelPicker value={level} suggestedLevel={suggestedLevel} onChange={onLevelChange} />
+          <AlertRecipientsPreview studentId={studentId} level={level} />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -282,10 +300,15 @@ export function EvaluationForm({
     initialAbsentValue(existingInitial?.absentSessions, systemAbsences[defaultSectionId]),
   );
 
+  /** Có kiểm soát để nút "Viết nhận xét với AI" điền được vào ô. */
+  const [note, setNote] = useState(existingInitial?.note ?? '');
+
   const [handoffStep, setHandoffStep] = useState(false);
   const [submittedNote, setSubmittedNote] = useState('');
   /** Bật thì lưu xong tự phát cảnh báo theo mức hệ thống đề xuất từ điểm vừa nhập. */
   const [raiseAlert, setRaiseAlert] = useState(false);
+  /** Mức GV tự chọn; null = theo đề xuất (đổi điểm thì mức đề xuất cập nhật theo). */
+  const [levelOverride, setLevelOverride] = useState<number | null>(null);
   const [handoffError, setHandoffError] = useState<string | null>(null);
 
   const academicScore = BAND_SCORE[academicBand];
@@ -293,6 +316,7 @@ export function EvaluationForm({
   const absentSessions = parseAbsentInput(absentInput);
   const guidanceScores = { academicScore, attitudeScore, criteria: [...criteria], absentSessions };
   const suggestedLevel = evaluationGuidance(guidanceScores).suggestedLevel;
+  const alertLevel = levelOverride ?? suggestedLevel;
   const existing = ownEvaluations.find(
     (evaluation) => evaluation.classSectionId === classSectionId,
   );
@@ -344,13 +368,14 @@ export function EvaluationForm({
       await raiseEvaluationAlert({
         studentId,
         term,
-        level: guidance.suggestedLevel,
+        level: alertLevel,
         classSectionId: classSectionId || undefined,
         reason: buildAlertReason({
           term,
           criterionLabels: guidance.criterionLabels,
           note,
           suggestedLevel: guidance.suggestedLevel,
+          chosenLevel: alertLevel,
           academicDescription: guidance.academicDescription,
           attitudeDescription: guidance.attitudeDescription,
         }),
@@ -375,11 +400,13 @@ export function EvaluationForm({
   function selectSection(id: string) {
     setClassSectionId(id);
     setError('');
+    setLevelOverride(null);
     const current = ownEvaluations.find((evaluation) => evaluation.classSectionId === id);
     setAcademicBand(current ? scoreBand(current.academicScore) : DEFAULT_BAND);
     setAttitudeBand(current ? scoreBand(current.attitudeScore) : DEFAULT_BAND);
     setCriteria(new Set(current ? current.criteria.map((mark) => mark.criterion) : []));
     setAbsentInput(initialAbsentValue(current?.absentSessions, systemAbsences[id]));
+    setNote(current?.note ?? '');
   }
 
   function toggleCriterion(criterion: EvaluationCriterion) {
@@ -396,9 +423,8 @@ export function EvaluationForm({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const note = String(form.get('note') ?? '').trim();
-    setSubmittedNote(note);
+    const trimmedNote = note.trim();
+    setSubmittedNote(trimmedNote);
     // PATCH chỉ nhận phần nội dung; sinh viên/lớp/học kỳ đã cố định ở bản cũ.
     saveMutation.mutate({
       ...(existing ? {} : { studentId, classSectionId, term }),
@@ -406,7 +432,7 @@ export function EvaluationForm({
       attitudeScore,
       ...(absentSessions === null ? {} : { absentSessions }),
       criteria: [...criteria],
-      ...(note === '' ? {} : { note }),
+      ...(trimmedNote === '' ? {} : { note: trimmedNote }),
     });
   }
 
@@ -418,6 +444,7 @@ export function EvaluationForm({
         term={term}
         classSectionId={classSectionId || undefined}
         suggestedLevel={currentGuidance.suggestedLevel}
+        chosenLevel={raiseAlert ? alertLevel : undefined}
         criterionLabels={currentGuidance.criterionLabels}
         note={submittedNote}
         academicDescription={currentGuidance.academicDescription}
@@ -528,13 +555,32 @@ export function EvaluationForm({
       <EvaluationGuidancePanel scores={guidanceScores} showHandoffHint />
 
       <div>
-        <Label htmlFor="note">Nhận xét</Label>
+        <div className="mb-1.5 flex flex-wrap items-start justify-between gap-2">
+          <Label htmlFor="note">Nhận xét</Label>
+          <NoteAiAssist
+            studentId={studentId}
+            request={
+              classSectionId
+                ? {
+                    classSectionId,
+                    term,
+                    academicScore,
+                    attitudeScore,
+                    ...(absentSessions === null ? {} : { absentSessions }),
+                    criteria: [...criteria],
+                  }
+                : null
+            }
+            currentNote={note}
+            onDraft={setNote}
+          />
+        </div>
         <Textarea
-          key={`note-${classSectionId}-${existing?.id ?? 'moi'}`}
           id="note"
           name="note"
-          placeholder="Mô tả tình huống cụ thể…"
-          defaultValue={existing?.note ?? ''}
+          placeholder="Mô tả tình huống cụ thể… hoặc bấm “Viết nhận xét với AI” rồi chỉnh lại."
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
         />
         <p className="mt-1 text-xs text-muted">
           Nội dung này được gửi tới AI để tổng hợp —{' '}
@@ -542,7 +588,14 @@ export function EvaluationForm({
         </p>
       </div>
 
-      <RaiseAlertToggle checked={raiseAlert} level={suggestedLevel} onChange={setRaiseAlert} />
+      <RaiseAlertToggle
+        studentId={studentId}
+        checked={raiseAlert}
+        level={alertLevel}
+        suggestedLevel={suggestedLevel}
+        onChange={setRaiseAlert}
+        onLevelChange={setLevelOverride}
+      />
 
       <div className="flex justify-end gap-3">
         <Button variant="ghost" type="button" onClick={onCancel}>
@@ -554,7 +607,7 @@ export function EvaluationForm({
               ? 'Đang lưu & phát cảnh báo…'
               : 'Đang lưu…'
             : `${existing ? 'Cập nhật nhận xét' : 'Lưu nhận xét'}${
-                raiseAlert ? ` & phát cảnh báo Mức ${suggestedLevel}` : ''
+                raiseAlert ? ` & phát cảnh báo Mức ${alertLevel}` : ''
               }`}
         </Button>
       </div>

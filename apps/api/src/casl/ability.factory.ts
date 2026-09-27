@@ -109,6 +109,8 @@ export class AbilityFactory {
             'Statistics',
           ]);
           can('create', 'CareLog');
+          // CTSV được phát cảnh báo; service chặn mức dưới mức CTSV được xem.
+          can('create', 'Alert');
           can(['import', 'export'], 'Excel');
           can(['read', 'create'], 'Discussion');
           break;
@@ -122,7 +124,7 @@ export class AbilityFactory {
             'Statistics',
           ]);
           can('create', 'CareLog');
-          can('acknowledge', 'Alert');
+          can(['create', 'acknowledge'], 'Alert');
           can(['import', 'export'], 'Excel');
           can(['read', 'create'], 'Discussion');
           break;

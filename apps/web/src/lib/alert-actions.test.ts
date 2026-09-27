@@ -6,10 +6,21 @@ import {
   bulkDeletionPreviewLines,
   deletionPreviewLines,
   ACKNOWLEDGER_ROLES,
+  canRaiseAlert,
   toggleAllSelected,
   toggleSelected,
 } from './alert-actions';
 import type { AlertBulkDeletionPreview, AlertDeletionPreview } from './types';
+
+describe('canRaiseAlert', () => {
+  it('GV, TBM, ADMIN và CTSV được phát; Đào tạo thì không', () => {
+    for (const role of ['LECTURER', 'HEAD_OF_DEPT', 'ADMIN', 'SA_OFFICER', 'SA_HEAD']) {
+      expect(canRaiseAlert([role])).toBe(true);
+    }
+    expect(canRaiseAlert(['TRAINING_OFFICER'])).toBe(false);
+    expect(canRaiseAlert(undefined)).toBe(false);
+  });
+});
 
 describe('alertRowActions', () => {
   const row = {

@@ -11,16 +11,13 @@ import { EvaluationForm } from './evaluation-form';
 import { attendanceBySection } from '../../lib/evaluation-absence';
 import { canEvaluateSection } from '../../lib/evaluation-access';
 import { EvaluationList } from './evaluation-list';
-import { RiskScorePanel } from './risk-score-panel';
 import { uniqueTermsFromEnrollments } from './student-analysis-helpers';
-import { StudentAnalysisPanel } from './student-analysis-panel';
 
 /**
- * Tab nhận xét: ghép ba khối độc lập — danh sách nhận xét của từng lớp học
- * phần, điểm DRS gộp và phân tích AI theo học kỳ. Danh sách nhận xét đứng ĐẦU:
- * khối AI rất dài nên đặt dưới cùng thì vừa nhận xét xong phải cuộn cả trang mới
- * thấy. Mọi logic nghiệp vụ nằm trong các component con, ở đây chỉ điều phối
- * học kỳ đang chọn.
+ * Tab nhận xét: chỉ danh sách nhận xét của từng lớp học phần. Thẻ "Đánh giá rủi
+ * ro — học kỳ …" (DRS + AI đề xuất) đã ẩn theo yêu cầu: giảng viên chỉ dùng form
+ * nhận xét, phát cảnh báo bằng công tắc trong form. Học kỳ của form lấy theo kỳ
+ * hiện tại / lớp được bấm "Nhận xét".
  */
 /**
  * Yêu cầu mở form nhận xét cho đúng một lớp học phần (bấm "Nhận xét" ở tab
@@ -49,7 +46,6 @@ export function EvaluationsTab({
   const handledRequest = useRef<number | null>(null);
   const [postSaveTerm, setPostSaveTerm] = useState('');
   const { data: currentTerm } = useCurrentTerm();
-  const analysisRef = useRef<HTMLDivElement>(null);
 
   const { data: evaluations, isLoading: evaluationsLoading } = useQuery({
     queryKey: ['evaluations', studentId],
@@ -129,39 +125,20 @@ export function EvaluationsTab({
             className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-fpt-orange/30 bg-fpt-orange-50 px-4 py-3 text-sm text-ink"
           >
             <span>
-              Đã lưu nhận xét học kỳ <strong>{postSaveTerm}</strong>. AI đang tổng hợp — bạn cần
-              quyết định có gửi cảnh báo hay không.
+              Đã lưu nhận xét học kỳ <strong>{postSaveTerm}</strong>.
             </span>
             <button
               type="button"
-              onClick={() =>
-                analysisRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              }
+              onClick={() => setPostSaveTerm('')}
               className="rounded-md px-2 py-1 font-semibold text-fpt-orange-600 underline-offset-4 transition-colors duration-[var(--duration-fast)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-fpt-orange"
             >
-              Xem phân tích &amp; quyết định gửi ↓
+              Đóng
             </button>
           </div>
         ) : null}
 
         <EvaluationList items={evaluations ?? []} isLoading={evaluationsLoading} />
       </section>
-
-      <RiskScorePanel studentId={studentId} term={selectedTerm} />
-
-      <div ref={analysisRef} className="scroll-mt-4">
-        <StudentAnalysisPanel
-          studentId={studentId}
-          terms={terms}
-          selectedTerm={selectedTerm}
-          onSelectTerm={(term) => {
-            setSelectedTerm(term);
-            setPostSaveTerm('');
-          }}
-          postSaveTerm={postSaveTerm}
-          onDismissPostSave={() => setPostSaveTerm('')}
-        />
-      </div>
 
       <Modal
         title="Nhận xét sinh viên"

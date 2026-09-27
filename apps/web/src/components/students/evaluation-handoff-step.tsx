@@ -49,6 +49,8 @@ interface AlertReasonInput {
   criterionLabels: readonly string[];
   note?: string;
   suggestedLevel: number;
+  /** Mức giảng viên tự chọn — khác đề xuất thì ghi vào lý do để người xử lý biết. */
+  chosenLevel?: number;
   academicDescription: string;
   attitudeDescription: string;
 }
@@ -59,6 +61,7 @@ export function buildAlertReason({
   criterionLabels,
   note,
   suggestedLevel,
+  chosenLevel = suggestedLevel,
   academicDescription,
   attitudeDescription,
 }: AlertReasonInput): string {
@@ -66,12 +69,15 @@ export function buildAlertReason({
     `Nhận xét DRS học kỳ ${term}:`,
     criterionLabels.length > 0 ? `Tiêu chí ghi nhận: ${criterionLabels.join(', ')}.` : '',
     note?.trim() ? `Ghi chú GV: ${note.trim()}.` : '',
+    chosenLevel !== suggestedLevel
+      ? `Giảng viên chọn mức ${chosenLevel} (hệ thống đề xuất mức ${suggestedLevel}).`
+      : '',
   ]
     .filter(Boolean)
     .join(' ');
 
   // Cảnh báo mức 4 khẩn cấp yêu cầu tối thiểu 40 ký tự
-  if (suggestedLevel === 4 && parts.length < 40) {
+  if (chosenLevel === 4 && parts.length < 40) {
     return `${parts} Khả năng học tập: ${academicDescription}. Thái độ: ${attitudeDescription}.`;
   }
   return parts;
@@ -83,6 +89,8 @@ interface EvaluationHandoffStepProps {
   /** Lớp học phần của nhận xét vừa lưu — cảnh báo phát ra gắn lớp này. */
   classSectionId?: string;
   suggestedLevel: number;
+  /** Mức GV đã chọn ở form (nếu bật phát cảnh báo khi lưu) — phát lại đúng mức này. */
+  chosenLevel?: number;
   criterionLabels: readonly string[];
   note?: string;
   academicDescription: string;
@@ -99,6 +107,7 @@ export function EvaluationHandoffStep({
   term,
   classSectionId,
   suggestedLevel,
+  chosenLevel = suggestedLevel,
   criterionLabels,
   note,
   academicDescription,
@@ -117,10 +126,11 @@ export function EvaluationHandoffStep({
         criterionLabels,
         note,
         suggestedLevel,
+        chosenLevel,
         academicDescription,
         attitudeDescription,
       }),
-    [term, criterionLabels, note, suggestedLevel, academicDescription, attitudeDescription],
+    [term, criterionLabels, note, suggestedLevel, chosenLevel, academicDescription, attitudeDescription],
   );
 
   const [reason, setReason] = useState(defaultReason);
@@ -135,7 +145,7 @@ export function EvaluationHandoffStep({
       return raiseEvaluationAlert({
         studentId,
         term,
-        level: suggestedLevel,
+        level: chosenLevel,
         reason: reason.trim() || defaultReason,
         classSectionId,
       });
@@ -194,8 +204,13 @@ export function EvaluationHandoffStep({
         <span>
           Đã lưu nhận xét cho học kỳ <strong>{term}</strong>.
         </span>
-        <span className="ml-auto">
+        <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
           <SuggestedLevelBadge level={suggestedLevel} />
+          {chosenLevel !== suggestedLevel ? (
+            <span className="text-xs font-semibold text-fpt-orange-600">
+              Bạn chọn mức {chosenLevel}
+            </span>
+          ) : null}
         </span>
       </div>
 
@@ -309,7 +324,7 @@ export function EvaluationHandoffStep({
         >
           {raiseAlertAndAiMutation.isPending
             ? 'Đang phát cảnh báo…'
-            : `Phát cảnh báo Mức ${suggestedLevel} & Chạy AI`}
+            : `Phát cảnh báo Mức ${chosenLevel} & Chạy AI`}
         </Button>
       </div>
     </div>
