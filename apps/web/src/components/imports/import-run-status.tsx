@@ -40,11 +40,10 @@ export function formatCommitResult(result: ImportCommitResult): string {
 
 interface ImportRunStatusProps {
   run: ImportRun;
-  isUploading: boolean;
 }
 
 /** Dòng tiến độ (chỉ khi chạy nhiều loại) + danh sách kết quả từng loại đã ghi. */
-export function ImportRunStatus({ run, isUploading }: ImportRunStatusProps) {
+export function ImportRunStatus({ run }: ImportRunStatusProps) {
   const current = currentKind(run);
   const showProgress = run.order.length > 1 && current !== null && run.stoppedAt === null;
   const remaining = remainingKinds(run);
@@ -58,7 +57,6 @@ export function ImportRunStatus({ run, isUploading }: ImportRunStatusProps) {
       {showProgress ? (
         <p className="rounded-md bg-fpt-blue/10 px-3.5 py-2.5 text-sm font-medium text-fpt-blue-900">
           Đang xử lý {run.position + 1}/{run.order.length}: {importKindLabel(current)}
-          {isUploading ? ' — đang đọc file…' : ''}
           {remaining.length > 0 ? ` · Còn lại: ${remaining.map(importKindLabel).join(', ')}` : ''}
         </p>
       ) : null}

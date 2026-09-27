@@ -69,6 +69,19 @@ describe('AbilityFactory — ma trận phân quyền theo Quy định chung', ()
     }
   });
 
+  it('CTSV (cán bộ + trưởng phòng) được phát cảnh báo', () => {
+    for (const role of ['SA_OFFICER', 'SA_HEAD'] as const) {
+      expect(
+        factory.createForUser(makeUser([role])).can('create', 'Alert'),
+      ).toBe(true);
+    }
+    expect(
+      factory
+        .createForUser(makeUser(['TRAINING_OFFICER']))
+        .can('create', 'Alert'),
+    ).toBe(false);
+  });
+
   it('chỉ admin được quản trị người dùng', () => {
     expect(
       factory.createForUser(makeUser(['ADMIN'])).can('update', 'Staff'),

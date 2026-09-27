@@ -16,6 +16,9 @@ interface GradePayload {
   absentSessions: number | null;
   totalSessions: number | null;
   attendanceRate: number | null;
+  subjectCode?: string;
+  /** Tỉ lệ 0..1; 0 = môn không cấm thi do điểm danh. Bản cũ không có trường này. */
+  attendanceRateRequired?: number | null;
 }
 
 interface GradeData {
@@ -40,6 +43,7 @@ export class GradeAttendanceCommitter implements ImportCommitter {
     ctx: ImportContext,
   ): Promise<CommitResult> {
     const payloads = rows.map((row) => row.payload as unknown as GradePayload);
+    await updateRequiredRates(payloads, tx);
 
     const sections = await tx.classSection.findMany({
       where: {
@@ -95,6 +99,29 @@ export class GradeAttendanceCommitter implements ImportCommitter {
     }
 
     return { created, updated, skipped };
+  }
+}
+
+/**
+ * "Tỷ lệ phải đi học" là thuộc tính của MÔN — ghi vào `Subject` để rà soát
+ * cảnh báo điểm danh bỏ qua môn không cấm thi (tỉ lệ 0). Mỗi môn ghi một lần;
+ * môn chưa có trong danh mục thì `updateMany` không chạm dòng nào.
+ */
+async function updateRequiredRates(
+  payloads: GradePayload[],
+  tx: PrismaTx,
+): Promise<void> {
+  const rateBySubject = new Map<string, number>();
+  for (const { subjectCode, attendanceRateRequired } of payloads) {
+    if (subjectCode && attendanceRateRequired != null) {
+      rateBySubject.set(subjectCode, attendanceRateRequired);
+    }
+  }
+  for (const [code, attendanceRateRequired] of rateBySubject) {
+    await tx.subject.updateMany({
+      where: { code },
+      data: { attendanceRateRequired },
+    });
   }
 }
 

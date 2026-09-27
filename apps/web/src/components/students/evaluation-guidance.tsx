@@ -15,7 +15,7 @@ import { ALERT_LEVEL_LABELS, ALERT_LEVEL_TONES } from '../../lib/labels';
  * (`issueGroupsFromCriteria`), không còn hỏi giảng viên chọn tay.
  *
  * Mức ở đây tính như thể chỉ có mình bản nhận xét này; cấp chính thức của sinh
- * viên là DRS trên trung vị mọi giảng viên — xem `<RiskScorePanel/>`.
+ * viên là DRS trên trung vị mọi giảng viên — xem thẻ "Đánh giá rủi ro" (`RiskScoreBreakdown`).
  */
 
 function ActionList({ title, actions }: { title: string; actions: readonly string[] }) {

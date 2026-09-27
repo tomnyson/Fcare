@@ -1,4 +1,5 @@
 import type { Queue } from 'bullmq';
+import { NotFoundException } from '@nestjs/common';
 import type { AuditService } from '../../audit/audit.service';
 import type { AuthUser } from '../../common/types/auth-user';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -327,6 +328,40 @@ describe('AlertsService.raise — gắn lớp học phần của nhận xét', (
       term: null,
       level: 2,
     });
+  });
+});
+
+const saOfficerUser: AuthUser = {
+  id: 'sa',
+  staffCode: 'CTSV',
+  fullName: 'Cán bộ CTSV',
+  roles: ['SA_OFFICER'],
+  departmentId: null,
+  consented: true,
+  mustChangePassword: false,
+};
+
+describe('AlertsService.raise — CTSV phát cảnh báo', () => {
+  const section = { id: 'cs', term: 'FA26' };
+  const dto = {
+    studentId: 'st',
+    level: 3,
+    reason: 'Sinh viên có dấu hiệu bỏ học, CTSV đã nắm tình hình',
+    classSectionId: 'cs',
+  };
+
+  it('CTSV phát mức 3 → tạo cảnh báo, người phát là CTSV', async () => {
+    const { service, create } = setupRaise({ section });
+    await service.raise(saOfficerUser, dto);
+    expect(createdData(create)).toMatchObject({ level: 3, raisedById: 'sa' });
+  });
+
+  it('CTSV thuần không phát được mức dưới 3 — mức đó CTSV không xem lại được', async () => {
+    const { service, create } = setupRaise({ section });
+    await expect(
+      service.raise(saOfficerUser, { ...dto, level: 2 }),
+    ).rejects.toThrow('từ mức 3');
+    expect(create).not.toHaveBeenCalled();
   });
 });
 
@@ -1004,5 +1039,43 @@ describe('AlertsService.resolve — chốt cảnh báo kèm kết quả Đạt /
         metadata: { outcome: 'EXAM_BANNED' },
       }),
     );
+  });
+});
+
+describe('AlertsService.previewRecipients — chọn mức thì ai nhận', () => {
+  const groups = [
+    { key: 'TEACHING_LECTURERS', minLevel: 1, members: [] },
+  ] as const;
+
+  function setup(studentCount: number) {
+    const previewRecipientGroups = jest.fn().mockResolvedValue(groups);
+    const prisma = {
+      student: { count: jest.fn().mockResolvedValue(studentCount) },
+    } as unknown as PrismaService;
+    const service = new AlertsService(
+      prisma,
+      { previewRecipientGroups } as unknown as EscalationService,
+      {} as AuditService,
+      {} as NotificationDispatchService,
+      { on: jest.fn() } as unknown as Queue<EscalationJobData>,
+      {} as RiskScoreService,
+    );
+    return { service, previewRecipientGroups };
+  }
+
+  it('trả các nhóm nhận, loại chính người đang phát', async () => {
+    const { service, previewRecipientGroups } = setup(1);
+    await expect(
+      service.previewRecipients(lecturerUser, 'sv-1'),
+    ).resolves.toEqual({ groups });
+    expect(previewRecipientGroups).toHaveBeenCalledWith('sv-1', 'l');
+  });
+
+  it('sinh viên ngoài phạm vi thì 404, không lộ danh sách người nhận', async () => {
+    const { service, previewRecipientGroups } = setup(0);
+    await expect(
+      service.previewRecipients(lecturerUser, 'sv-x'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(previewRecipientGroups).not.toHaveBeenCalled();
   });
 });

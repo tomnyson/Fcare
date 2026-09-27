@@ -9,6 +9,8 @@ import {
   resolveAnalysisProviderKey,
 } from './analysis-provider';
 import { DeepSeekAnalysisProvider } from './deepseek-analysis.provider';
+import { EvaluationNoteDraftService } from './evaluation-note-draft.service';
+import { EvaluationNoteDrafter } from './evaluation-note-drafter';
 import { OpenAiAnalysisProvider } from './openai-analysis.provider';
 import { StudentAnalysesController } from './student-analyses.controller';
 import { StudentAnalysisProcessor } from './student-analysis.processor';
@@ -30,6 +32,8 @@ import { StudentAnalysesService } from './student-analyses.service';
     StudentAnalysisProcessor,
     OpenAiAnalysisProvider,
     DeepSeekAnalysisProvider,
+    EvaluationNoteDrafter,
+    EvaluationNoteDraftService,
     {
       // AI_PROVIDER chon nha cung cap chay that; mac dinh giu nguyen OpenAI de
       // moi truong dang chay khong doi hanh vi khi chua cau hinh gi them.

@@ -560,9 +560,7 @@ describe('StudentsService.list — cột số buổi vắng', () => {
       2,
     ]);
     const result = await service.list(adminUser, {});
-    const [args] = findMany.mock.calls[0] as [
-      { include: { alerts: unknown } },
-    ];
+    const [args] = findMany.mock.calls[0] as [{ include: { alerts: unknown } }];
     expect(args.include.alerts).toEqual({
       where: { status: { not: 'RESOLVED' } },
       select: { level: true },
@@ -591,9 +589,24 @@ describe('StudentsService.list — cột số buổi vắng', () => {
     ]);
     const result = await service.list(adminUser, { term: 'FA26' });
     expect(result.items).toEqual([
-      { id: 's1', absentSessions: 5, maxSectionAbsent: 3, maxOpenAlertLevel: null },
-      { id: 's2', absentSessions: null, maxSectionAbsent: null, maxOpenAlertLevel: null },
-      { id: 's3', absentSessions: null, maxSectionAbsent: null, maxOpenAlertLevel: null },
+      {
+        id: 's1',
+        absentSessions: 5,
+        maxSectionAbsent: 3,
+        maxOpenAlertLevel: null,
+      },
+      {
+        id: 's2',
+        absentSessions: null,
+        maxSectionAbsent: null,
+        maxOpenAlertLevel: null,
+      },
+      {
+        id: 's3',
+        absentSessions: null,
+        maxSectionAbsent: null,
+        maxOpenAlertLevel: null,
+      },
     ]);
   });
 });

@@ -83,8 +83,26 @@ describe('EvaluationForm — nút phát cảnh báo khi lưu', () => {
     expect(html).toContain('Đang tắt');
   });
 
+  it('công tắc tắt thì chưa hiện bộ chọn mức, mô tả nói rõ GV được đổi mức', () => {
+    const html = render();
+    expect(html).not.toContain('name="alertLevel"');
+    expect(html).toContain('bật lên để chọn mức khác');
+  });
+
   it('nút lưu nằm sau công tắc phát cảnh báo', () => {
     const html = render();
     expect(html.indexOf('data-raise-alert-toggle')).toBeLessThan(html.indexOf('Lưu nhận xét'));
+  });
+});
+
+describe('EvaluationForm — nhờ AI viết nhận xét', () => {
+  it('nút "Viết nhận xét với AI" nằm ngay cạnh nhãn Nhận xét, trước ô nhập', () => {
+    const html = render();
+    const labelAt = html.indexOf('>Nhận xét</label>');
+    const buttonAt = html.indexOf('Viết nhận xét với AI');
+    const textareaAt = html.indexOf('id="note"');
+    expect(labelAt).toBeGreaterThan(-1);
+    expect(buttonAt).toBeGreaterThan(labelAt);
+    expect(buttonAt).toBeLessThan(textareaAt);
   });
 });

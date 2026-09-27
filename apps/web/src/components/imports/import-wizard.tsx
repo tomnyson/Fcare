@@ -14,7 +14,8 @@ import {
   type ImportRun,
 } from './import-run-status';
 import { FormError, FormSuccess, Input, Label, Select } from '../ui/form';
-import { ApiError, apiFetch, apiUpload } from '../../lib/api';
+import { ImportProgress } from './import-progress';
+import { ApiError, apiFetch, apiUploadWithProgress } from '../../lib/api';
 import {
   importKindLabel,
   orderImportKinds,
@@ -22,6 +23,7 @@ import {
   toggleImportKind,
   type ImportKindSlug,
 } from '../../lib/import-kinds';
+import { useImportProgress } from '../../lib/use-import-progress';
 import type {
   ImportBatchDetail,
   ImportCommitResult,
@@ -80,6 +82,7 @@ interface ImportWizardProps {
  */
 export function ImportWizard({ resumeBatchId, onResumeHandled }: ImportWizardProps) {
   const queryClient = useQueryClient();
+  const progress = useImportProgress();
   const fileRef = useRef<HTMLInputElement>(null);
   const { data: currentTerm } = useCurrentTerm();
   const { data: terms = [] } = useTerms();
@@ -116,6 +119,7 @@ export function ImportWizard({ resumeBatchId, onResumeHandled }: ImportWizardPro
     setError('');
     setDone('');
     sourceFileRef.current = null;
+    progress.reset();
   }
 
   /** Chuỗi chạy xong (mọi loại đã ghi): bỏ tick và xoá file đã chọn để bấm lại
@@ -140,12 +144,20 @@ export function ImportWizard({ resumeBatchId, onResumeHandled }: ImportWizardPro
 
   const upload = useMutation({
     mutationFn: ({ slug, source }: { slug: ImportKindSlug; source: File }) =>
-      apiUpload<ImportBatchDetail>(`/imports/${slug}/upload`, source, { term }),
+      apiUploadWithProgress<ImportBatchDetail>(
+        `/imports/${slug}/upload`,
+        source,
+        { term },
+        progress.setUploadRatio,
+      ),
+    onMutate: ({ slug }) => progress.start('upload', slug),
     onSuccess: (result) => {
+      progress.finish();
       setBatch(result);
       setError('');
     },
     onError: (err, variables) => {
+      progress.fail();
       const detail = err instanceof ApiError ? err.message : 'Không đọc được file.';
       const isChain = runRef.current.order.length > 1;
       stopRun(
@@ -159,7 +171,10 @@ export function ImportWizard({ resumeBatchId, onResumeHandled }: ImportWizardPro
   const commit = useMutation({
     mutationFn: ({ id }: CommitInput) =>
       apiFetch<ImportCommitResult>(`/imports/${id}/commit`, { method: 'POST' }),
+    onMutate: ({ slug }) => progress.start('commit', slug),
     onSuccess: (result, { slug }) => {
+      // Loại kế tiếp trong chuỗi (upload.mutate bên dưới) tự start lại từ 0.
+      progress.finish();
       const previous = runRef.current;
       const next: ImportRun = {
         ...previous,
@@ -184,6 +199,7 @@ export function ImportWizard({ resumeBatchId, onResumeHandled }: ImportWizardPro
       }
     },
     onError: (err) => {
+      progress.fail();
       const detail = err instanceof ApiError ? err.message : 'Ghi dữ liệu thất bại.';
       const isChain = runRef.current.order.length > 1;
       stopRun(isChain ? `Đã dừng chuỗi import — ghi thất bại: ${detail}` : detail);
@@ -221,6 +237,7 @@ export function ImportWizard({ resumeBatchId, onResumeHandled }: ImportWizardPro
       setRun({ order: [slugOfKind(result.kind)], position: 0, results: [], stoppedAt: null });
       setError('');
       setDone('');
+      progress.reset();
     },
     onError: (err) =>
       setError(err instanceof ApiError ? err.message : 'Không tải được lượt import.'),
@@ -275,7 +292,8 @@ export function ImportWizard({ resumeBatchId, onResumeHandled }: ImportWizardPro
 
       <div className="mb-4 space-y-2">
         <FormError>{error}</FormError>
-        <ImportRunStatus run={run} isUploading={upload.isPending} />
+        <ImportRunStatus run={run} />
+        <ImportProgress view={progress.view} />
         <FormSuccess>{done}</FormSuccess>
       </div>
 
@@ -370,6 +388,7 @@ export function ImportWizard({ resumeBatchId, onResumeHandled }: ImportWizardPro
                 id="import-file"
                 type="file"
                 accept=".xlsx"
+                onChange={progress.reset}
                 className="block w-full text-sm text-muted file:mr-3 file:rounded-md file:border-0 file:bg-fpt-orange-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-fpt-orange"
               />
             </div>

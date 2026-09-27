@@ -10,7 +10,11 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { AlertsController } from './alerts.controller';
 import { AlertsService } from './alerts.service';
-import { BulkAlertIdsDto, ResolveAlertDto } from './dto/alert.dto';
+import {
+  BulkAlertIdsDto,
+  RecipientsPreviewQuery,
+  ResolveAlertDto,
+} from './dto/alert.dto';
 
 const base = { consented: true, mustChangePassword: false };
 const admin: AuthUser = {
@@ -171,5 +175,22 @@ describe('ResolveAlertDto — bắt buộc chọn kết quả chốt', () => {
       const errors = await check(body);
       expect(errors.map((e) => e.property)).toContain('outcome');
     }
+  });
+});
+
+describe('GET /alerts/recipients-preview — ai nhận theo mức', () => {
+  it('ai phát được cảnh báo thì xem được người nhận (GV, TBM)', () => {
+    expect(allowed('recipientsPreview', lecturer)).toBe(true);
+    expect(allowed('recipientsPreview', headOfDept)).toBe(true);
+  });
+
+  it('studentId phải là UUID', async () => {
+    const check = (query: object) =>
+      validate(plainToInstance(RecipientsPreviewQuery, query));
+    expect(
+      await check({ studentId: 'e1cdf502-f6db-46e1-91f5-0c0e39fb96da' }),
+    ).toHaveLength(0);
+    expect(await check({ studentId: 'abc' })).not.toHaveLength(0);
+    expect(await check({})).not.toHaveLength(0);
   });
 });

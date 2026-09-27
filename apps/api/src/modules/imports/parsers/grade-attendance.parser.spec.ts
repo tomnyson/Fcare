@@ -99,8 +99,20 @@ describe('GradeAttendanceParser', () => {
       absentSessions: 1,
       totalSessions: 14,
       attendanceRate: 92.9,
+      attendanceRateRequired: 0.8,
     });
     expect(result.rows[0].error).toBeUndefined();
+  });
+
+  it('"Tỷ lệ phải đi học" = 0 → môn không cấm thi do điểm danh, trống → null', async () => {
+    const result = await parser.parse(
+      sheetWith([{ 'Tỷ lệ phải đi học': 0 }, { 'Tỷ lệ phải đi học': null }]),
+      ctx,
+    );
+    expect(result.rows[0].payload).toMatchObject({ attendanceRateRequired: 0 });
+    expect(result.rows[1].payload).toMatchObject({
+      attendanceRateRequired: null,
+    });
   });
 
   it('lớp chưa có buổi nào ("0 / 0 buổi") → tỷ lệ null, không chia cho 0', async () => {

@@ -12,6 +12,13 @@ export const ALERT_BULK_DELETE_MAX = 100;
 /** Vai trò được "Tiếp nhận" cảnh báo — khớp CASL `acknowledge Alert` phía API. */
 export const ACKNOWLEDGER_ROLES = ['ADMIN', 'HEAD_OF_DEPT', 'TRAINING_OFFICER', 'SA_HEAD'] as const;
 
+/** Vai trò được "Phát cảnh báo" — khớp CASL `create Alert` phía API. */
+const RAISER_ROLES = ['ADMIN', 'HEAD_OF_DEPT', 'LECTURER', 'SA_OFFICER', 'SA_HEAD'] as const;
+
+export function canRaiseAlert(roles: ReadonlyArray<string> | undefined): boolean {
+  return (roles ?? []).some((role) => (RAISER_ROLES as ReadonlyArray<string>).includes(role));
+}
+
 /** Chỉ ADMIN có `delete Alert` (CASL `manage all`); web chặn thêm bằng PIN hệ thống. */
 const DELETER_ROLES = ['ADMIN'] as const;
 

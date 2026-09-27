@@ -1,10 +1,11 @@
 'use client';
 
-import { type RiskScoreBreakdown } from '@fcare/shared-types';
+import { minVisibleAlertLevel, type RiskScoreBreakdown } from '@fcare/shared-types';
 import { Button } from '@fcare/ui-kit';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
+import { canRaiseAlert } from '../../lib/alert-actions';
 import { apiFetch, ApiError } from '../../lib/api';
 import { ALERT_LEVEL_LABELS } from '../../lib/labels';
 import {
@@ -83,13 +84,16 @@ export function AlertsTab({ studentId, user }: { studentId: string; user: AuthUs
     enabled: latestTerm.length > 0,
   });
 
-  const suggestedLevel = riskScore ? minRaiseLevel(riskScore) : null;
   // Không cho chọn thấp hơn mức hệ thống — API cũng tự nâng (docs/plan-lert.md mục 1).
-  const minLevel = minRaiseLevel(riskScore);
+  const systemLevel = minRaiseLevel(riskScore);
+  // CTSV thuần chỉ xem được từ mức 3 nên cũng chỉ phát từ mức đó (API chặn tương tự).
+  const roleMinLevel = minVisibleAlertLevel(user.roles);
+  const minLevel = Math.max(systemLevel, roleMinLevel);
+  const suggestedLevel = riskScore ? systemLevel : null;
 
   function openRaiseModal() {
     // Mặc định theo mức đề xuất từ đánh giá gần nhất; người phát vẫn đổi được.
-    setLevel(String(suggestedLevel ?? 1));
+    setLevel(String(minLevel));
     setError('');
     setNotice(null);
     setOpen(true);
@@ -107,7 +111,7 @@ export function AlertsTab({ studentId, user }: { studentId: string; user: AuthUs
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Có lỗi xảy ra.'),
   });
 
-  const canRaise = user.roles.some((role) => ['LECTURER', 'HEAD_OF_DEPT', 'ADMIN'].includes(role));
+  const canRaise = canRaiseAlert(user.roles);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -182,13 +186,17 @@ export function AlertsTab({ studentId, user }: { studentId: string; user: AuthUs
               {Object.entries(ALERT_LEVEL_LABELS).map(([value, label]) => (
                 <option key={value} value={value} disabled={Number(value) < minLevel}>
                   Mức {value} — {label}
-                  {Number(value) < minLevel ? ' (thấp hơn mức hệ thống)' : ''}
+                  {Number(value) < roleMinLevel
+                    ? ' (CTSV phát từ mức 3)'
+                    : Number(value) < systemLevel
+                      ? ' (thấp hơn mức hệ thống)'
+                      : ''}
                 </option>
               ))}
             </Select>
             <p className="mt-1.5 text-xs text-muted">
-              Mọi mức đều báo giảng viên đang dạy · Mức 3 thêm CB CTSV và Trưởng bộ môn · Mức 4 thêm
-              Cán bộ Đào tạo và Trưởng CTSV (cần lý do ≥ 40 ký tự). Sinh viên đang có cảnh báo mở
+              Mọi mức đều báo giảng viên đang dạy · Mức 3 thêm CTSV và Trưởng bộ môn · Mức 4 thêm
+              Cán bộ Đào tạo (cần lý do ≥ 40 ký tự). Sinh viên đang có cảnh báo mở
               thì hệ thống nâng mức cảnh báo đó thay vì tạo mới.
             </p>
             {suggestedLevel && riskScore ? (

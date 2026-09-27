@@ -38,6 +38,8 @@ export interface AttendanceReviewResult {
   upgraded: number;
   unchanged: number;
   notified: number;
+  /** Cảnh báo tự động bị đóng vì môn không cấm thi do điểm danh. */
+  closed: number;
 }
 
 interface ReviewRow {
@@ -61,7 +63,12 @@ const EMPTY_RESULT: AttendanceReviewResult = {
   upgraded: 0,
   unchanged: 0,
   notified: 0,
+  closed: 0,
 };
+
+/** Ghi chú xử lý khi hệ thống tự đóng cảnh báo của môn không cấm thi do điểm danh. */
+const EXEMPT_SUBJECT_NOTE =
+  'Môn không cấm thi do điểm danh (tỷ lệ phải đi học = 0) — hệ thống tự đóng khi rà soát sau import điểm danh';
 
 /** Sinh viên còn đi học — bảo lưu/thôi học/tốt nghiệp không rà soát. */
 const ACTIVE_STATUSES: StudentStatus[] = [
@@ -114,6 +121,7 @@ function add(
     upgraded: result.upgraded + (patch.upgraded ?? 0),
     unchanged: result.unchanged + (patch.unchanged ?? 0),
     notified: result.notified + (patch.notified ?? 0),
+    closed: result.closed + (patch.closed ?? 0),
   };
 }
 
@@ -140,13 +148,15 @@ export class AttendanceReviewService {
     term: string,
     options: AttendanceReviewOptions = {},
   ): Promise<AttendanceReviewResult> {
+    // Đóng trước khi nạp cảnh báo mở để không gộp số vắng vào cảnh báo sắp đóng.
+    const closed = await this.closeExemptSubjectAlerts(term, options.actorId);
     const [rows, openAlerts] = await Promise.all([
       this.loadRows(term),
       this.loadOpenAlerts(term),
     ]);
     const openByKey = highestByKey(openAlerts);
 
-    let result = EMPTY_RESULT;
+    let result = add(EMPTY_RESULT, { closed });
     for (const row of rows) {
       const existing =
         openByKey.get(`${row.studentId}:${row.classSectionId}`) ?? null;
@@ -163,11 +173,47 @@ export class AttendanceReviewService {
     return result;
   }
 
+  /**
+   * "Tỷ lệ phải đi học" của môn có thể được Đào tạo cập nhật về 0 ở lượt
+   * import sau — cảnh báo điểm danh tự động đã mở trước đó thành sai, tự đóng.
+   * Chỉ đụng cảnh báo hệ thống phát; cảnh báo giảng viên phát tay giữ nguyên.
+   */
+  private async closeExemptSubjectAlerts(
+    term: string,
+    actorId: string | undefined,
+  ): Promise<number> {
+    const { count } = await this.prisma.alert.updateMany({
+      where: {
+        term,
+        source: AlertSource.AUTO_ATTENDANCE,
+        status: { not: AlertStatus.RESOLVED },
+        classSection: { subject: { attendanceRateRequired: 0 } },
+      },
+      data: {
+        status: AlertStatus.RESOLVED,
+        resolvedById: actorId ?? null,
+        resolvedAt: new Date(),
+        resolutionNote: EXEMPT_SUBJECT_NOTE,
+      },
+    });
+    return count;
+  }
+
   private loadRows(term: string): Promise<ReviewRow[]> {
     return this.prisma.enrollment.findMany({
       where: {
         absentSessions: { gte: ATTENDANCE_ALERT_THRESHOLDS.MEDIUM },
-        classSection: { term, lecturerId: { not: null } },
+        classSection: {
+          term,
+          lecturerId: { not: null },
+          // Môn "Tỷ lệ phải đi học" = 0 không cấm thi do điểm danh → không cảnh báo vắng.
+          subject: {
+            OR: [
+              { attendanceRateRequired: null },
+              { attendanceRateRequired: { gt: 0 } },
+            ],
+          },
+        },
         student: { status: { in: ACTIVE_STATUSES } },
       },
       select: {

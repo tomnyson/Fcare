@@ -12,6 +12,7 @@ const BASE = {
   absentSessions: 1,
   totalSessions: 14,
   attendanceRate: 92.9,
+  attendanceRateRequired: 0.8 as number | null,
 };
 
 function rowsOf(...overrides: Partial<typeof BASE>[]): ParsedRow[] {
@@ -44,6 +45,9 @@ function txMock(
           overrides.students ?? [{ id: 'stu-1', studentCode: 'PK04929' }],
         ),
     },
+    subject: {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
     enrollment: {
       findMany: jest.fn().mockResolvedValue(overrides.enrollments ?? []),
       create: jest.fn().mockResolvedValue({ id: 'enr-1' }),
@@ -65,6 +69,24 @@ const ctx = { term: 'SU26' } as ImportContext;
 
 describe('GradeAttendanceCommitter', () => {
   const committer = new GradeAttendanceCommitter();
+
+  it('ghi "Tỷ lệ phải đi học" của môn — mỗi môn một lần, ô trống không ghi đè', async () => {
+    const tx = txMock();
+    await committer.commit(
+      rowsOf(
+        { subjectCode: 'PDP102', attendanceRateRequired: 0 },
+        { subjectCode: 'PDP102', attendanceRateRequired: 0 },
+        { subjectCode: 'SOF101', attendanceRateRequired: null },
+      ),
+      tx as unknown as PrismaTx,
+      ctx,
+    );
+    expect(tx.subject.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.subject.updateMany).toHaveBeenCalledWith({
+      where: { code: 'PDP102' },
+      data: { attendanceRateRequired: 0 },
+    });
+  });
 
   it('tạo ghi danh kèm điểm và chuyên cần khi chưa có', async () => {
     const tx = txMock();

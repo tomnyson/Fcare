@@ -45,6 +45,27 @@ describe('buildAlertReason — lý do cảnh báo tự sinh từ nhận xét', (
     expect(reason.length).toBeGreaterThanOrEqual(40);
     expect(reason).toContain('Khả năng học tập: Yếu. Thái độ: Kém.');
   });
+
+  it('GV chọn mức khác đề xuất thì lý do ghi lại để người xử lý biết', () => {
+    expect(buildAlertReason({ ...base, suggestedLevel: 2, chosenLevel: 3 })).toContain(
+      'Giảng viên chọn mức 3 (hệ thống đề xuất mức 2).',
+    );
+  });
+
+  it('GV chọn đúng mức đề xuất thì không thêm câu chênh lệch', () => {
+    expect(buildAlertReason({ ...base, chosenLevel: 3 })).not.toContain('Giảng viên chọn mức');
+  });
+
+  it('GV chọn mức 4 dù đề xuất thấp vẫn đảm bảo lý do ≥ 40 ký tự', () => {
+    const reason = buildAlertReason({
+      ...base,
+      criterionLabels: [],
+      note: '',
+      suggestedLevel: 1,
+      chosenLevel: 4,
+    });
+    expect(reason.length).toBeGreaterThanOrEqual(40);
+  });
 });
 
 describe('raiseEvaluationAlert — trả kết quả gộp cảnh báo cho người phát', () => {

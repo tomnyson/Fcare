@@ -200,6 +200,21 @@ export class AlertsService {
     return { items, meta: { total, page, limit } };
   }
 
+  /**
+   * Xem trước "chọn mức N thì ai nhận thông báo" cho form nhận xét. Cùng
+   * nguồn với lúc gửi thật (`computeRecipientIds`) nên không lệch nhau.
+   */
+  async previewRecipients(user: AuthUser, studentId: string) {
+    if (!(await isStudentInScope(this.prisma, user, studentId))) {
+      throw new NotFoundException('Không tìm thấy sinh viên.');
+    }
+    const groups = await this.escalationService.previewRecipientGroups(
+      studentId,
+      user.id,
+    );
+    return { groups };
+  }
+
   async raise(user: AuthUser, dto: RaiseAlertDto) {
     if (
       dto.level === 4 &&
@@ -207,6 +222,15 @@ export class AlertsService {
     ) {
       throw new BadRequestException(
         `Cảnh báo mức Khẩn cấp cần lý do tối thiểu ${MIN_CRITICAL_REASON_LENGTH} ký tự.`,
+      );
+    }
+
+    // CTSV thuần chỉ thấy cảnh báo từ mức 3 — phát thấp hơn thì chính họ
+    // không theo dõi lại được, nên chặn ngay (docs/plan-lert.md mục 4).
+    const minLevel = minVisibleAlertLevel(user.roles);
+    if (dto.level < minLevel) {
+      throw new BadRequestException(
+        `Cán bộ CTSV chỉ phát cảnh báo từ mức ${minLevel} trở lên.`,
       );
     }
 

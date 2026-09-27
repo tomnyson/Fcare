@@ -9,6 +9,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type { AppAbility } from '../../casl/ability.factory';
 import { CheckPolicies } from '../../common/decorators/check-policies.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -19,12 +20,32 @@ import {
   SendAnalysisDto,
   UpdateStudentAnalysisDraftDto,
 } from './dto/student-analysis.dto';
+import { EvaluationNoteDraftDto } from './dto/evaluation-note-draft.dto';
+import { EvaluationNoteDraftService } from './evaluation-note-draft.service';
 import { StudentAnalysesService } from './student-analyses.service';
 
 @ApiTags('student-term-analyses')
 @Controller()
 export class StudentAnalysesController {
-  constructor(private readonly analyses: StudentAnalysesService) {}
+  constructor(
+    private readonly analyses: StudentAnalysesService,
+    private readonly noteDrafts: EvaluationNoteDraftService,
+  ) {}
+
+  /**
+   * AI viết nháp ô "Nhận xét" từ dữ liệu đang nhập (chưa lưu). Service giãn cách
+   * 30 giây theo người dùng; Throttle theo IP là lưới đỡ phía sau.
+   */
+  @Post('students/:studentId/evaluation-note-draft')
+  @Throttle({ default: { limit: 4, ttl: 60_000 } })
+  @CheckPolicies((ability: AppAbility) => ability.can('create', 'Evaluation'))
+  draftEvaluationNote(
+    @CurrentUser() user: AuthUser,
+    @Param('studentId', ParseUUIDPipe) studentId: string,
+    @Body() dto: EvaluationNoteDraftDto,
+  ) {
+    return this.noteDrafts.draft(user, studentId, dto);
+  }
 
   @Post('students/:studentId/term-analyses')
   @CheckPolicies((ability: AppAbility) => ability.can('create', 'Evaluation'))

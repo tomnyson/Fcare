@@ -1,8 +1,8 @@
 'use client';
 
-import { Badge, Button } from '@fcare/ui-kit';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { Badge } from '@fcare/ui-kit';
+import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState, type ReactNode } from 'react';
 import { apiFetch, ApiError } from '../../lib/api';
 import type {
   StudentAnalysisOutput,
@@ -11,11 +11,8 @@ import type {
   StudentTermAnalysisSummary,
 } from '../../lib/types';
 import { FormError, Label, Select } from '../ui/form';
-import {
-  AnalysisDraftFields,
-  blankEditableOutput,
-  type EditableOutput,
-} from './analysis-draft-fields';
+import { blankEditableOutput, type EditableOutput } from './analysis-draft-fields';
+import { AnalysisResultView } from './analysis-result-view';
 import { careHistoryEntries } from './analysis-care-history';
 import {
   AnalysisSendPrompt,
@@ -25,7 +22,6 @@ import {
   ANALYSIS_RISK_LABELS,
   ANALYSIS_STATUS_LABELS,
   editableAnalysisOutput,
-  parseEditableAnalysisOutput,
 } from './student-analysis-helpers';
 import { useAnalysisSend } from './use-analysis-send';
 
@@ -56,6 +52,10 @@ interface StudentAnalysisPanelProps {
   /** Học kỳ vừa lưu nhận xét — báo cho người dùng biết hệ thống đang tự chạy AI cho kỳ đó. */
   postSaveTerm: string;
   onDismissPostSave: () => void;
+  /** Badge cấp theo DRS, đặt cạnh bộ chọn học kỳ. */
+  headerBadge?: ReactNode;
+  /** Phần điểm DRS, đứng trước phần AI đề xuất trong cùng thẻ. */
+  riskSlot?: ReactNode;
 }
 
 export function StudentAnalysisPanel({
@@ -65,14 +65,14 @@ export function StudentAnalysisPanel({
   onSelectTerm,
   postSaveTerm,
   onDismissPostSave,
+  headerBadge,
+  riskSlot,
 }: StudentAnalysisPanelProps) {
-  const queryClient = useQueryClient();
   const [analysisError, setAnalysisError] = useState('');
   const [draftForm, setDraftForm] = useState<EditableOutput>(blankEditableOutput);
   const [confirmedLevel, setConfirmedLevel] = useState<number | null>(null);
   const [contentSource, setContentSource] = useState<AnalysisContentSource>('AI');
   const [lecturerNote, setLecturerNote] = useState('');
-  const analysisRequestKey = useRef<string | null>(null);
 
   const {
     data: analysisSummary,
@@ -142,59 +142,6 @@ export function StudentAnalysisPanel({
     setLecturerNote('');
   }, [latestVersion?.id]);
 
-  const createAnalysisMutation = useMutation({
-    mutationFn: () =>
-      apiFetch(`/students/${studentId}/term-analyses`, {
-        method: 'POST',
-        body: JSON.stringify({
-          term: selectedTerm,
-          idempotencyKey: (analysisRequestKey.current ??= crypto.randomUUID()),
-        }),
-      }),
-    onSuccess: async () => {
-      analysisRequestKey.current = null;
-      setAnalysisError('');
-      onDismissPostSave();
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ['student-term-analysis', studentId, selectedTerm],
-        }),
-        queryClient.invalidateQueries({ queryKey: ['student-term-analysis-version'] }),
-      ]);
-    },
-    onError: (err) =>
-      setAnalysisError(err instanceof ApiError ? err.message : 'Không thể tạo phân tích AI.'),
-  });
-
-  async function invalidateVersion() {
-    await Promise.all([
-      queryClient.invalidateQueries({
-        queryKey: ['student-term-analysis', studentId, selectedTerm],
-      }),
-      queryClient.invalidateQueries({
-        queryKey: ['student-term-analysis-version', latestVersion?.id],
-      }),
-    ]);
-  }
-
-  const saveDraftMutation = useMutation({
-    mutationFn: () => {
-      if (!latestVersion?.id) {
-        throw new Error('Thiếu version để lưu.');
-      }
-      return apiFetch(`/term-analysis-versions/${latestVersion.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ editedOutput: parseEditableAnalysisOutput(draftForm) }),
-      });
-    },
-    onSuccess: async () => {
-      setAnalysisError('');
-      await invalidateVersion();
-    },
-    onError: (err) =>
-      setAnalysisError(err instanceof ApiError ? err.message : 'Không thể lưu bản nháp.'),
-  });
-
   const { sendMutation, dismissMutation } = useAnalysisSend({
     studentId,
     term: selectedTerm,
@@ -228,15 +175,22 @@ export function StudentAnalysisPanel({
   const careHistory = careHistoryEntries(analysisDetail?.sourceSnapshot);
 
   return (
-    <section className="mb-6 rounded-[var(--radius-card)] border border-border bg-white p-5 shadow-[var(--shadow-card)]">
+    <section
+      aria-labelledby="risk-review-heading"
+      className="mb-6 rounded-[var(--radius-card)] border border-border bg-white p-5 shadow-[var(--shadow-card)] sm:p-6"
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold text-ink">Phân tích AI theo học kỳ</p>
+          <h2 id="risk-review-heading" className="text-base font-bold text-ink">
+            Đánh giá rủi ro — học kỳ {selectedTerm || '—'}
+          </h2>
           <p className="mt-1 text-sm text-muted">
-            Nội dung AI chỉ mang tính hỗ trợ và phải được người duyệt chốt trước khi gửi.
+            Cấp theo DRS do hệ thống tính; AI chỉ đề xuất và phải được người duyệt chốt trước khi
+            gửi.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          {headerBadge ? <div className="self-center">{headerBadge}</div> : null}
           <div>
             <Label htmlFor="analysisTerm">Học kỳ</Label>
             <Select
@@ -244,7 +198,6 @@ export function StudentAnalysisPanel({
               value={selectedTerm}
               onChange={(event) => {
                 onSelectTerm(event.target.value);
-                analysisRequestKey.current = null;
                 onDismissPostSave();
                 setAnalysisError('');
               }}
@@ -258,13 +211,6 @@ export function StudentAnalysisPanel({
               ))}
             </Select>
           </div>
-          <Button
-            type="button"
-            disabled={!selectedTerm || createAnalysisMutation.isPending}
-            onClick={() => createAnalysisMutation.mutate()}
-          >
-            {createAnalysisMutation.isPending ? 'Đang tạo…' : 'Tạo / cập nhật AI'}
-          </Button>
         </div>
       </div>
 
@@ -276,9 +222,14 @@ export function StudentAnalysisPanel({
         </div>
       ) : null}
 
+      {riskSlot ? <div className="mt-5 border-t border-border pt-4">{riskSlot}</div> : null}
+
       <FormError>{analysisError}</FormError>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[1.3fr,0.7fr]">
+      <h3 className="mt-5 border-t border-border pt-4 text-sm font-semibold text-ink">
+        AI đề xuất
+      </h3>
+      <div className="mt-3 grid gap-4 lg:grid-cols-[1.3fr,0.7fr]">
         <div className="rounded-lg border border-border bg-slate-50 p-4">
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-sm font-semibold text-ink">
@@ -299,7 +250,8 @@ export function StudentAnalysisPanel({
 
           {!latestVersion && !summaryLoading ? (
             <p className="mt-3 text-sm text-muted">
-              Chọn học kỳ rồi bấm “Tạo / cập nhật AI” để khởi tạo version phân tích đầu tiên.
+              Chưa có đề xuất AI cho học kỳ này. AI tự tổng hợp sau khi giảng viên lưu nhận xét
+              — không cần bấm tạo.
             </p>
           ) : null}
 
@@ -309,21 +261,8 @@ export function StudentAnalysisPanel({
             </p>
           ) : null}
 
-          {isDraft ? (
-            <form
-              className="mt-4 space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                saveDraftMutation.mutate();
-              }}
-            >
-              <AnalysisDraftFields value={draftForm} onChange={setDraftForm} />
-              <div className="flex justify-end">
-                <Button type="submit" disabled={saveDraftMutation.isPending}>
-                  {saveDraftMutation.isPending ? 'Đang lưu…' : 'Lưu bản nháp'}
-                </Button>
-              </div>
-            </form>
+          {analysisDetail?.editedOutput ? (
+            <AnalysisResultView output={analysisDetail.editedOutput} />
           ) : null}
         </div>
 

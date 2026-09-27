@@ -19,7 +19,12 @@ const HEADER_ROW = 1;
 /** Cột bắt buộc — cũng là dấu hiệu nhận diện sheet dữ liệu. */
 const REQUIRED = ['Mã', 'Tên lớp', 'Mã môn'] as const;
 
-const OPTIONAL = ['Số buổi nghỉ/TS', 'Điểm', 'Trạng thái'] as const;
+const OPTIONAL = [
+  'Số buổi nghỉ/TS',
+  'Tỷ lệ phải đi học',
+  'Điểm',
+  'Trạng thái',
+] as const;
 
 /**
  * Lớp thi lại cuối kỳ do phòng khảo thí tự sinh ("TL_EOS test_VIE1026_..."),
@@ -65,6 +70,16 @@ function numberOrNull(
     return null;
   }
   return cellNumber(row, column) ?? null;
+}
+
+/**
+ * "Tỷ lệ phải đi học" trong file là phần trăm (80), còn
+ * `Subject.attendanceRateRequired` lưu dạng tỉ lệ (0.8) như file danh mục môn.
+ * 0 = môn không cấm thi do điểm danh; ô trống → null (không ghi đè).
+ */
+export function requiredRateFrom(raw: number | null): number | null {
+  if (raw === null || raw < 0) return null;
+  return raw > 1 ? raw / 100 : raw;
 }
 
 export class GradeAttendanceParser implements ImportParser {
@@ -128,6 +143,9 @@ export class GradeAttendanceParser implements ImportParser {
         absentSessions: absence?.absentSessions ?? null,
         totalSessions: absence?.totalSessions ?? null,
         attendanceRate: absence === null ? null : attendanceRateFrom(absence),
+        attendanceRateRequired: requiredRateFrom(
+          numberOrNull(row, at('tỷ lệ phải đi học')),
+        ),
       };
 
       rows.push({
