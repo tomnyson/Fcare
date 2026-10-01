@@ -21,6 +21,8 @@ describe('canAccessRoute — trang nào vai nào được mở', () => {
     expect(can('/admin/users', 'ADMIN')).toBe(true);
     expect(can('/admin/mail', 'HEAD_OF_DEPT', 'TRAINING_OFFICER')).toBe(false);
     expect(can('/admin/backups', 'LECTURER')).toBe(false);
+    expect(can('/admin/security', 'HEAD_OF_DEPT')).toBe(false);
+    expect(can('/admin/security', 'ADMIN')).toBe(true);
   });
 
   it('Import / Export theo quyền Excel của API — giảng viên không bao giờ được', () => {

@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import type { AuditService } from '../../audit/audit.service';
 import type { AuthUser } from '../../common/types/auth-user';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -331,5 +335,93 @@ describe('CareLogsService.remove — ADMIN xoá lượt chăm sóc', () => {
     await service.remove(admin, 'log-2');
     expect(tx.careLog.count).not.toHaveBeenCalled();
     expect(tx.alert.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('CareLogsService.update — sửa nhật ký chăm sóc', () => {
+  const admin: AuthUser = { ...owner, id: 'admin-1', roles: ['ADMIN'] };
+  const existing = { id: 'log-1', staffId: 'gv-chi', studentId: 'sv-1' };
+
+  function setupUpdate(found: Record<string, unknown> | null = existing) {
+    const prisma = {
+      careLog: {
+        findFirst: jest.fn().mockResolvedValue(found),
+        update: jest
+          .fn()
+          .mockImplementation(({ data }: { data: unknown }) =>
+            Promise.resolve({ ...existing, ...(data as object) }),
+          ),
+      },
+    };
+    const audit = { log: jest.fn().mockResolvedValue(undefined) };
+    const service = new CareLogsService(
+      prisma as unknown as PrismaService,
+      audit as unknown as AuditService,
+    );
+    return { prisma, audit, service };
+  }
+
+  it('người ghi sửa nội dung → chỉ cập nhật trường cho phép, lọc theo phạm vi, audit không chép nội dung', async () => {
+    const { service, prisma, audit } = setupUpdate();
+    await service.update(owner, 'log-1', {
+      content: 'Đã nhắc nhở trên Zalo, em hứa đi học đủ',
+      outcome: 'Em hứa đi học',
+    });
+    expect(prisma.careLog.findFirst).toHaveBeenCalledWith(
+      containing({ where: containing({ id: 'log-1' }) }),
+    );
+    expect(prisma.careLog.update).toHaveBeenCalledWith(
+      containing({
+        where: { id: 'log-1' },
+        data: {
+          content: 'Đã nhắc nhở trên Zalo, em hứa đi học đủ',
+          outcome: 'Em hứa đi học',
+        },
+      }),
+    );
+    expect(audit.log).toHaveBeenCalledWith(
+      containing({ action: 'CARE_LOG_UPDATED', entityId: 'log-1' }),
+    );
+    const metadata = (audit.log.mock.calls[0] as [{ metadata: object }])[0]
+      .metadata;
+    expect(JSON.stringify(metadata)).not.toContain('Zalo');
+  });
+
+  it('chuỗi rỗng ở trường tùy chọn → xoá giá trị (null)', async () => {
+    const { service, prisma } = setupUpdate();
+    await service.update(owner, 'log-1', { outcome: '  ', nextAction: '' });
+    expect(prisma.careLog.update).toHaveBeenCalledWith(
+      containing({ data: { outcome: null, nextAction: null } }),
+    );
+  });
+
+  it('người khác (không phải tác giả, không ADMIN) → 403, không ghi gì', async () => {
+    const { service, prisma } = setupUpdate();
+    await expect(
+      service.update(otherLecturer, 'log-1', { content: 'Sửa của người khác' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.careLog.update).not.toHaveBeenCalled();
+  });
+
+  it('ADMIN sửa được nhật ký của người khác', async () => {
+    const { service, prisma } = setupUpdate();
+    await service.update(admin, 'log-1', { channel: 'ONLINE' });
+    expect(prisma.careLog.update).toHaveBeenCalled();
+  });
+
+  it('không tìm thấy / ngoài phạm vi → 404', async () => {
+    const { service, prisma } = setupUpdate(null);
+    await expect(
+      service.update(owner, 'log-x', { content: 'Nội dung mới đủ dài' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.careLog.update).not.toHaveBeenCalled();
+  });
+
+  it('nội dung chứa số điện thoại → 400, không ghi gì (RULE 1)', async () => {
+    const { service, prisma } = setupUpdate();
+    await expect(
+      service.update(owner, 'log-1', { content: 'Gọi em qua số 0912345678' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.careLog.update).not.toHaveBeenCalled();
   });
 });

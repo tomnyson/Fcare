@@ -8,6 +8,7 @@ import { AuditModule } from './audit/audit.module';
 import { CaslModule } from './casl/casl.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ConsentGuard } from './common/guards/consent.guard';
+import { PinGuard } from './common/guards/pin.guard';
 import { CsrfGuard } from './common/guards/csrf.guard';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PoliciesGuard } from './common/guards/policies.guard';
@@ -28,6 +29,8 @@ import { HealthModule } from './modules/health/health.module';
 import { ImportsModule } from './modules/imports/imports.module';
 import { MailSettingsModule } from './modules/mail-settings/mail-settings.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
+import { PinModule } from './modules/auth/pin.module';
+import { SecuritySettingsModule } from './modules/security-settings/security-settings.module';
 import { errorCaptureHook } from './modules/monitoring/error-capture';
 import { MasterDataModule } from './modules/master-data/master-data.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
@@ -93,13 +96,16 @@ import { PrismaModule } from './prisma/prisma.module';
     MailSettingsModule,
     BackupModule,
     MonitoringModule,
+    PinModule,
+    SecuritySettingsModule,
   ],
   providers: [
-    // Thứ tự guard: rate-limit → chống CSRF → xác thực JWT → cam kết bảo mật → phân quyền CASL.
+    // Thứ tự guard: rate-limit → chống CSRF → xác thực JWT → cam kết bảo mật → khoá PIN → phân quyền CASL.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: CsrfGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: ConsentGuard },
+    { provide: APP_GUARD, useClass: PinGuard },
     { provide: APP_GUARD, useClass: PoliciesGuard },
     // PII guard bọc ngoài cùng — lọc trường cấm sau khi envelope đã đóng gói.
     { provide: APP_INTERCEPTOR, useClass: PiiGuardInterceptor },

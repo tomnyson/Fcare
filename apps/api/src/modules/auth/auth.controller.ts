@@ -18,7 +18,9 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { GoogleLinkDto, GoogleTokenDto } from './dto/google-link.dto';
 import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from './jwt.strategy';
+import { PinService } from './pin.service';
 import { RecaptchaService } from './recaptcha.service';
+import { SecuritySettingsService } from '../security-settings/security-settings.service';
 
 const REFRESH_COOKIE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -33,6 +35,8 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly recaptcha: RecaptchaService,
+    private readonly pins: PinService,
+    private readonly securitySettings: SecuritySettingsService,
   ) {}
 
   @Public()
@@ -164,11 +168,25 @@ export class AuthController {
   @SkipConsent()
   @Get('me')
   @ApiOperation({ summary: 'Thông tin người dùng hiện tại' })
-  me(@CurrentUser() user: AuthUser) {
+  async me(@CurrentUser() user: AuthUser, @Req() request: RequestWithCookies) {
+    // PIN chỉ hỏi sau khi đã đổi mật khẩu tạm + ký cam kết (cùng thứ tự guard).
+    const gatePassed = user.consented && !user.mustChangePassword;
+    const [pin, idleLockMinutes] = await Promise.all([
+      gatePassed
+        ? this.pins.sessionState(
+            user.id,
+            request.cookies?.[REFRESH_TOKEN_COOKIE],
+          )
+        : Promise.resolve({ hasPin: true, locked: false }),
+      this.securitySettings.getIdleLockMinutes(),
+    ]);
     return {
       user,
       requiresConsent: !user.consented,
       mustChangePassword: user.mustChangePassword,
+      requiresPinSetup: !pin.hasPin,
+      locked: pin.locked,
+      idleLockMinutes,
     };
   }
 

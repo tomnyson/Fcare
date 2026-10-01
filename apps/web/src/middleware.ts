@@ -38,5 +38,6 @@ export const config = {
     '/admin/:path*',
     '/consent',
     '/change-password',
+    '/setup-pin',
   ],
 };

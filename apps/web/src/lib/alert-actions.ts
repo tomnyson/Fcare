@@ -1,4 +1,4 @@
-import { canCloseAlert } from '@fcare/shared-types';
+import { ALERT_ACKNOWLEDGER_ROLES, canAcknowledgeAlert, canCloseAlert } from '@fcare/shared-types';
 import type {
   AlertBulkDeletionPreview,
   AlertDeletionCounts,
@@ -9,8 +9,11 @@ import type {
 /** Trần một lượt xoá — phải khớp `ALERT_BULK_DELETE_MAX` của API (bằng cỡ trang lớn nhất). */
 export const ALERT_BULK_DELETE_MAX = 100;
 
-/** Vai trò được "Tiếp nhận" cảnh báo — khớp CASL `acknowledge Alert` phía API. */
-export const ACKNOWLEDGER_ROLES = ['ADMIN', 'HEAD_OF_DEPT', 'TRAINING_OFFICER', 'SA_HEAD'] as const;
+/**
+ * Vai trò được "Tiếp nhận" MỌI cảnh báo. Giảng viên tiếp nhận được cảnh báo do
+ * hệ thống / người khác phát — xem `canAcknowledgeAlert`.
+ */
+export const ACKNOWLEDGER_ROLES = ALERT_ACKNOWLEDGER_ROLES;
 
 /** Vai trò được "Phát cảnh báo" — khớp CASL `create Alert` phía API. */
 const RAISER_ROLES = ['ADMIN', 'HEAD_OF_DEPT', 'LECTURER', 'SA_OFFICER', 'SA_HEAD'] as const;
@@ -42,11 +45,11 @@ export function alertRowActions(input: {
   raisedById: string | null | undefined;
 }): AlertRowActions {
   const roles = input.roles ?? [];
-  const isAcknowledger = roles.some((role) =>
-    (ACKNOWLEDGER_ROLES as ReadonlyArray<string>).includes(role),
-  );
   const isDeleter = roles.some((role) => (DELETER_ROLES as ReadonlyArray<string>).includes(role));
   const unresolved = input.status !== 'RESOLVED';
+  const isAcknowledger =
+    input.userId !== undefined &&
+    canAcknowledgeAlert({ userId: input.userId, roles, raisedById: input.raisedById });
   const isCloser =
     input.userId !== undefined &&
     canCloseAlert({

@@ -10,7 +10,9 @@ import type { Queue } from 'bullmq';
 import {
   ALERT_LEVEL_LABELS,
   ATTENDANCE_ALERT_THRESHOLDS,
+  currentTermBlock,
   type AlertLevel,
+  type TermBlock,
 } from '@fcare/shared-types';
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -150,8 +152,9 @@ export class AttendanceReviewService {
   ): Promise<AttendanceReviewResult> {
     // Đóng trước khi nạp cảnh báo mở để không gộp số vắng vào cảnh báo sắp đóng.
     const closed = await this.closeExemptSubjectAlerts(term, options.actorId);
+    const block = await this.currentBlock(term);
     const [rows, openAlerts] = await Promise.all([
-      this.loadRows(term),
+      this.loadRows(term, block),
       this.loadOpenAlerts(term),
     ]);
     const openByKey = highestByKey(openAlerts);
@@ -168,9 +171,22 @@ export class AttendanceReviewService {
       action: 'ATTENDANCE_REVIEW',
       entity: 'ImportBatch',
       entityId: options.batchId,
-      metadata: { term, ...result },
+      metadata: { term, block, ...result },
     });
     return result;
+  }
+
+  /**
+   * Block đang học của kỳ (ADMIN ghi đè hoặc theo điểm giữa kỳ). Không tìm
+   * thấy học kỳ → null = không lọc block. Cảnh báo đang mở của block khác giữ
+   * nguyên, chỉ không phát/nâng cấp thêm.
+   */
+  private async currentBlock(term: string): Promise<TermBlock | null> {
+    const row = await this.prisma.term.findUnique({
+      where: { code: term },
+      select: { startDate: true, endDate: true, currentBlockOverride: true },
+    });
+    return row ? currentTermBlock(row) : null;
   }
 
   /**
@@ -199,12 +215,17 @@ export class AttendanceReviewService {
     return count;
   }
 
-  private loadRows(term: string): Promise<ReviewRow[]> {
+  private loadRows(
+    term: string,
+    block: TermBlock | null,
+  ): Promise<ReviewRow[]> {
     return this.prisma.enrollment.findMany({
       where: {
         absentSessions: { gte: ATTENDANCE_ALERT_THRESHOLDS.MEDIUM },
         classSection: {
           term,
+          // Chỉ môn của block hiện tại; lớp chưa gắn block = học cả kỳ.
+          ...(block ? { OR: [{ block: null }, { block }] } : {}),
           lecturerId: { not: null },
           // Môn "Tỷ lệ phải đi học" = 0 không cấm thi do điểm danh → không cảnh báo vắng.
           subject: {

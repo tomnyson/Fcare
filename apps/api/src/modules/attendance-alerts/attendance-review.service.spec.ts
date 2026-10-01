@@ -36,6 +36,12 @@ function setup(
     }>;
     /** Số cảnh báo tự động bị đóng vì môn không cấm thi do điểm danh. */
     closed?: number;
+    /** Bản ghi học kỳ (để tính block hiện tại); mặc định không có → không lọc block. */
+    term?: {
+      startDate: Date;
+      endDate: Date;
+      currentBlockOverride: number | null;
+    } | null;
   } = {},
 ) {
   // Mặc định là cảnh báo điểm danh tự động — test nguồn khác thì ghi đè.
@@ -46,6 +52,7 @@ function setup(
   }));
   // Tách `models` ra để `$transaction` không tham chiếu vòng (TS suy ra any).
   const models = {
+    term: { findUnique: jest.fn().mockResolvedValue(options.term ?? null) },
     enrollment: {
       findMany: jest.fn().mockResolvedValue(options.enrollments ?? []),
     },
@@ -81,6 +88,68 @@ function setup(
   );
   return { prisma, escalation, dispatch, audit, service };
 }
+
+const FA26_TERM = {
+  startDate: new Date('2026-09-01T00:00:00Z'),
+  endDate: new Date('2026-12-31T00:00:00Z'),
+  currentBlockOverride: null,
+};
+
+type EnrollmentWhere = { where: { classSection: Record<string, unknown> } };
+
+describe('AttendanceReviewService.reviewTerm — chỉ phát cảnh báo cho block hiện tại', () => {
+  afterEach(() => jest.useRealTimers());
+
+  it('nửa đầu kỳ → chỉ rà soát lớp block 1 và lớp học cả kỳ', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-20T00:00:00Z'));
+    const { service, prisma } = setup({ term: FA26_TERM });
+    await service.reviewTerm('FA26');
+    expect(prisma.term.findUnique).toHaveBeenCalledWith({
+      where: { code: 'FA26' },
+      select: { startDate: true, endDate: true, currentBlockOverride: true },
+    });
+    const [args] = prisma.enrollment.findMany.mock.calls[0] as [
+      EnrollmentWhere,
+    ];
+    expect(args.where.classSection).toMatchObject({
+      term: 'FA26',
+      OR: [{ block: null }, { block: 1 }],
+    });
+  });
+
+  it('nửa sau kỳ → block 2', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-11-20T00:00:00Z'));
+    const { service, prisma } = setup({ term: FA26_TERM });
+    await service.reviewTerm('FA26');
+    const [args] = prisma.enrollment.findMany.mock.calls[0] as [
+      EnrollmentWhere,
+    ];
+    expect(args.where.classSection.OR).toEqual([{ block: null }, { block: 2 }]);
+  });
+
+  it('ADMIN ghi đè block → dùng block ghi đè, ghi vào audit', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-05T00:00:00Z'));
+    const { service, prisma, audit } = setup({
+      term: { ...FA26_TERM, currentBlockOverride: 2 },
+    });
+    await service.reviewTerm('FA26');
+    const [args] = prisma.enrollment.findMany.mock.calls[0] as [
+      EnrollmentWhere,
+    ];
+    expect(args.where.classSection.OR).toEqual([{ block: null }, { block: 2 }]);
+    const [entry] = audit.log.mock.calls[0] as [{ metadata: unknown }];
+    expect(entry.metadata).toMatchObject({ term: 'FA26', block: 2 });
+  });
+
+  it('không tìm thấy học kỳ → không lọc block (giữ hành vi cũ)', async () => {
+    const { service, prisma } = setup();
+    await service.reviewTerm('FA26');
+    const [args] = prisma.enrollment.findMany.mock.calls[0] as [
+      EnrollmentWhere,
+    ];
+    expect(args.where.classSection).not.toHaveProperty('OR');
+  });
+});
 
 describe('AttendanceReviewService.reviewTerm', () => {
   it('chỉ rà soát SV đang học, lớp có giảng viên, đã chạm ngưỡng vắng', async () => {
@@ -161,6 +230,7 @@ describe('AttendanceReviewService.reviewTerm', () => {
       entityId: 'batch-1',
       metadata: {
         term: 'FA26',
+        block: null,
         created: 1,
         upgraded: 0,
         unchanged: 0,

@@ -63,6 +63,7 @@ function DashboardContent() {
   return (
     <>
       <PageHeader
+        back={false}
         title="Tổng quan"
         description={
           overview?.term

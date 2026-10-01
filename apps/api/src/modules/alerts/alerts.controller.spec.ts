@@ -5,7 +5,9 @@ import {
   CHECK_POLICIES_KEY,
   type PolicyHandler,
 } from '../../common/decorators/check-policies.decorator';
+import { PIN_PROOF_PURPOSE_KEY } from '../../common/decorators/require-pin-proof.decorator';
 import type { AuthUser } from '../../common/types/auth-user';
+import { PinService } from '../auth/pin.service';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { AlertsController } from './alerts.controller';
@@ -63,6 +65,7 @@ describe('AlertsController — xoá cảnh báo chỉ dành cho ADMIN', () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [AlertsController],
       providers: [
+        { provide: PinService, useValue: { checkProof: jest.fn() } },
         {
           provide: AlertsService,
           useValue: {
@@ -109,9 +112,26 @@ describe('AlertsController — xoá cảnh báo chỉ dành cho ADMIN', () => {
     expect(allowed('resolve', lecturer)).toBe(true);
   });
 
-  it('acknowledge dùng quyền riêng — GV không tiếp nhận', () => {
+  it('acknowledge: TBM và GV qua CASL — service chặn GV tự tiếp nhận cảnh báo mình phát', () => {
     expect(allowed('acknowledge', headOfDept)).toBe(true);
-    expect(allowed('acknowledge', lecturer)).toBe(false);
+    expect(allowed('acknowledge', lecturer)).toBe(true);
+  });
+
+  it('xoá (1 hoặc nhiều) đòi bằng chứng PIN ALERT_DELETE — PIN kiểm ở server', () => {
+    for (const handler of ['remove', 'removeMany'] as const) {
+      expect(
+        Reflect.getMetadata(
+          PIN_PROOF_PURPOSE_KEY,
+          AlertsController.prototype[handler],
+        ),
+      ).toBe('ALERT_DELETE');
+    }
+    expect(
+      Reflect.getMetadata(
+        PIN_PROOF_PURPOSE_KEY,
+        AlertsController.prototype.deletionPreview,
+      ),
+    ).toBeUndefined();
   });
 
   it('uỷ quyền xuống service với user + id', async () => {

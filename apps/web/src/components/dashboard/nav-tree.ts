@@ -12,6 +12,7 @@ import {
   IconDatabase,
   IconDepartments,
   IconHistory,
+  IconLock,
   IconMail,
   IconMajors,
   IconOverview,
@@ -156,6 +157,12 @@ export function buildNavSections(user: AuthUser): NavSection[] {
   if (user.roles.includes('ADMIN')) {
     system.push({ kind: 'leaf', href: '/admin/users', label: 'Người dùng', icon: IconSettings });
     system.push({ kind: 'leaf', href: '/admin/mail', label: 'Cấu hình email', icon: IconMail });
+    system.push({
+      kind: 'leaf',
+      href: '/admin/security',
+      label: 'Bảo mật & khoá màn hình',
+      icon: IconLock,
+    });
     system.push({
       kind: 'leaf',
       href: '/admin/backups',

@@ -102,3 +102,32 @@ export function canCloseAlert(input: AlertCloseInput): boolean {
   const owner = input.sectionLecturerId ?? input.raisedById;
   return owner === userId;
 }
+
+/** Vai trò được tiếp nhận MỌI cảnh báo trong phạm vi của mình. */
+export const ALERT_ACKNOWLEDGER_ROLES = [
+  'ADMIN',
+  'HEAD_OF_DEPT',
+  'TRAINING_OFFICER',
+  'SA_HEAD',
+] as const;
+
+export interface AlertAcknowledgeInput {
+  userId: string;
+  roles: ReadonlyArray<string>;
+  /** null = hệ thống tự phát (rà soát sau import điểm danh). */
+  raisedById: string | null | undefined;
+}
+
+/**
+ * Ai được tiếp nhận cảnh báo: các vai quản lý luôn được; giảng viên được tiếp
+ * nhận cảnh báo do hệ thống hoặc người KHÁC phát — không tự tiếp nhận cảnh báo
+ * chính mình vừa phát. Phạm vi sinh viên (GV chỉ thấy SV lớp mình dạy) và trạng
+ * thái OPEN vẫn do API kiểm tra riêng.
+ */
+export function canAcknowledgeAlert(input: AlertAcknowledgeInput): boolean {
+  const { userId, roles } = input;
+  if (roles.some((role) => (ALERT_ACKNOWLEDGER_ROLES as ReadonlyArray<string>).includes(role))) {
+    return true;
+  }
+  return roles.includes('LECTURER') && input.raisedById !== userId;
+}

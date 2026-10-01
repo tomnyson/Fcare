@@ -4,13 +4,21 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from './api';
 import type { AuthUser, DiscussionThread, Notification } from './types';
 
+export interface MeResponse {
+  user: AuthUser;
+  requiresConsent: boolean;
+  mustChangePassword: boolean;
+  /** Chưa tạo PIN cá nhân (lần đầu, hoặc ADMIN vừa đặt lại). */
+  requiresPinSetup: boolean;
+  /** Phiên hiện tại đang khoá do không thao tác — trạng thái lưu ở server. */
+  locked: boolean;
+  idleLockMinutes: number;
+}
+
 export function useMe() {
   return useQuery({
     queryKey: ['me'],
-    queryFn: () =>
-      apiFetch<{ user: AuthUser; requiresConsent: boolean; mustChangePassword: boolean }>(
-        '/auth/me',
-      ),
+    queryFn: () => apiFetch<MeResponse>('/auth/me'),
     staleTime: 5 * 60_000,
   });
 }

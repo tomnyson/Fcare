@@ -3,9 +3,12 @@ import {
   canViewDepartmentAttendance,
   defaultCareContent,
   formatNavBadge,
+  openAlertsBadgeCount,
   groupByLevel,
   panelTone,
   splitByOwner,
+  parseCollapsedAlertIds,
+  shouldStayCollapsed,
 } from './attendance-care';
 import type { PendingAttendanceAlert } from './types';
 
@@ -96,5 +99,51 @@ describe('formatNavBadge', () => {
     expect(formatNavBadge(7)).toBe('7');
     expect(formatNavBadge(120)).toBe('99+');
     expect(formatNavBadge(undefined)).toBeNull();
+  });
+});
+
+describe('openAlertsBadgeCount', () => {
+  it('ưu tiên số cảnh báo CHÍNH mình chưa chăm sóc', () => {
+    expect(
+      openAlertsBadgeCount({ myOpenAlerts: 1, openAlertsByLevel: [{ level: 2, count: 5 }] }),
+    ).toBe(1);
+    expect(
+      openAlertsBadgeCount({ myOpenAlerts: 0, openAlertsByLevel: [{ level: 2, count: 5 }] }),
+    ).toBe(0);
+  });
+  it('API cũ chưa có myOpenAlerts → cộng tổng theo cấp', () => {
+    expect(
+      openAlertsBadgeCount({
+        openAlertsByLevel: [
+          { level: 2, count: 2 },
+          { level: 3, count: 3 },
+        ],
+      }),
+    ).toBe(5);
+    expect(openAlertsBadgeCount(undefined)).toBe(0);
+  });
+});
+
+describe('shouldStayCollapsed — thu gọn khung "cần chăm sóc"', () => {
+  it('chưa từng thu gọn → mở', () => {
+    expect(shouldStayCollapsed(null, ['a1'])).toBe(false);
+  });
+
+  it('không có cảnh báo mới so với lúc thu gọn → giữ thu gọn', () => {
+    expect(shouldStayCollapsed(['a1', 'a2'], ['a2'])).toBe(true);
+  });
+
+  it('có cảnh báo mới (SV mới hoặc nâng cấp = id mới) → tự mở lại', () => {
+    expect(shouldStayCollapsed(['a1'], ['a1', 'a3'])).toBe(false);
+  });
+});
+
+describe('parseCollapsedAlertIds — dữ liệu sessionStorage không tin được', () => {
+  it('đọc mảng chuỗi hợp lệ', () => {
+    expect(parseCollapsedAlertIds('["a1","a2"]')).toEqual(['a1', 'a2']);
+  });
+
+  it.each([null, '', 'not-json', '{"a":1}', '[1,2]'])('giá trị hỏng %p → null', (raw) => {
+    expect(parseCollapsedAlertIds(raw)).toBeNull();
   });
 });

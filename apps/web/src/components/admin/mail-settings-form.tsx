@@ -272,6 +272,36 @@ export function MailSettingsForm({ view, onValuesChange, onSaved }: MailSettings
         </div>
       </Fieldset>
 
+      <Fieldset
+        legend="Link trong email"
+        hint="Nút “Xem chi tiết trên FCare” trong mail trỏ về địa chỉ này. Bỏ trống để dùng cấu hình máy chủ."
+      >
+        <div>
+          <Label htmlFor="mail-public-web-url">Địa chỉ web FCare</Label>
+          <Input
+            id="mail-public-web-url"
+            inputMode="url"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={view.envPublicWebUrl}
+            value={values.publicWebUrl}
+            onChange={(e) => setValues({ publicWebUrl: e.target.value })}
+            aria-invalid={Boolean(errors.publicWebUrl)}
+            aria-describedby="mail-public-web-url-hint"
+          />
+          <p id="mail-public-web-url-hint" className="mt-1 text-xs text-muted">
+            Đang dùng:{' '}
+            <span className="font-mono">{values.publicWebUrl.trim() || view.envPublicWebUrl}</span>
+          </p>
+          <FieldError>{errors.publicWebUrl}</FieldError>
+          {!values.publicWebUrl.trim() && /localhost|127\.0\.0\.1/.test(view.envPublicWebUrl) ? (
+            <p role="alert" className="mt-2 text-xs font-semibold text-danger">
+              Người nhận mail sẽ không mở được link localhost — hãy nhập địa chỉ web thật.
+            </p>
+          ) : null}
+        </div>
+      </Fieldset>
+
       <div className="flex flex-col gap-4 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
         <label className="flex min-h-11 items-center gap-2 text-sm text-ink">
           <input

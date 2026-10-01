@@ -7,6 +7,7 @@ import { FormError, FormSuccess } from '../../../../components/ui/form';
 import { Modal } from '../../../../components/ui/modal';
 import { PageHeader } from '../../../../components/ui/page-header';
 import { apiDownload, apiFetch } from '../../../../lib/api';
+import { pinProofHeaders } from '../../../../lib/pin-lock';
 import type {
   BackupMetadata,
   BackupOverviewStats,
@@ -96,11 +97,20 @@ export default function AdminBackupsPage() {
   });
 
   const restoreMutation = useMutation({
-    mutationFn: ({ id, confirmation }: { id: string; confirmation: string }) =>
+    mutationFn: ({
+      id,
+      confirmation,
+      pinProof,
+    }: {
+      id: string;
+      confirmation: string;
+      pinProof: string;
+    }) =>
       apiFetch<{ success: boolean; restoredId: string; preRestoreSnapshotId: string }>(
         `/admin/backup/${id}/restore`,
         {
           method: 'POST',
+          headers: pinProofHeaders(pinProof),
           body: JSON.stringify({ confirmation }),
         },
       ),
@@ -286,8 +296,8 @@ export default function AdminBackupsPage() {
         backup={restoreTarget}
         open={Boolean(restoreTarget)}
         onClose={() => setRestoreTarget(null)}
-        onConfirmRestore={async (id, confirmation) => {
-          await restoreMutation.mutateAsync({ id, confirmation });
+        onConfirmRestore={async (id, confirmation, pinProof) => {
+          await restoreMutation.mutateAsync({ id, confirmation, pinProof });
         }}
       />
 

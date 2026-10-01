@@ -222,3 +222,40 @@ describe('apiUploadWithProgress — upload có % mà vẫn giữ hợp đồng a
     expect(error.message).toBe('Không kết nối được máy chủ. Vui lòng kiểm tra mạng và thử lại.');
   });
 });
+
+describe('apiFetch — khoá ứng dụng bằng PIN', () => {
+  function stubError(code: string, status = 403) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse(status, { success: false, data: null, error: 'x', code })),
+    );
+  }
+
+  it('chưa tạo PIN → chuyển /setup-pin', async () => {
+    stubError('PIN_SETUP_REQUIRED');
+    const location = { href: '' };
+    vi.stubGlobal('window', { location, dispatchEvent: vi.fn() });
+    const error = await caught(apiFetch('/students'));
+    expect(error.code).toBe('PIN_SETUP_REQUIRED');
+    expect(location.href).toBe('/setup-pin');
+  });
+
+  it('sai PIN quá số lần → về /login', async () => {
+    stubError('PIN_ATTEMPTS_EXCEEDED');
+    const location = { href: '' };
+    vi.stubGlobal('window', { location, dispatchEvent: vi.fn() });
+    await caught(apiFetch('/auth/pin/verify'));
+    expect(location.href).toBe('/login');
+  });
+
+  it('phiên bị khoá → phát sự kiện khoá, KHÔNG đổi trang', async () => {
+    stubError('APP_LOCKED');
+    const location = { href: '' };
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal('window', { location, dispatchEvent });
+    const error = await caught(apiFetch('/students'));
+    expect(error.code).toBe('APP_LOCKED');
+    expect(location.href).toBe('');
+    expect((dispatchEvent.mock.calls[0][0] as Event).type).toBe('fcare:app-locked');
+  });
+});

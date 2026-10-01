@@ -74,6 +74,7 @@ function StudentDetailContent() {
   return (
     <>
       <PageHeader
+        backHref="/students"
         title={`${student.fullName}`}
         description={`${student.studentCode} · Lớp ${student.classCode} · ${student.major?.name ?? ''} (${student.department?.name ?? ''})`}
         actions={
@@ -152,7 +153,11 @@ function StudentDetailContent() {
       {tab === 'care-logs' ? <CareLogsTab studentId={studentId} term={requestedTerm} /> : null}
       {tab === 'alerts' ? <AlertsTab studentId={studentId} user={me.user} /> : null}
       {tab === 'discussion' ? (
-        <DiscussionTab studentId={studentId} currentStaffId={me.user.id} />
+        <DiscussionTab
+          studentId={studentId}
+          currentStaffId={me.user.id}
+          currentStaffCode={me.user.staffCode}
+        />
       ) : null}
     </>
   );

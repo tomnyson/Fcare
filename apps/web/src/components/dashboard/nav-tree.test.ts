@@ -77,6 +77,14 @@ describe('nav-tree — dựng cây theo vai trò', () => {
     expect(lecturer.flatMap((section) => hrefs(section.items))).not.toContain('/admin/mail');
   });
 
+  it('ADMIN thấy "Bảo mật & khoá màn hình" trong nhóm Hệ thống, role khác không thấy', () => {
+    const admin = buildNavSections(user(['ADMIN']));
+    const system = admin.find((section) => section.id === 'system');
+    expect(hrefs(system?.items ?? [])).toContain('/admin/security');
+    const head = buildNavSections(user(['HEAD_OF_DEPT']));
+    expect(head.flatMap((section) => hrefs(section.items))).not.toContain('/admin/security');
+  });
+
   it('ADMIN thấy "Sao lưu & Phục hồi" trong nhóm Hệ thống, role khác không thấy', () => {
     const admin = buildNavSections(user(['ADMIN']));
     const system = admin.find((section) => section.id === 'system');

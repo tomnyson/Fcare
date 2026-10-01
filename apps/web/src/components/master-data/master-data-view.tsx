@@ -143,6 +143,8 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
   const [termStart, setTermStart] = useState('');
   const [termEnd, setTermEnd] = useState('');
   const [termOverride, setTermOverride] = useState(false);
+  // '' = tự tính theo mốc giữa kỳ; '1' | '2' = admin chỉ định block hiện tại.
+  const [termBlockOverride, setTermBlockOverride] = useState('');
 
   function applyPreset(season: TermSeason, year: number) {
     const p = generateTermPreset(year, season);
@@ -163,6 +165,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
     setTermStart('');
     setTermEnd('');
     setTermOverride(false);
+    setTermBlockOverride('');
   }
 
   const setCurrentMutation = useMutation({
@@ -240,6 +243,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
               ).toISOString(),
               endDate: new Date(`${termEnd || form.get('endDate')}T23:59:59.999Z`).toISOString(),
               isCurrentOverride: termOverride,
+              currentBlockOverride: termBlockOverride ? Number(termBlockOverride) : null,
             }
           : undefined,
     };
@@ -302,6 +306,7 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
                 setTermStart(formatDateForInput(t.startDate));
                 setTermEnd(formatDateForInput(t.endDate));
                 setTermOverride(t.isCurrentOverride);
+                setTermBlockOverride(t.currentBlockOverride ? String(t.currentBlockOverride) : '');
               }
             }}
             className="rounded-md border border-border px-2.5 py-1 text-xs font-semibold text-fpt-blue transition-colors duration-[var(--duration-fast)] hover:border-fpt-blue hover:bg-fpt-orange-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fpt-orange"
@@ -792,6 +797,23 @@ export function MasterDataView({ tab }: { tab: MasterDataTabKey }) {
                 >
                   Đặt làm kỳ hiện tại (bật cờ ưu tiên hiển thị)
                 </Label>
+              </div>
+
+              <div>
+                <Label htmlFor="currentBlockOverride">Block hiện tại</Label>
+                <Select
+                  id="currentBlockOverride"
+                  name="currentBlockOverride"
+                  value={termBlockOverride}
+                  onChange={(e) => setTermBlockOverride(e.target.value)}
+                >
+                  <option value="">Tự động theo ngày (nửa đầu kỳ = Block 1)</option>
+                  <option value="1">Block 1</option>
+                  <option value="2">Block 2</option>
+                </Select>
+                <p className="mt-1 text-xs text-muted">
+                  Cảnh báo điểm danh tự động chỉ phát cho lớp thuộc block hiện tại và lớp học cả kỳ.
+                </p>
               </div>
             </>
           ) : null}

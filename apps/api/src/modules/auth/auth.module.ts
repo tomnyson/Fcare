@@ -7,10 +7,12 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { RecaptchaService } from './recaptcha.service';
+import { SecuritySettingsModule } from '../security-settings/security-settings.module';
 
 @Module({
   imports: [
     PassportModule,
+    SecuritySettingsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

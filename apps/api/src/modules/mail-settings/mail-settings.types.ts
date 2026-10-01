@@ -7,6 +7,8 @@ export interface EffectiveMailConfig {
   fromEmail: string;
   enabled: boolean;
   source: 'DATABASE' | 'ENV';
+  /** Gốc link trong email (DB → WEB_BASE_URL → WEB_ORIGIN), không có `/` cuối. */
+  publicWebUrl: string;
   version: number;
 }
 
@@ -23,6 +25,10 @@ export interface MailSettingsView {
   encryptionReady: boolean;
   /** true khi .env bật NOTIFICATIONS_EXTERNAL_DISABLED — mọi mail/push bị chặn. */
   externalDisabled: boolean;
+  /** Địa chỉ web ADMIN đặt (null = dùng biến môi trường). */
+  publicWebUrl: string | null;
+  /** Giá trị dự phòng từ biến môi trường — hiển thị để ADMIN biết đang dùng gì. */
+  envPublicWebUrl: string;
   lastTestedAt: string | null;
   lastTestOk: boolean | null;
   updatedAt: string | null;
@@ -39,6 +45,8 @@ export interface UpdateMailSettingsInput {
   fromName: string;
   fromEmail: string;
   enabled: boolean;
+  /** Chuỗi rỗng/null → xoá, quay về biến môi trường. */
+  publicWebUrl?: string | null;
 }
 
 export interface SendTestMailInput {

@@ -3,15 +3,15 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useId, useState, type ReactNode } from 'react';
+import { useCallback, useId, useState, type ReactNode } from 'react';
 import { apiFetch } from '../../lib/api';
-import { formatNavBadge } from '../../lib/attendance-care';
+import { formatNavBadge, openAlertsBadgeCount } from '../../lib/attendance-care';
 import { resetPush } from '../../lib/push/onesignal';
 import { BrandMark } from '../ui/brand-mark';
 import { ROLE_LABELS } from '../../lib/labels';
-import { isSystemPinEnabled } from '../../lib/system-pin';
 import type { AuthUser, StatisticsOverview } from '../../lib/types';
-import { IconChevron, IconLogout } from './nav-icons';
+import { ChangePinModal } from './change-pin-modal';
+import { IconChevron, IconLock, IconLogout } from './nav-icons';
 import { SystemPinModal } from './system-pin-modal';
 import {
   buildNavSections,
@@ -47,9 +47,8 @@ function useNavBadges(): NavBadges {
     queryFn: () => apiFetch<StatisticsOverview>('/statistics/overview'),
     retry: false,
   });
-  const total = (data?.openAlertsByLevel ?? []).reduce((sum, item) => sum + item.count, 0);
   return {
-    openAlerts: formatNavBadge(total),
+    openAlerts: formatNavBadge(openAlertsBadgeCount(data)),
     attendancePending: formatNavBadge(data?.attendancePending),
   };
 }
@@ -68,7 +67,10 @@ function AlertPill({ badge }: { badge: NavBadges }) {
   }
   if (badge.openAlerts) {
     return (
-      <span className="ml-auto rounded-full bg-fpt-orange/15 px-2 py-0.5 text-[11px] font-bold tabular-nums text-fpt-orange compact:hidden">
+      <span
+        title={`${badge.openAlerts} cảnh báo bạn chưa chăm sóc`}
+        className="ml-auto rounded-full bg-fpt-orange/15 px-2 py-0.5 text-[11px] font-bold tabular-nums text-fpt-orange compact:hidden"
+      >
         {badge.openAlerts}
       </span>
     );
@@ -333,6 +335,7 @@ function Section({
 function SidebarFooter({ user }: { user: AuthUser }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [changingPin, setChangingPin] = useState(false);
 
   async function onLogout() {
     // Gỡ định danh push trước — máy dùng chung không nhận cảnh báo của người trước.
@@ -361,6 +364,15 @@ function SidebarFooter({ user }: { user: AuthUser }) {
         </span>
         <button
           type="button"
+          onClick={() => setChangingPin(true)}
+          aria-label="Đổi mã PIN"
+          title="Đổi mã PIN"
+          className="shrink-0 rounded-lg p-2 text-white/50 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fpt-orange/70"
+        >
+          <IconLock className="h-[18px] w-[18px]" />
+        </button>
+        <button
+          type="button"
           onClick={onLogout}
           aria-label="Đăng xuất"
           className="shrink-0 rounded-lg p-2 text-white/50 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fpt-orange/70"
@@ -368,6 +380,7 @@ function SidebarFooter({ user }: { user: AuthUser }) {
           <IconLogout className="h-[18px] w-[18px]" />
         </button>
       </div>
+      <ChangePinModal open={changingPin} onClose={() => setChangingPin(false)} />
     </div>
   );
 }
@@ -387,7 +400,6 @@ export function SidebarPanel({ user, headerAction, priorityBrand = false }: Side
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set<string>());
   const badge = useNavBadges();
   const sections = buildNavSections(user);
-  const pinEnabled = isSystemPinEnabled();
 
   // State cho PIN modal
   const [pinOpen, setPinOpen] = useState(false);
@@ -395,10 +407,6 @@ export function SidebarPanel({ user, headerAction, priorityBrand = false }: Side
 
   /** Được gọi khi user click mục trong system section */
   function handleSystemNavClick(href: string) {
-    if (!pinEnabled) {
-      router.push(href);
-      return;
-    }
     // Nếu đang ở chính tính năng này rồi thì không cần hỏi lại PIN
     if (isNavActive(pathname, href)) {
       router.push(href);
@@ -408,6 +416,11 @@ export function SidebarPanel({ user, headerAction, priorityBrand = false }: Side
     setPendingHref(href);
     setPinOpen(true);
   }
+
+  const closePinGate = useCallback(() => {
+    setPinOpen(false);
+    setPendingHref(null);
+  }, []);
 
   function onToggle(id: string) {
     setCollapsed((current) => {
@@ -449,28 +462,23 @@ export function SidebarPanel({ user, headerAction, priorityBrand = false }: Side
             onToggle={onToggle}
             badge={badge}
             // Chỉ truyền onPinGate cho section "system"
-            onPinGate={section.id === 'system' && pinEnabled ? handleSystemNavClick : undefined}
+            onPinGate={section.id === 'system' ? handleSystemNavClick : undefined}
           />
         ))}
       </nav>
 
       <SidebarFooter user={user} />
 
-      {pinEnabled ? (
-        <SystemPinModal
-          open={pinOpen}
-          targetHref={pendingHref}
-          onSuccess={(href) => {
-            setPinOpen(false);
-            setPendingHref(null);
-            router.push(href);
-          }}
-          onCancel={() => {
-            setPinOpen(false);
-            setPendingHref(null);
-          }}
-        />
-      ) : null}
+      <SystemPinModal
+        open={pinOpen}
+        targetHref={pendingHref}
+        onSuccess={(href) => {
+          setPinOpen(false);
+          setPendingHref(null);
+          router.push(href);
+        }}
+        onCancel={closePinGate}
+      />
     </>
   );
 }

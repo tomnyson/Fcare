@@ -1,3 +1,5 @@
+import { PIN_PROOF_PURPOSE_KEY } from '../../common/decorators/require-pin-proof.decorator';
+import { PinService } from '../auth/pin.service';
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import { BackupController } from './backup.controller';
@@ -48,6 +50,7 @@ describe('BackupController', () => {
       providers: [
         { provide: BackupService, useValue: mockBackupService },
         { provide: BackupSchedulerService, useValue: mockScheduler },
+        { provide: PinService, useValue: { checkProof: jest.fn() } },
       ],
     }).compile();
 
@@ -73,6 +76,15 @@ describe('BackupController', () => {
       staffId: 'admin-1',
       type: 'MANUAL',
     });
+  });
+
+  it('khôi phục đòi bằng chứng PIN BACKUP_RESTORE', () => {
+    expect(
+      Reflect.getMetadata(
+        PIN_PROOF_PURPOSE_KEY,
+        BackupController.prototype.restore,
+      ),
+    ).toBe('BACKUP_RESTORE');
   });
 
   it('should restore backup', async () => {

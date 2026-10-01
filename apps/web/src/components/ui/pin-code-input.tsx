@@ -14,6 +14,8 @@ export interface PinCodeInputProps {
   disabled?: boolean;
   invalid?: boolean;
   autoFocus?: boolean;
+  /** Tên nhóm ô cho trình đọc màn hình. */
+  label?: string;
 }
 
 /** Điền một ký tự vào ô `index`; chỉ giữ chữ số cuối cùng của giá trị nhập. */
@@ -51,6 +53,7 @@ export function PinCodeInput({
   disabled = false,
   invalid = false,
   autoFocus = false,
+  label = 'Mã PIN',
 }: PinCodeInputProps) {
   const refs = useRef<Array<HTMLInputElement | null>>([]);
 
@@ -93,7 +96,7 @@ export function PinCodeInput({
     : 'border-border bg-surface text-ink focus:border-fpt-orange focus:bg-surface-raised';
 
   return (
-    <div className="flex justify-center gap-2" role="group" aria-label="Mã PIN hệ thống">
+    <div className="flex justify-center gap-2" role="group" aria-label={label}>
       {Array.from({ length }, (_, i) => (
         <input
           key={i}

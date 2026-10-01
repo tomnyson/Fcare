@@ -28,6 +28,24 @@ interface ModalProps {
   children: ReactNode;
 }
 
+interface EditableField {
+  value: string;
+  defaultValue: string;
+}
+
+/** Có ô nào đã gõ khác giá trị ban đầu không — dùng để hỏi lại trước khi Esc đóng form. */
+export function hasUnsavedInput(fields: Iterable<EditableField>): boolean {
+  for (const field of fields) {
+    if (field.value.trim() !== field.defaultValue.trim()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const EDITABLE_SELECTOR = 'textarea, input:not([type]), input[type="text"], input[type="search"], input[type="number"]';
+const DISCARD_CONFIRM = 'Nội dung đang nhập chưa được lưu. Đóng và bỏ nội dung này?';
+
 export function Modal({
   title,
   open,
@@ -45,9 +63,16 @@ export function Modal({
       return;
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
+      if (event.key !== 'Escape') {
+        return;
       }
+      const fields = dialogRef.current?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+        EDITABLE_SELECTOR,
+      );
+      if (fields && hasUnsavedInput(fields) && !window.confirm(DISCARD_CONFIRM)) {
+        return;
+      }
+      onClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -75,7 +100,9 @@ export function Modal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-fpt-blue-900/50 p-4 backdrop-blur-sm"
-      onClick={onClose}
+      // Cố ý KHÔNG đóng khi bấm lớp nền: lỡ tay bấm ra ngoài từng làm mất cả form
+      // đang soạn. Chỉ nút ✕/Hủy (hoặc Esc, có hỏi lại nếu đang nhập) mới đóng.
+      data-modal-backdrop
       role="presentation"
     >
       <div
@@ -87,7 +114,6 @@ export function Modal({
         className={`w-full ${SIZE_CLASSES[size]} rounded-[var(--radius-card)] border-t-4 border-fpt-orange bg-white shadow-xl outline-none ${
           scrollBody ? 'flex max-h-[90vh] flex-col overflow-hidden' : 'max-h-[85vh] overflow-y-auto p-6'
         }`}
-        onClick={(event) => event.stopPropagation()}
       >
         <div
           className={`flex items-start justify-between gap-4 ${

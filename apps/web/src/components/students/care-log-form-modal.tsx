@@ -18,6 +18,8 @@ interface CareLogFormModalProps {
   defaultContent?: string;
   /** Học kỳ đang xem — chọn sẵn lớp học phần của kỳ này. */
   term?: string;
+  /** Có giá trị → chế độ sửa lượt này (chỉ nội dung; lớp/cảnh báo giữ nguyên). */
+  editing?: CareLog | null;
   open: boolean;
   onClose: () => void;
   onSaved?: (log: CareLog) => void;
@@ -29,6 +31,7 @@ export function CareLogFormModal({
   alertId,
   defaultContent,
   term = '',
+  editing = null,
   open,
   onClose,
   onSaved,
@@ -41,7 +44,7 @@ export function CareLogFormModal({
   const { data: enrollments } = useQuery({
     queryKey: ['enrollments', studentId],
     queryFn: () => apiFetch<Enrollment[]>(`/enrollments?studentId=${studentId}`),
-    enabled: open,
+    enabled: open && !editing,
   });
   const sectionGroups = careSectionGroups(enrollments ?? []);
   // Gắn cảnh báo thì mặc định theo lớp của cảnh báo (API tự lấy) — không đoán lớp khác.
@@ -51,7 +54,12 @@ export function CareLogFormModal({
 
   const createMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
-      apiFetch<CareLog>('/care-logs', { method: 'POST', body: JSON.stringify(payload) }),
+      editing
+        ? apiFetch<CareLog>(`/care-logs/${editing.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+          })
+        : apiFetch<CareLog>('/care-logs', { method: 'POST', body: JSON.stringify(payload) }),
     onSuccess: async (log) => {
       setError('');
       setPickedSectionId(null);
@@ -71,6 +79,16 @@ export function CareLogFormModal({
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    if (editing) {
+      // Gửi cả chuỗi rỗng: API hiểu là xoá kết quả / hành động tiếp theo.
+      createMutation.mutate({
+        channel: form.get('channel'),
+        content: form.get('content'),
+        outcome: form.get('outcome') ?? '',
+        nextAction: form.get('nextAction') ?? '',
+      });
+      return;
+    }
     createMutation.mutate({
       studentId,
       channel: form.get('channel'),
@@ -89,10 +107,21 @@ export function CareLogFormModal({
   }
 
   return (
-    <Modal title="Ghi nhật ký chăm sóc" open={open} onClose={close}>
-      <form onSubmit={onSubmit} className="space-y-4">
+    <Modal
+      title={editing ? 'Sửa nhật ký chăm sóc' : 'Ghi nhật ký chăm sóc'}
+      open={open}
+      onClose={close}
+    >
+      {/* key: đổi lượt đang sửa thì các ô không kiểm soát nạp lại giá trị ban đầu. */}
+      <form key={editing?.id ?? 'new'} onSubmit={onSubmit} className="space-y-4">
         <FormError>{error}</FormError>
-        {sectionGroups.length > 0 ? (
+        {editing ? (
+          <p className="rounded-md bg-fpt-blue-50 px-3 py-2 text-xs text-muted">
+            Chỉ sửa được nội dung. Lớp học phần và cảnh báo đã gắn giữ nguyên để số liệu chăm sóc
+            không bị lệch.
+          </p>
+        ) : null}
+        {!editing && sectionGroups.length > 0 ? (
           <div>
             <Label htmlFor="care-section">Chăm sóc trong lớp học phần</Label>
             <Select
@@ -126,7 +155,12 @@ export function CareLogFormModal({
         ) : null}
         <div>
           <Label htmlFor="care-channel">Hình thức trao đổi</Label>
-          <Select id="care-channel" name="channel" required defaultValue="IN_PERSON">
+          <Select
+            id="care-channel"
+            name="channel"
+            required
+            defaultValue={editing?.channel ?? 'IN_PERSON'}
+          >
             {Object.entries(CARE_CHANNEL_LABELS).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
@@ -140,24 +174,34 @@ export function CareLogFormModal({
             id="care-content"
             name="content"
             required
-            defaultValue={defaultContent}
+            defaultValue={editing?.content ?? defaultContent}
             placeholder="Nội dung trao đổi với sinh viên…"
           />
         </div>
         <div>
           <Label htmlFor="care-outcome">Kết quả (tùy chọn)</Label>
-          <Textarea id="care-outcome" name="outcome" className="min-h-16" />
+          <Textarea
+            id="care-outcome"
+            name="outcome"
+            className="min-h-16"
+            defaultValue={editing?.outcome ?? undefined}
+          />
         </div>
         <div>
           <Label htmlFor="care-next-action">Hành động tiếp theo (tùy chọn)</Label>
-          <Textarea id="care-next-action" name="nextAction" className="min-h-16" />
+          <Textarea
+            id="care-next-action"
+            name="nextAction"
+            className="min-h-16"
+            defaultValue={editing?.nextAction ?? undefined}
+          />
         </div>
         <div className="flex justify-end gap-3">
           <Button variant="ghost" type="button" onClick={close}>
             Hủy
           </Button>
           <Button type="submit" disabled={createMutation.isPending}>
-            {createMutation.isPending ? 'Đang lưu…' : 'Lưu nhật ký'}
+            {createMutation.isPending ? 'Đang lưu…' : editing ? 'Lưu thay đổi' : 'Lưu nhật ký'}
           </Button>
         </div>
       </form>

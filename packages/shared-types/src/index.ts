@@ -6,3 +6,6 @@ export * from './risk-score';
 export * from './criterion-groups';
 export * from './forced-escalation';
 export * from './discussions';
+export * from './term-block';
+export * from './pin';
+export * from './discussion-format';

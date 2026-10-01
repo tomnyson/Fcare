@@ -9,7 +9,9 @@ import { groupMessagesByDay } from '../../lib/discussion';
 import { useDiscussion } from '../../lib/hooks';
 import { formatDateTime } from '../../lib/labels';
 import type { DiscussionMessage } from '../../lib/types';
-import { FormError, Textarea } from '../ui/form';
+import { FormError } from '../ui/form';
+import { DiscussionBody } from './discussion-body';
+import { DiscussionComposer } from './discussion-composer';
 
 /**
  * Khoảng cách tới đáy khung (px) vẫn được coi là "đang bám đáy". Đủ rộng để một
@@ -25,9 +27,11 @@ const NEAR_BOTTOM_PX = 80;
 export function DiscussionTab({
   studentId,
   currentStaffId,
+  currentStaffCode,
 }: {
   studentId: string;
   currentStaffId: string;
+  currentStaffCode?: string;
 }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState('');
@@ -168,7 +172,15 @@ export function DiscussionTab({
                           : 'border border-border bg-surface-raised text-ink'
                     }`}
                   >
-                    {message.deletedAt ? RECALLED_MESSAGE_TEXT : message.body}
+                    {message.deletedAt ? (
+                      RECALLED_MESSAGE_TEXT
+                    ) : (
+                      <DiscussionBody
+                        body={message.body ?? ''}
+                        mine={mine}
+                        selfCode={currentStaffCode}
+                      />
+                    )}
                   </div>
                   {mine && !message.deletedAt ? (
                     <button
@@ -190,12 +202,13 @@ export function DiscussionTab({
 
       <form onSubmit={onSubmit} className="space-y-3">
         <FormError>{error}</FormError>
-        <Textarea
-          aria-label="Nội dung trao đổi"
+        <DiscussionComposer
+          studentId={studentId}
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={setDraft}
+          disabled={send.isPending}
           maxLength={2000}
-          placeholder="Trao đổi với đồng nghiệp về tình trạng học tập của sinh viên…"
+          placeholder="Trao đổi với đồng nghiệp… **đậm**, _nghiêng_, - danh sách, @mã để nhắc tên"
         />
         <div className="flex items-center justify-between gap-3">
           <p className="text-xs text-muted">

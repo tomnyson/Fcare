@@ -40,6 +40,7 @@ function makeService(staff = makeStaff()) {
     staff: {
       findUnique: jest.fn().mockResolvedValue(staff),
       findFirst: jest.fn().mockResolvedValue(staff),
+      update: jest.fn().mockResolvedValue(staff),
     },
     staffOAuthIdentity: {
       findUnique: jest.fn().mockResolvedValue(null),
@@ -184,5 +185,60 @@ describe('AuthService — đăng nhập Google không bắt đổi mật khẩu 
 
     expect(session.user.mustChangePassword).toBe(true);
     expect(createdAuthMethod(prisma)).toBe('PASSWORD');
+  });
+});
+
+describe('AuthService — khoá PIN theo phiên', () => {
+  function refreshRecord(lockedAt: Date | null) {
+    return {
+      id: 'rt-1',
+      staffId: 'staff-1',
+      consentLogId: 'consent-1',
+      authMethod: 'PASSWORD',
+      revokedAt: null,
+      lockedAt,
+      expiresAt: new Date(Date.now() + 60_000),
+      staff: makeStaff(),
+    };
+  }
+
+  function createdLockedAt(prisma: ReturnType<typeof makeService>['prisma']) {
+    const calls = prisma.refreshToken.create.mock.calls as [
+      { data: { lockedAt?: Date | null } },
+    ][];
+    return calls[0][0].data.lockedAt;
+  }
+
+  it('làm mới token của phiên đang khoá → phiên mới vẫn khoá (không lách khoá bằng /auth/refresh)', async () => {
+    const { service, prisma } = makeService();
+    const lockedAt = new Date('2026-09-30T08:00:00Z');
+    prisma.refreshToken.findUnique.mockResolvedValue(refreshRecord(lockedAt));
+
+    await service.refresh('rt-locked');
+
+    expect(createdLockedAt(prisma)).toEqual(lockedAt);
+  });
+
+  it('làm mới token của phiên không khoá → phiên mới không khoá', async () => {
+    const { service, prisma } = makeService();
+    prisma.refreshToken.findUnique.mockResolvedValue(refreshRecord(null));
+
+    await service.refresh('rt-open');
+
+    expect(createdLockedAt(prisma)).toBeNull();
+  });
+
+  it('đăng nhập lại bằng mật khẩu → xoá đếm PIN sai, phiên mới không khoá', async () => {
+    const { service, prisma } = makeService(
+      makeStaff(await hashPassword('Secret123')),
+    );
+
+    await service.login('GV001', 'Secret123');
+
+    expect(prisma.staff.update).toHaveBeenCalledWith({
+      where: { id: 'staff-1' },
+      data: { pinFailedCount: 0 },
+    });
+    expect(createdLockedAt(prisma)).toBeNull();
   });
 });

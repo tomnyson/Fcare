@@ -4,6 +4,7 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -12,6 +13,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 
 export class CreateTermDto {
@@ -71,6 +73,17 @@ export class CreateTermDto {
   @IsOptional()
   @IsBoolean()
   isCurrentOverride?: boolean;
+
+  @ApiPropertyOptional({
+    enum: [1, 2],
+    nullable: true,
+    description:
+      'Chốt block hiện tại (1 | 2). null = tự tính: nửa đầu kỳ là block 1. Cảnh báo điểm danh tự động chỉ phát cho lớp của block này.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsIn([1, 2], { message: 'Block hiện tại chỉ nhận 1 hoặc 2' })
+  currentBlockOverride?: number | null;
 }
 
 export class UpdateTermDto extends PartialType(CreateTermDto) {}

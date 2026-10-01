@@ -1,3 +1,4 @@
+import { APP_LOCK_EVENT, pinActionForCode } from './pin-codes';
 import { createSessionProbe } from './session-probe';
 import { createSessionRefresher, type RefreshResult } from './session-refresh';
 
@@ -90,10 +91,19 @@ export function redirectToLogin(): void {
   }
 }
 
-/** Điều hướng theo mã lỗi nghiệp vụ của consent gate / mật khẩu tạm. */
+/** Điều hướng theo mã lỗi nghiệp vụ của consent gate / mật khẩu tạm / PIN. */
 function redirectForCode(code: string | undefined): boolean {
   if (typeof window === 'undefined') {
     return false;
+  }
+  const pinAction = pinActionForCode(code);
+  if (pinAction?.kind === 'redirect') {
+    window.location.href = pinAction.href;
+    return true;
+  }
+  if (pinAction?.kind === 'lock') {
+    window.dispatchEvent(new Event(APP_LOCK_EVENT));
+    return true;
   }
   if (code === 'CONSENT_REQUIRED') {
     window.location.href = '/consent';

@@ -113,6 +113,10 @@ model Staff {
   departmentId       String?
   passwordHash       String
   mustChangePassword Boolean  @default(false)
+  /// PIN khoá ứng dụng 6 số (bcrypt) — null = chưa tạo, bị bắt tạo sau khi ký cam kết.
+  pinHash            String?
+  /// Số lần nhập sai PIN liên tiếp; đủ MAX_PIN_ATTEMPTS thì thu hồi mọi phiên.
+  pinFailedCount     Int      @default(0)
   isActive           Boolean  @default(true)
   username           String?  @unique // username nội bộ từ file phân công, KHÔNG phải email
   lecturerType       String? // FULL | PART
@@ -141,6 +145,7 @@ model Staff {
   oauthIdentities               StaffOAuthIdentity[]
   mailSettingsUpdated           MailSetting[]                  @relation("MailSettingUpdatedBy")
   monitoringSettingsUpdated     MonitoringSetting[]            @relation("MonitoringSettingUpdatedBy")
+  securitySettingsUpdated       SecuritySetting[]              @relation("SecuritySettingUpdatedBy")
 
   @@map("staff")
 }
@@ -173,6 +178,8 @@ model MailSetting {
   fromName          String    @map("from_name")
   fromEmail         String    @map("from_email")
   enabled           Boolean   @default(true)
+  /// Gốc link trong email ("Xem chi tiết trên FCare"); null → WEB_BASE_URL/WEB_ORIGIN.
+  publicWebUrl      String?   @map("public_web_url")
   lastTestedAt      DateTime? @map("last_tested_at")
   lastTestOk        Boolean?  @map("last_test_ok")
   updatedById       String?   @map("updated_by_id")
@@ -237,6 +244,19 @@ model MonitoringSetting {
   @@map("monitoring_settings")
 }
 
+/// Cấu hình bảo mật toàn hệ thống (singleton id = "default") — chỉ ADMIN sửa.
+model SecuritySetting {
+  id              String   @id @default("default")
+  /// Không thao tác bao nhiêu phút thì khoá ứng dụng: 3 | 5 | 10 | 15 | 30 | 60.
+  idleLockMinutes Int      @default(15) @map("idle_lock_minutes")
+  updatedById     String?  @map("updated_by_id")
+  updatedBy       Staff?   @relation("SecuritySettingUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("security_settings")
+}
+
 model Role {
   id   String @id @default(uuid())
   key  String @unique // ADMIN | HEAD_OF_DEPT | LECTURER | TRAINING_OFFICER | SA_OFFICER | SA_HEAD
@@ -280,6 +300,8 @@ model RefreshToken {
   authMethod   AuthMethod @default(PASSWORD)
   expiresAt    DateTime
   revokedAt    DateTime?
+  /// Phiên đang bị khoá do không thao tác — chỉ mở bằng PIN. Xoay token giữ nguyên.
+  lockedAt     DateTime?
   createdAt    DateTime   @default(now())
 
   staff      Staff       @relation(fields: [staffId], references: [id], onDelete: Cascade)
@@ -811,6 +833,8 @@ model Term {
   startDate         DateTime
   endDate           DateTime
   isCurrentOverride Boolean    @default(false)
+  /// ADMIN chốt block hiện tại (1 | 2); null = tự tính theo điểm giữa kỳ (`currentTermBlock`).
+  currentBlockOverride Int?
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 

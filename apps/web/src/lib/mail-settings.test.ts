@@ -21,6 +21,8 @@ const view: MailSettingsView = {
   source: 'ENV',
   encryptionReady: true,
   externalDisabled: false,
+  publicWebUrl: null,
+  envPublicWebUrl: 'http://localhost:3000',
   lastTestedAt: null,
   lastTestOk: null,
   updatedAt: null,
@@ -39,7 +41,13 @@ describe('toFormValues', () => {
       fromName: 'FCare',
       fromEmail: 'fcare-noreply@fpt.edu.vn',
       enabled: true,
+      publicWebUrl: '',
     });
+  });
+  it('mang địa chỉ web đã lưu', () => {
+    expect(toFormValues({ ...view, publicWebUrl: 'https://fcare.fpt.edu.vn' }).publicWebUrl).toBe(
+      'https://fcare.fpt.edu.vn',
+    );
   });
 });
 
@@ -64,6 +72,15 @@ describe('validateMailSettings', () => {
       ),
     ).toHaveProperty('password');
   });
+  it('địa chỉ web thiếu http(s):// → lỗi publicWebUrl; bỏ trống hợp lệ', () => {
+    expect(validateMailSettings({ ...ok, publicWebUrl: 'fcare.fpt.edu.vn' }, view)).toHaveProperty(
+      'publicWebUrl',
+    );
+    expect(validateMailSettings({ ...ok, publicWebUrl: 'https://fcare.fpt.edu.vn' }, view)).toEqual(
+      {},
+    );
+    expect(validateMailSettings({ ...ok, publicWebUrl: '  ' }, view)).toEqual({});
+  });
   it('nhập mật khẩu khi máy chủ chưa có khoá mã hoá → lỗi password', () => {
     expect(
       validateMailSettings(
@@ -81,6 +98,14 @@ describe('buildUpdatePayload', () => {
     expect(payload).not.toHaveProperty('password');
     expect(payload.username).toBeNull();
     expect(payload.clearPassword).toBeUndefined();
+    expect(payload.publicWebUrl).toBeNull();
+  });
+  it('địa chỉ web được trim và bỏ dấu / cuối', () => {
+    const payload = buildUpdatePayload({
+      ...toFormValues(view),
+      publicWebUrl: ' https://fcare.fpt.edu.vn/ ',
+    });
+    expect(payload.publicWebUrl).toBe('https://fcare.fpt.edu.vn');
   });
   it('clearPassword=true được gửi, password bị bỏ', () => {
     const payload = buildUpdatePayload({

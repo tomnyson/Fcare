@@ -16,3 +16,12 @@ export function careLogDeletedMessage(ownerCareReset: boolean): string {
     ? 'Đã xoá lượt chăm sóc. Cảnh báo điểm danh sẽ hiện lại "cần chăm sóc" cho giảng viên đứng lớp.'
     : 'Đã xoá lượt chăm sóc.';
 }
+
+/** Nhật ký là lời của người ghi: chỉ chính họ (hoặc ADMIN) sửa — khớp `CareLogsService.update`. */
+export function canEditCareLog(
+  log: { staff?: { id: string } | null },
+  user: { id: string; roles: readonly string[] } | undefined,
+): boolean {
+  if (!user) return false;
+  return user.roles.includes('ADMIN') || log.staff?.id === user.id;
+}

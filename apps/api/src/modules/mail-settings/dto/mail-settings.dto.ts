@@ -7,9 +7,11 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUrl,
   Max,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -72,6 +74,25 @@ export class UpdateMailSettingsDto {
   @ApiProperty()
   @IsBoolean({ message: 'Trường kích hoạt phải là true/false' })
   enabled!: boolean;
+
+  @ApiPropertyOptional({
+    example: 'https://fcare.fpt.edu.vn',
+    description:
+      'Địa chỉ web FCare dùng cho link trong email. Bỏ trống = dùng WEB_ORIGIN.',
+  })
+  @IsOptional()
+  @trim()
+  @ValidateIf((_, value) => value !== '' && value !== null)
+  @IsUrl(
+    {
+      protocols: ['http', 'https'],
+      require_protocol: true,
+      require_tld: false,
+    },
+    { message: 'Địa chỉ web phải bắt đầu bằng http:// hoặc https://' },
+  )
+  @MaxLength(255, { message: 'Địa chỉ web tối đa 255 ký tự' })
+  publicWebUrl?: string | null;
 }
 
 export class SendTestMailDto {

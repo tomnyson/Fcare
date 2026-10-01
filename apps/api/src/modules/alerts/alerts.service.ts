@@ -11,6 +11,7 @@ import type { Queue } from 'bullmq';
 import {
   ALERT_LEVEL_LABELS,
   MIN_CRITICAL_REASON_LENGTH,
+  canAcknowledgeAlert,
   canCloseAlert,
   minVisibleAlertLevel,
   type AlertLevel,
@@ -412,6 +413,16 @@ export class AlertsService {
     if (alert.status !== AlertStatus.OPEN) {
       throw new BadRequestException(
         'Cảnh báo không ở trạng thái chờ tiếp nhận.',
+      );
+    }
+    const acknowledgeable = canAcknowledgeAlert({
+      userId: user.id,
+      roles: user.roles,
+      raisedById: alert.raisedById,
+    });
+    if (!acknowledgeable) {
+      throw new ForbiddenException(
+        'Giảng viên không tự tiếp nhận cảnh báo do chính mình phát.',
       );
     }
     return this.prisma.alert.update({
