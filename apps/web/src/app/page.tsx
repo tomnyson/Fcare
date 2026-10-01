@@ -1,5 +1,9 @@
+import Image from 'next/image';
 import Link from 'next/link';
+import campusPhoto from '../assets/landing/campus.jpg';
+import { ScrollReveal } from '../components/landing/scroll-reveal';
 import { BrandMark } from '../components/ui/brand-mark';
+import { revealIndexStyle } from '../lib/reveal';
 
 const MODULES = [
   {
@@ -61,34 +65,78 @@ export default function Home() {
       <main>
         <section
           aria-labelledby="hero-heading"
-          className="bg-gradient-to-b from-fpt-blue-900 via-fpt-blue-700 to-fpt-blue text-white"
+          className="relative isolate overflow-hidden bg-fpt-blue-900 text-white"
         >
+          {/* Ảnh trang trí: nguồn chỉ 678px nên phủ navy đậm + mờ nhẹ để che nhòe khi phóng to. */}
+          <Image
+            src={campusPhoto}
+            alt=""
+            fill
+            priority
+            placeholder="blur"
+            sizes="100vw"
+            className="landing-backdrop -z-20 object-cover object-[65%_40%] blur-[1px]"
+          />
+          <div
+            aria-hidden
+            className="absolute inset-0 -z-10 bg-fpt-blue-900/85 md:bg-transparent md:bg-gradient-to-r md:from-fpt-blue-900/95 md:via-fpt-blue-900/88 md:via-55% md:to-fpt-blue-700/55"
+          />
+          <div
+            aria-hidden
+            className="absolute inset-x-0 bottom-0 -z-10 h-24 bg-gradient-to-b from-transparent to-fpt-blue-900/70"
+          />
           <div className="mx-auto max-w-6xl px-6 pb-24 pt-16 sm:pt-24">
-            <p className="mb-4 inline-block rounded-full border border-white/25 bg-white/10 px-4 py-1 text-xs font-medium uppercase tracking-widest">
+            <p
+              style={revealIndexStyle(0)}
+              className="landing-in mb-4 inline-block rounded-full border border-white/25 bg-white/10 px-4 py-1 text-xs font-medium uppercase tracking-widest"
+            >
               FPT Education
             </p>
             <h1
               id="hero-heading"
-              className="max-w-3xl font-[family-name:var(--font-display)] text-[length:var(--text-hero)] font-extrabold leading-[1.08] tracking-tight"
+              className="landing-in-lcp max-w-3xl font-[family-name:var(--font-display)] text-[length:var(--text-hero)] font-extrabold leading-[1.08] tracking-tight"
             >
-              Chăm sóc sinh viên <span className="text-fpt-orange">đúng người</span>, cảnh báo{' '}
-              <span className="text-fpt-orange">đúng lúc</span>.
+              Chăm sóc sinh viên{' '}
+              <span style={revealIndexStyle(0)} className="landing-mark text-fpt-orange">
+                đúng người
+              </span>
+              , cảnh báo{' '}
+              <span style={revealIndexStyle(1)} className="landing-mark text-fpt-orange">
+                đúng lúc
+              </span>
+              .
             </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-relaxed text-white/80">
+            <p
+              style={revealIndexStyle(2)}
+              className="landing-in mt-6 max-w-2xl text-lg leading-relaxed text-white/80"
+            >
               FCare giúp giảng viên, trưởng bộ môn và cán bộ CTSV theo dõi tình hình học tập, ghi
               nhận chăm sóc và phát hiện sớm sinh viên cần hỗ trợ — trên nền tảng dữ liệu tối giản,
               tôn trọng quyền riêng tư.
             </p>
-            <div className="mt-10 flex flex-wrap items-center gap-4">
+            <div
+              style={revealIndexStyle(3)}
+              className="landing-in mt-10 flex flex-wrap items-center gap-4"
+            >
               <Link
                 href="/login"
-                className="rounded-md bg-fpt-orange px-7 py-3 font-semibold shadow-lg shadow-fpt-orange/25 transition-transform duration-[var(--duration-fast)] hover:-translate-y-0.5 hover:bg-fpt-orange-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                className="group inline-flex items-center gap-2 rounded-md bg-fpt-orange px-7 py-3 font-semibold shadow-lg shadow-fpt-orange/25 transition-[transform,background-color] duration-[var(--duration-fast)] ease-[var(--ease-out-expo)] hover:-translate-y-0.5 hover:bg-fpt-orange-600 focus-visible:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white active:translate-y-0 active:bg-fpt-orange-600"
               >
                 Vào hệ thống
+                <svg
+                  aria-hidden
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  className="size-4 transition-transform duration-[var(--duration-normal)] ease-[var(--ease-out-expo)] group-hover:translate-x-1 group-focus-visible:translate-x-1"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 10h12m-5-5 5 5-5 5" />
+                </svg>
               </Link>
               <a
                 href="#modules"
-                className="rounded-md border border-white/30 px-7 py-3 font-medium transition-colors duration-[var(--duration-fast)] hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                className="rounded-md border border-white/30 px-7 py-3 font-medium transition-colors duration-[var(--duration-fast)] hover:bg-white/10 active:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
                 Tìm hiểu thêm
               </a>
@@ -103,25 +151,29 @@ export default function Home() {
         >
           <div className="mx-auto max-w-6xl px-6">
             <h2
+              data-reveal=""
               id="modules-heading"
               className="font-[family-name:var(--font-display)] text-3xl font-bold tracking-tight text-fpt-blue-900"
             >
               Bốn trụ cột nghiệp vụ
             </h2>
-            <p className="mt-3 max-w-xl text-muted">
+            <p data-reveal="" style={revealIndexStyle(1)} className="mt-3 max-w-xl text-muted">
               Thiết kế bám sát quy trình chăm sóc sinh viên của FPT Polytechnic.
             </p>
             <div className="mt-12 grid gap-6 sm:grid-cols-2">
-              {MODULES.map((mod) => (
-                <article
-                  key={mod.title}
-                  className={`rounded-[var(--radius-card)] border border-border ${mod.accent} border-t-4 bg-white p-7 shadow-[var(--shadow-card)] transition-transform duration-[var(--duration-normal)] ease-[var(--ease-out-expo)] hover:-translate-y-1`}
-                >
-                  <h3 className="font-[family-name:var(--font-display)] text-xl font-semibold text-fpt-blue-900">
-                    {mod.title}
-                  </h3>
-                  <p className="mt-3 leading-relaxed text-muted">{mod.description}</p>
-                </article>
+              {MODULES.map((mod, index) => (
+                // Lớp ngoài lo hiện dần (có delay so le), card trong lo hover —
+                // tách ra để delay so le không làm hover bị trễ.
+                <div key={mod.title} data-reveal="" style={revealIndexStyle(index)}>
+                  <article
+                    className={`h-full rounded-[var(--radius-card)] border border-border ${mod.accent} border-t-4 bg-white p-7 shadow-[var(--shadow-card)] transition-[transform,box-shadow] duration-[var(--duration-normal)] ease-[var(--ease-out-expo)] hover:-translate-y-1 hover:shadow-[var(--shadow-card-hover)]`}
+                  >
+                    <h3 className="font-[family-name:var(--font-display)] text-xl font-semibold text-fpt-blue-900">
+                      {mod.title}
+                    </h3>
+                    <p className="mt-3 leading-relaxed text-muted">{mod.description}</p>
+                  </article>
+                </div>
               ))}
             </div>
           </div>
@@ -132,7 +184,7 @@ export default function Home() {
           className="border-y border-border bg-fpt-orange-50 py-[var(--space-section)]"
         >
           <div className="mx-auto grid max-w-6xl gap-10 px-6 lg:grid-cols-[2fr_3fr]">
-            <div>
+            <div data-reveal="">
               <h2
                 id="privacy-heading"
                 className="font-[family-name:var(--font-display)] text-3xl font-bold tracking-tight text-fpt-blue-900"
@@ -145,8 +197,13 @@ export default function Home() {
               </p>
             </div>
             <ul className="space-y-4">
-              {PRINCIPLES.map((principle) => (
-                <li key={principle} className="flex items-start gap-3">
+              {PRINCIPLES.map((principle, index) => (
+                <li
+                  key={principle}
+                  data-reveal=""
+                  style={revealIndexStyle(index + 1)}
+                  className="flex items-start gap-3"
+                >
                   <span
                     aria-hidden
                     className="mt-1 grid size-5 shrink-0 place-items-center rounded-full bg-fpt-blue text-xs font-bold text-white"
@@ -167,6 +224,7 @@ export default function Home() {
           <p>Dữ liệu nội bộ. Không chia sẻ ra bên ngoài.</p>
         </div>
       </footer>
+      <ScrollReveal />
     </>
   );
 }

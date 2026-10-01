@@ -15,6 +15,10 @@ export interface MailSettingsView {
   encryptionReady: boolean;
   /** .env bật NOTIFICATIONS_EXTERNAL_DISABLED — API chặn mọi email và push. */
   externalDisabled: boolean;
+  /** Địa chỉ web FCare ADMIN đặt cho link trong mail (null = theo biến môi trường). */
+  publicWebUrl: string | null;
+  /** Giá trị dự phòng từ WEB_BASE_URL/WEB_ORIGIN của máy chủ. */
+  envPublicWebUrl: string;
   lastTestedAt: string | null;
   lastTestOk: boolean | null;
   updatedAt: string | null;
@@ -31,6 +35,7 @@ export interface MailSettingsFormValues {
   fromName: string;
   fromEmail: string;
   enabled: boolean;
+  publicWebUrl: string;
 }
 
 export interface UpdateMailSettingsPayload {
@@ -43,6 +48,7 @@ export interface UpdateMailSettingsPayload {
   fromName: string;
   fromEmail: string;
   enabled: boolean;
+  publicWebUrl: string | null;
 }
 
 export interface SendTestMailPayload {
@@ -99,6 +105,7 @@ export const MAIL_PRESETS: readonly MailPreset[] = [
 ];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const WEB_URL_RE = /^https?:\/\/[^\s/]+(\/\S*)?$/i;
 const ALLOWED_DOMAINS: readonly string[] = ['fpt.edu.vn', 'fe.edu.vn'];
 const MIN_PORT = 1;
 const MAX_PORT = 65535;
@@ -114,7 +121,12 @@ export function toFormValues(view: MailSettingsView): MailSettingsFormValues {
     fromName: view.fromName,
     fromEmail: view.fromEmail,
     enabled: view.enabled,
+    publicWebUrl: view.publicWebUrl ?? '',
   };
+}
+
+function normalizeWebUrl(value: string): string | null {
+  return value.trim().replace(/\/+$/, '') || null;
 }
 
 /** Áp preset lên form hiện tại — chỉ đụng host/port/secure, giữ tài khoản và người gửi. */
@@ -159,6 +171,10 @@ export function validateMailSettings(
   if (!EMAIL_RE.test(values.fromEmail.trim())) {
     errors.fromEmail = 'Email người gửi không hợp lệ.';
   }
+  const webUrl = values.publicWebUrl.trim();
+  if (webUrl && !WEB_URL_RE.test(webUrl)) {
+    errors.publicWebUrl = 'Địa chỉ web phải bắt đầu bằng http:// hoặc https://';
+  }
   const hasUser = values.username.trim().length > 0;
   const willHavePassword =
     values.password.length > 0 || (view.hasPassword && !values.clearPassword);
@@ -181,6 +197,7 @@ export function buildUpdatePayload(values: MailSettingsFormValues): UpdateMailSe
     fromName: values.fromName.trim(),
     fromEmail: values.fromEmail.trim(),
     enabled: values.enabled,
+    publicWebUrl: normalizeWebUrl(values.publicWebUrl),
   };
   if (values.clearPassword) {
     return { ...base, clearPassword: true };

@@ -173,6 +173,7 @@ export function SectionGradesView({ sectionId }: { sectionId: string }) {
   return (
     <>
       <PageHeader
+        backHref="/class-sections"
         title={`Điểm lớp ${data?.section.code ?? ''}`}
         description={
           data?.section.subject

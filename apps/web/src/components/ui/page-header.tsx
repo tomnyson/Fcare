@@ -1,15 +1,29 @@
 import type { ReactNode } from 'react';
+import { BackButton } from './back-button';
 
 interface PageHeaderProps {
   title: string;
   description?: string;
   actions?: ReactNode;
+  /**
+   * Nút "Quay lại" phía trên tiêu đề. Mặc định bật, lùi theo lịch sử — không có
+   * lịch sử thì về `backHref` (mặc định Tổng quan). `false` để ẩn (trang gốc).
+   */
+  back?: boolean;
+  backHref?: string;
 }
 
-export function PageHeader({ title, description, actions }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  description,
+  actions,
+  back = true,
+  backHref = '/dashboard',
+}: PageHeaderProps) {
   return (
     <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b-2 border-fpt-orange/20 pb-4">
       <div>
+        {back ? <BackButton fallbackHref={backHref} /> : null}
         <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-fpt-blue-900">
           {title}
         </h1>

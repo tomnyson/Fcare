@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -14,7 +15,11 @@ import { CheckPolicies } from '../../common/decorators/check-policies.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/types/auth-user';
 import { CareLogsService } from './care-logs.service';
-import { CreateCareLogDto, ListCareLogsQuery } from './dto/care-log.dto';
+import {
+  CreateCareLogDto,
+  ListCareLogsQuery,
+  UpdateCareLogDto,
+} from './dto/care-log.dto';
 
 @ApiTags('care-logs')
 @Controller('care-logs')
@@ -31,6 +36,17 @@ export class CareLogsController {
   @CheckPolicies((ability: AppAbility) => ability.can('create', 'CareLog'))
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateCareLogDto) {
     return this.careLogsService.create(user, dto);
+  }
+
+  /** Tác giả (hoặc ADMIN) sửa nội dung lượt chăm sóc — service kiểm quyền từng bản ghi. */
+  @Patch(':id')
+  @CheckPolicies((ability: AppAbility) => ability.can('update', 'CareLog'))
+  update(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateCareLogDto,
+  ) {
+    return this.careLogsService.update(user, id, dto);
   }
 
   /** Chỉ ADMIN có `delete CareLog` (manage all) — GV/TBM/CTSV không xoá được. */

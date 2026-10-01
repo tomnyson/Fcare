@@ -103,6 +103,8 @@ export interface Term {
   startDate: string;
   endDate: string;
   isCurrentOverride: boolean;
+  /** ADMIN chốt block hiện tại (1 | 2); null = tự tính theo điểm giữa kỳ. */
+  currentBlockOverride: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -463,6 +465,8 @@ export interface StatisticsOverview {
   openAlertsByLevel: Array<{ level: number; count: number }>;
   /** Cảnh báo điểm danh ở lớp mình đứng lớp mà mình chưa chăm sóc. */
   attendancePending: number;
+  /** Cảnh báo đang mở trong kỳ mà CHÍNH người xem chưa ghi nhật ký chăm sóc (badge menu). */
+  myOpenAlerts: number;
   /**
    * Lớp mình đứng trong kỳ: số lớp và lượt đăng ký (cộng sĩ số, SV học 2 lớp
    * tính 2). `null` với vai trò toàn trường.

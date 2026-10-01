@@ -16,6 +16,8 @@ const view: MailSettingsView = {
   source: 'ENV',
   encryptionReady: true,
   externalDisabled: false,
+  publicWebUrl: null,
+  envPublicWebUrl: 'http://localhost:3000',
   lastTestedAt: null,
   lastTestOk: null,
   updatedAt: null,

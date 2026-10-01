@@ -13,6 +13,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { interval, map, merge, Observable } from 'rxjs';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { SkipEnvelope } from '../../common/decorators/skip-envelope.decorator';
+import { SkipPin } from '../../common/decorators/skip-pin.decorator';
 import type { AuthUser } from '../../common/types/auth-user';
 import { NotificationEventsService } from './notification-events.service';
 import { NotificationsService } from './notifications.service';
@@ -31,6 +32,8 @@ export class NotificationsController {
   /** Realtime: đẩy thông báo mới qua Server-Sent Events (auth bằng cookie). */
   @Sse('stream')
   @SkipEnvelope()
+  // Kết nối dài hạn: khoá PIN do lớp phủ phía web che; không cắt stream giữa chừng.
+  @SkipPin()
   stream(@CurrentUser() user: AuthUser): Observable<MessageEvent> {
     const heartbeat$ = interval(SSE_HEARTBEAT_MS).pipe(
       map((): MessageEvent => ({ type: 'ping', data: { at: Date.now() } })),

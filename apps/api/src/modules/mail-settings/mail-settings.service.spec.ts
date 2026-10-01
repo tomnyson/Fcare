@@ -244,6 +244,54 @@ describe('MailSettingsService', () => {
     expect(second.enabled).toBe(false);
   });
 
+  it('publicWebUrl: DB có giá trị → dùng cho link email; view trả về cả nguồn env dự phòng', async () => {
+    const { service } = build(
+      { WEB_ORIGIN: 'http://localhost:3000' },
+      { ...dbRow, publicWebUrl: 'https://fcare.fpt.edu.vn' },
+    );
+    const config = await service.getEffectiveConfig();
+    expect(config.publicWebUrl).toBe('https://fcare.fpt.edu.vn');
+    const view = await service.getView();
+    expect(view.publicWebUrl).toBe('https://fcare.fpt.edu.vn');
+    expect(view.envPublicWebUrl).toBe('http://localhost:3000');
+  });
+
+  it('publicWebUrl: DB trống → lấy WEB_ORIGIN (kể cả khi chưa có dòng DB)', async () => {
+    const env = { WEB_ORIGIN: 'https://fcare.example/' };
+    expect(
+      (
+        await build(env, {
+          ...dbRow,
+          publicWebUrl: null,
+        }).service.getEffectiveConfig()
+      ).publicWebUrl,
+    ).toBe('https://fcare.example');
+    expect(
+      (await build(env, null).service.getEffectiveConfig()).publicWebUrl,
+    ).toBe('https://fcare.example');
+  });
+
+  it('update lưu publicWebUrl đã chuẩn hoá; chuỗi rỗng → null', async () => {
+    const { service, prisma } = build({ SETTINGS_ENCRYPTION_KEY: KEY }, null);
+    const base = {
+      host: 'smtp.x',
+      port: 587,
+      secure: false,
+      fromName: 'FCare',
+      fromEmail: 'fcare@fpt.edu.vn',
+      enabled: true,
+    };
+    await service.update('admin-1', {
+      ...base,
+      publicWebUrl: 'https://fcare.fpt.edu.vn/',
+    });
+    expect(upsertArgsAt(prisma, 0).create.publicWebUrl).toBe(
+      'https://fcare.fpt.edu.vn',
+    );
+    await service.update('admin-1', { ...base, publicWebUrl: '' });
+    expect(upsertArgsAt(prisma, 1).update.publicWebUrl).toBeNull();
+  });
+
   it('formatFrom ghép "Tên" <email>', () => {
     const { service } = build({}, null);
     expect(

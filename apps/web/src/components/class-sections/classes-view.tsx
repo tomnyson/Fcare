@@ -24,7 +24,7 @@ import { StatCard } from '../ui/stat-card';
 import { apiFetch } from '../../lib/api';
 import type { ClassSection } from '../../lib/types';
 import { useCurrentTerm, useTerms } from '../../lib/use-current-term';
-import { formatSlot, formatWeekdays } from './classes-helpers';
+import { blockOptionLabel, formatSlot, formatWeekdays, viewedTermBlock } from './classes-helpers';
 import {
   CLASSES_VIEW_MODE_STORAGE_KEY,
   type ClassSectionsViewMode,
@@ -54,9 +54,7 @@ export function ClassesView() {
 
   const [viewMode, setViewMode] = useState<ClassSectionsViewMode>(() => {
     const saved =
-      typeof window !== 'undefined'
-        ? localStorage.getItem(CLASSES_VIEW_MODE_STORAGE_KEY)
-        : null;
+      typeof window !== 'undefined' ? localStorage.getItem(CLASSES_VIEW_MODE_STORAGE_KEY) : null;
     return resolveViewMode(viewParam, saved);
   });
 
@@ -116,7 +114,11 @@ export function ClassesView() {
 
   const activeTermCode = termParam || currentTerm?.code || '';
 
-  const { data: sections = [], isLoading, isFetching } = useQuery({
+  const {
+    data: sections = [],
+    isLoading,
+    isFetching,
+  } = useQuery({
     queryKey: ['class-sections', activeTermCode],
     queryFn: () =>
       apiFetch<ClassSection[]>(
@@ -172,17 +174,12 @@ export function ClassesView() {
     resetKey: `${activeTermCode}|${searchParam}|${blockParam}|${alertStatusParam}|${viewMode}`,
   });
   const totalClasses = filteredSections.length;
-  const totalStudents = filteredSections.reduce(
-    (sum, s) => sum + (s._count?.enrollments ?? 0),
-    0,
-  );
-  const totalAlerts = filteredSections.reduce(
-    (sum, s) => sum + (s.openAlertCount ?? 0),
-    0,
-  );
+  const totalStudents = filteredSections.reduce((sum, s) => sum + (s._count?.enrollments ?? 0), 0);
+  const totalAlerts = filteredSections.reduce((sum, s) => sum + (s.openAlertCount ?? 0), 0);
 
   const hasActiveFilters = Boolean(searchParam || blockParam || alertStatusParam);
   const selectedTermObj = terms.find((t) => t.code === activeTermCode);
+  const currentBlock = viewedTermBlock(selectedTermObj, currentTerm?.code);
 
   return (
     <div className="space-y-6">
@@ -218,7 +215,12 @@ export function ClassesView() {
                     : 'text-muted hover:text-ink hover:bg-white/80'
                 }`}
               >
-                <svg className="size-3.5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <svg
+                  className="size-3.5"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
                   <path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3zm8 0A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3zm-8 8A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3zm8 0A1.5 1.5 0 0 1 10.5 9h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 9 13.5v-3z" />
                 </svg>
                 <span>Thẻ</span>
@@ -234,8 +236,16 @@ export function ClassesView() {
                     : 'text-muted hover:text-ink hover:bg-white/80'
                 }`}
               >
-                <svg className="size-3.5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                  <path fillRule="evenodd" d="M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5zm0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5zm0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5z" />
+                <svg
+                  className="size-3.5"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M2.5 12a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5zm0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5zm0-4a.5.5 0 0 1 .5-.5h10a.5.5 0 0 1 0 1H3a.5.5 0 0 1-.5-.5z"
+                  />
                 </svg>
                 <span>Danh sách</span>
               </button>
@@ -296,8 +306,7 @@ export function ClassesView() {
             >
               {terms.map((t) => (
                 <option key={t.id} value={t.code}>
-                  {t.name} ({t.code})
-                  {t.code === currentTerm?.code ? ' — Kỳ hiện tại' : ''}
+                  {t.name} ({t.code}){t.code === currentTerm?.code ? ' — Kỳ hiện tại' : ''}
                 </option>
               ))}
             </Select>
@@ -310,9 +319,14 @@ export function ClassesView() {
               onChange={(e) => setFilters({ block: e.target.value })}
             >
               <option value="">Tất cả các block</option>
-              <option value="1">Block 1</option>
-              <option value="2">Block 2</option>
+              <option value="1">{blockOptionLabel(1, currentBlock)}</option>
+              <option value="2">{blockOptionLabel(2, currentBlock)}</option>
             </Select>
+            {currentBlock ? (
+              <p className="mt-1 text-xs text-muted">
+                Cảnh báo điểm danh tự động chỉ phát cho lớp Block {currentBlock} và lớp học cả kỳ.
+              </p>
+            ) : null}
           </FilterField>
 
           <FilterField label="Cảnh báo học vụ" htmlFor="filter-alert-status">
@@ -454,7 +468,9 @@ export function ClassesView() {
                   </Link>
                 </Td>
                 <Td>
-                  <p className="font-semibold text-ink line-clamp-1">{section.subject?.name ?? '—'}</p>
+                  <p className="font-semibold text-ink line-clamp-1">
+                    {section.subject?.name ?? '—'}
+                  </p>
                   <p className="text-xs text-muted font-mono">
                     {section.subject?.code}
                     {section.subject?.credits ? ` · ${section.subject.credits} tín chỉ` : ''}
@@ -470,9 +486,7 @@ export function ClassesView() {
                     ) : null}
                   </div>
                 </Td>
-                <Td className="text-xs font-medium text-ink">
-                  {formatWeekdays(section.weekdays)}
-                </Td>
+                <Td className="text-xs font-medium text-ink">{formatWeekdays(section.weekdays)}</Td>
                 <Td className="text-xs text-ink whitespace-nowrap">
                   {formatSlot(section.slot, section.trainingTime)}
                 </Td>
@@ -484,7 +498,9 @@ export function ClassesView() {
                   )}
                 </Td>
                 <Td className="text-xs max-w-[140px] truncate">
-                  <span title={section.lecturer?.fullName}>{section.lecturer?.fullName ?? '—'}</span>
+                  <span title={section.lecturer?.fullName}>
+                    {section.lecturer?.fullName ?? '—'}
+                  </span>
                 </Td>
                 <Td className="whitespace-nowrap tabular-nums">
                   <span className="font-bold text-ink">{studentCount}</span>

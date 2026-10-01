@@ -29,7 +29,6 @@ interface SendMailOptions {
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private readonly webBaseUrl: string;
   private transportFactory: MailTransportFactory = createMailTransport;
   private cached: { version: number; transport: MailTransport } | null = null;
 
@@ -37,10 +36,11 @@ export class EmailService {
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly mailSettings: MailSettingsService,
-  ) {
-    this.webBaseUrl =
-      this.config.get<string>('WEB_BASE_URL') ??
-      this.config.get<string>('WEB_ORIGIN', 'http://localhost:3000');
+  ) {}
+
+  /** Gốc link trong mail — ADMIN đặt ở Cấu hình mail, dự phòng WEB_BASE_URL/WEB_ORIGIN. */
+  private async webBaseUrl(): Promise<string> {
+    return (await this.mailSettings.getEffectiveConfig()).publicWebUrl;
   }
 
   private transportFor(config: EffectiveMailConfig): MailTransport {
@@ -131,7 +131,7 @@ export class EmailService {
       level: alert.level,
       reason: alert.reason,
       raisedByName: alert.raisedBy?.fullName ?? 'Hệ thống (rà soát điểm danh)',
-      actionUrl: `${this.webBaseUrl}/alerts`,
+      actionUrl: `${await this.webBaseUrl()}/alerts`,
     });
 
     return this.sendMail({
@@ -196,7 +196,7 @@ export class EmailService {
       outcome: careLog.outcome,
       nextAction: careLog.nextAction,
       staffName: careLog.staff.fullName,
-      actionUrl: `${this.webBaseUrl}/students/${careLog.studentId}`,
+      actionUrl: `${await this.webBaseUrl()}/students/${careLog.studentId}`,
     });
 
     return this.sendMail({
@@ -244,7 +244,7 @@ export class EmailService {
       student: message.student,
       authorName: message.author.fullName,
       messagePreview: preview,
-      actionUrl: `${this.webBaseUrl}/students/${message.studentId}?tab=discussion`,
+      actionUrl: `${await this.webBaseUrl()}/students/${message.studentId}?tab=discussion`,
     });
 
     return this.sendMail({

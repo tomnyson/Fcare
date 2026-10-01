@@ -23,6 +23,7 @@ import {
 import { Modal } from '../../../components/ui/modal';
 import { PageHeader } from '../../../components/ui/page-header';
 import { apiFetch, ApiError } from '../../../lib/api';
+import { pinProofHeaders } from '../../../lib/pin-lock';
 import { useMe } from '../../../lib/hooks';
 import {
   ALERT_LEVEL_LABELS,
@@ -233,9 +234,13 @@ function AlertsPageContent() {
   // Xoá đơn lẻ hay cả lô đều đi một đường; xoá hết dòng của trang > 1 thì lùi
   // một trang thay vì đứng ở trang trống.
   const deleteMutation = useMutation({
-    mutationFn: (ids: string[]) =>
-      apiFetch('/alerts/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
-    onSuccess: async (_result, ids) => {
+    mutationFn: ({ ids, pinProof }: { ids: string[]; pinProof: string }) =>
+      apiFetch('/alerts/bulk-delete', {
+        method: 'POST',
+        headers: pinProofHeaders(pinProof),
+        body: JSON.stringify({ ids }),
+      }),
+    onSuccess: async (_result, { ids }) => {
       setSelected((prev) => {
         const next = new Set(prev);
         for (const id of ids) next.delete(id);
@@ -638,7 +643,9 @@ function AlertsPageContent() {
         ids={deletingIds}
         open={deletingIds.length > 0}
         onClose={() => setDeletingIds([])}
-        onConfirmDelete={(ids) => deleteMutation.mutateAsync(ids).then(() => undefined)}
+        onConfirmDelete={(ids, pinProof) =>
+          deleteMutation.mutateAsync({ ids, pinProof }).then(() => undefined)
+        }
       />
 
       <Modal

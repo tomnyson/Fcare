@@ -53,6 +53,7 @@ export default function StudentAnalysisDetailPage() {
     return (
       <>
         <PageHeader
+          backHref={`/students/${data.student.id}`}
           title={`Phân tích AI · ${data.student.fullName}`}
           description={`${data.student.studentCode} · Học kỳ ${data.term}`}
           actions={
@@ -76,6 +77,7 @@ export default function StudentAnalysisDetailPage() {
   return (
     <>
       <PageHeader
+        backHref={`/students/${data.student.id}`}
         title={`Phân tích AI · ${data.student.fullName}`}
         description={`${data.student.studentCode} · Học kỳ ${data.term}`}
         actions={

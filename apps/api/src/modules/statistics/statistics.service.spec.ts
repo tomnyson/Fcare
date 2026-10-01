@@ -60,9 +60,33 @@ function setup(currentTerm: typeof FA26 | null = FA26) {
     alert: {
       groupBy: jest.fn().mockResolvedValue([{ level: 2, _count: { _all: 3 } }]),
       count: jest.fn().mockResolvedValue(2),
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: 'a1',
+          studentId: 'sv-1',
+          createdAt: new Date('2026-09-10T00:00:00Z'),
+        },
+        {
+          id: 'a2',
+          studentId: 'sv-2',
+          createdAt: new Date('2026-09-12T00:00:00Z'),
+        },
+        {
+          id: 'a3',
+          studentId: 'sv-3',
+          createdAt: new Date('2026-09-15T00:00:00Z'),
+        },
+      ]),
     },
     careLog: {
       count: jest.fn().mockResolvedValueOnce(9).mockResolvedValueOnce(5),
+      findMany: jest.fn().mockResolvedValue([
+        {
+          studentId: 'sv-1',
+          alertId: null,
+          createdAt: new Date('2026-09-11T00:00:00Z'),
+        },
+      ]),
     },
     term: { findUnique: jest.fn().mockResolvedValue(SU26) },
     classSection: { count: jest.fn().mockResolvedValue(7) },
@@ -94,8 +118,41 @@ describe('StatisticsService.overview — chỉ thống kê trong một kỳ', ()
       studentsByStatus: [{ status: 'STUDYING', count: 12 }],
       openAlertsByLevel: [{ level: 2, count: 3 }],
       attendancePending: 2,
+      myOpenAlerts: 2,
       teaching: { sections: 7, enrollments: 179 },
     });
+  });
+
+  it('myOpenAlerts: cảnh báo mở trong kỳ trừ những cảnh báo CHÍNH mình đã chăm sóc', async () => {
+    const { service, prisma } = setup();
+    await service.overview(lecturer);
+    expect(prisma.alert.findMany).toHaveBeenCalledWith({
+      where: {
+        AND: [
+          FA26_ALERTS,
+          { status: { not: 'RESOLVED' } },
+          { student: LECTURER_SCOPE },
+        ],
+      },
+      select: { id: true, studentId: true, createdAt: true },
+    });
+    // Chỉ nhật ký của người đang xem, về đúng các SV có cảnh báo, từ cảnh báo sớm nhất.
+    expect(prisma.careLog.findMany).toHaveBeenCalledWith({
+      where: {
+        staffId: 'gv-chi',
+        studentId: { in: ['sv-1', 'sv-2', 'sv-3'] },
+        createdAt: { gte: new Date('2026-09-10T00:00:00Z') },
+      },
+      select: { studentId: true, alertId: true, createdAt: true },
+    });
+  });
+
+  it('myOpenAlerts: không có cảnh báo mở → 0, không đọc nhật ký', async () => {
+    const { service, prisma } = setup();
+    prisma.alert.findMany.mockResolvedValueOnce([]);
+    const result = await service.overview(lecturer);
+    expect(result.myOpenAlerts).toBe(0);
+    expect(prisma.careLog.findMany).not.toHaveBeenCalled();
   });
 
   it('tổng SV chỉ đếm SV có đăng ký lớp học phần của kỳ (không cộng dồn các kỳ)', async () => {
@@ -241,6 +298,7 @@ describe('StatisticsService.overview — chỉ thống kê trong một kỳ', ()
       warnedStudents: 0,
       careLogsInTerm: 0,
       attendancePending: 0,
+      myOpenAlerts: 0,
     });
     expect(prisma.student.count).not.toHaveBeenCalled();
     expect(prisma.alert.count).not.toHaveBeenCalled();

@@ -10,6 +10,7 @@ import {
 } from '../../common/utils/dept-scope';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TermsService } from '../master-data/terms.service';
+import { countAlertsAwaitingMyCare } from './my-alert-care';
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -50,6 +51,7 @@ export class StatisticsService {
         studentsByStatus: [],
         openAlertsByLevel: [],
         attendancePending: 0,
+        myOpenAlerts: 0,
         teaching: null,
       };
     }
@@ -87,6 +89,7 @@ export class StatisticsService {
       careLogsInTerm,
       careLogsLast7Days,
       attendancePending,
+      myOpenAlerts,
       teaching,
     ] = await Promise.all([
       this.prisma.student.count({ where: studentsInTerm }),
@@ -115,6 +118,9 @@ export class StatisticsService {
         },
       }),
       this.countAttendancePending(user, current?.code ?? null),
+      this.countMyOpenAlerts(user, {
+        AND: [...openAlertsInTerm, { student: scope }],
+      }),
       this.countTeaching(user, term.code),
     ]);
 
@@ -133,8 +139,37 @@ export class StatisticsService {
         count: group._count._all,
       })),
       attendancePending,
+      myOpenAlerts,
       teaching,
     };
+  }
+
+  /**
+   * Cảnh báo đang mở mà người xem chưa chăm sóc (badge menu "Cảnh báo") —
+   * xem `countAlertsAwaitingMyCare`. Đọc nhật ký của CHÍNH người xem, chỉ về
+   * các SV có cảnh báo và từ cảnh báo sớm nhất, nên tập dữ liệu luôn nhỏ.
+   */
+  private async countMyOpenAlerts(
+    user: AuthUser,
+    openAlerts: Prisma.AlertWhereInput,
+  ): Promise<number> {
+    const alerts = await this.prisma.alert.findMany({
+      where: openAlerts,
+      select: { id: true, studentId: true, createdAt: true },
+    });
+    if (alerts.length === 0) return 0;
+    const earliest = new Date(
+      Math.min(...alerts.map((alert) => alert.createdAt.getTime())),
+    );
+    const myLogs = await this.prisma.careLog.findMany({
+      where: {
+        staffId: user.id,
+        studentId: { in: [...new Set(alerts.map((alert) => alert.studentId))] },
+        createdAt: { gte: earliest },
+      },
+      select: { studentId: true, alertId: true, createdAt: true },
+    });
+    return countAlertsAwaitingMyCare(alerts, myLogs);
   }
 
   /**

@@ -108,6 +108,12 @@ export class AuthService {
       throw new UnauthorizedException(INVALID_CREDENTIALS_MESSAGE);
     }
 
+    // Đăng nhập lại bằng mật khẩu = đã chứng minh danh tính → xoá đếm PIN sai còn sót.
+    await this.prisma.staff.update({
+      where: { id: staff.id },
+      data: { pinFailedCount: 0 },
+    });
+
     // Cam kết bảo mật là bắt buộc với MỖI lần đăng nhập → consented luôn false ở đây.
     const user = this.toAuthUser(staff, {
       consented: false,
@@ -332,10 +338,12 @@ export class AuthService {
         where: { id: record.id },
         data: { revokedAt: new Date() },
       }),
+      // Giữ trạng thái khoá PIN: xoay token không được là đường tắt để mở khoá.
       this.issueRefreshToken(
         record.staffId,
         record.consentLogId,
         record.authMethod,
+        record.lockedAt,
       ),
     ]);
 
@@ -409,6 +417,7 @@ export class AuthService {
     staffId: string,
     consentLogId: string | null,
     authMethod: AuthMethod,
+    lockedAt: Date | null = null,
   ): Promise<string> {
     const value = randomBytes(48).toString('base64url');
     await this.prisma.refreshToken.create({
@@ -416,6 +425,7 @@ export class AuthService {
         staffId,
         consentLogId,
         authMethod,
+        lockedAt,
         tokenHash: hashToken(value),
         expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
       },
@@ -458,7 +468,7 @@ export class AuthService {
   }
 }
 
-function hashToken(value: string): string {
+export function hashToken(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 

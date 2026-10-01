@@ -61,10 +61,30 @@ describe('alertRowActions', () => {
     expect(ACKNOWLEDGER_ROLES).not.toContain('LECTURER');
   });
 
+  it('GV tiếp nhận được cảnh báo hệ thống tự phát hoặc người khác phát', () => {
+    const system = { ...row, raisedById: null };
+    expect(alertRowActions({ ...system, roles: ['LECTURER'], status: 'OPEN' }).canAcknowledge).toBe(
+      true,
+    );
+    expect(alertRowActions({ ...row, roles: ['LECTURER'], status: 'OPEN' }).canAcknowledge).toBe(
+      true,
+    );
+  });
+
+  it('GV KHÔNG tiếp nhận cảnh báo chính mình phát, và chỉ khi còn OPEN', () => {
+    const mine = { ...row, raisedById: 'me' };
+    expect(alertRowActions({ ...mine, roles: ['LECTURER'], status: 'OPEN' }).canAcknowledge).toBe(
+      false,
+    );
+    expect(
+      alertRowActions({ ...row, roles: ['LECTURER'], status: 'ACKNOWLEDGED' }).canAcknowledge,
+    ).toBe(false);
+  });
+
   it('GV đứng lớp của cảnh báo chốt được; GV khác thì không', () => {
     const own = { ...row, sectionLecturerId: 'me' };
     expect(alertRowActions({ ...own, roles: ['LECTURER'], status: 'OPEN' })).toEqual({
-      canAcknowledge: false,
+      canAcknowledge: true,
       canResolve: true,
       canDelete: false,
     });

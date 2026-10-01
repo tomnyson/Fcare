@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -9,9 +10,14 @@ import { AlertStatus, Prisma } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
 import type { AuthUser } from '../../common/types/auth-user';
 import { studentScope } from '../../common/utils/dept-scope';
+import { assertNoPii } from '../../common/utils/pii-text';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
-import { CreateCareLogDto, ListCareLogsQuery } from './dto/care-log.dto';
+import {
+  CreateCareLogDto,
+  ListCareLogsQuery,
+  UpdateCareLogDto,
+} from './dto/care-log.dto';
 
 const staffSelect = { id: true, staffCode: true, fullName: true } as const;
 
@@ -146,6 +152,55 @@ export class CareLogsService {
   }
 
   /**
+   * Sửa nội dung một lượt chăm sóc. Chỉ người ghi (hoặc ADMIN) được sửa —
+   * nhật ký là lời của người đó, người khác sửa là mạo danh. Không đổi
+   * sinh viên/cảnh báo/lớp nên `ownerCaredAt` không bị ảnh hưởng.
+   */
+  async update(user: AuthUser, id: string, dto: UpdateCareLogDto) {
+    const log = await this.prisma.careLog.findFirst({
+      where: { id, student: studentScope(user) },
+      select: { id: true, staffId: true, studentId: true },
+    });
+    if (!log) {
+      throw new NotFoundException('Không tìm thấy lượt chăm sóc.');
+    }
+    if (log.staffId !== user.id && !user.roles.includes('ADMIN')) {
+      throw new ForbiddenException(
+        'Chỉ người ghi nhật ký mới được sửa lượt chăm sóc này.',
+      );
+    }
+
+    const data = buildCareLogUpdate(dto);
+    for (const text of [dto.content, dto.outcome, dto.nextAction]) {
+      if (text) assertNoPii(text);
+    }
+
+    const updated = await this.prisma.careLog.update({
+      where: { id },
+      data,
+      include: {
+        staff: { select: staffSelect },
+        alert: { select: alertSummarySelect },
+        classSection: careLogSectionSelect,
+      },
+    });
+
+    // Không chép nội dung vào audit — nội dung tự do có thể lỡ chứa PII.
+    await this.auditService.log({
+      staffId: user.id,
+      action: 'CARE_LOG_UPDATED',
+      entity: 'CareLog',
+      entityId: id,
+      metadata: {
+        careStaffId: log.staffId,
+        studentId: log.studentId,
+        fields: Object.keys(data),
+      },
+    });
+    return updated;
+  }
+
+  /**
    * Xoá một lượt chăm sóc (CASL `delete CareLog` — chỉ ADMIN). Nếu đó là lượt
    * cuối cùng của GV đứng lớp gắn với cảnh báo thì bỏ `ownerCaredAt` để banner
    * "cần chăm sóc" hiện lại, không để số "đã chăm sóc" khai khống.
@@ -277,4 +332,22 @@ export class CareLogsService {
         ),
       );
   }
+}
+
+/** Chỉ các trường được gửi lên; chuỗi rỗng ở trường tùy chọn nghĩa là xoá. */
+function buildCareLogUpdate(dto: UpdateCareLogDto): Prisma.CareLogUpdateInput {
+  const optional = (value: string | undefined) =>
+    value === undefined ? undefined : value.trim() || null;
+  const data: Prisma.CareLogUpdateInput = {
+    ...(dto.channel !== undefined ? { channel: dto.channel } : {}),
+    ...(dto.content !== undefined ? { content: dto.content.trim() } : {}),
+    ...(dto.outcome !== undefined ? { outcome: optional(dto.outcome) } : {}),
+    ...(dto.nextAction !== undefined
+      ? { nextAction: optional(dto.nextAction) }
+      : {}),
+  };
+  if (Object.keys(data).length === 0) {
+    throw new BadRequestException('Không có thay đổi nào để lưu.');
+  }
+  return data;
 }

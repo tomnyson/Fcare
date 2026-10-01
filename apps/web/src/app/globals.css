@@ -23,6 +23,7 @@
   --font-sans: var(--font-body);
   --radius-card: var(--radius-card);
   --shadow-card: var(--shadow-card);
+  --shadow-card-hover: var(--shadow-card-hover);
 }
 
 /* Sidebar thu thành thanh icon dưới lg — nhưng CHỈ khi nằm trong rail. Menu
@@ -80,7 +81,8 @@ body {
 }
 
 @keyframes badge-danger-pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
     transform: scale(1);
     box-shadow: 0 0 0 0 rgba(213, 57, 60, 0.45);
@@ -93,7 +95,8 @@ body {
 }
 
 @keyframes badge-warning-pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
     transform: scale(1);
     box-shadow: 0 0 0 0 rgba(232, 161, 15, 0.45);
@@ -113,3 +116,100 @@ body {
   animation: badge-warning-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+/* ── Landing page motion ─────────────────────────────────────────────────────
+   Chỉ transform / opacity / clip-path. Hero chạy bằng CSS khi tải trang; phần
+   dưới nếp gấp do <ScrollReveal> gắn data-reveal="pending" rồi "shown". */
+
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+/* h1 là phần tử LCP: KHÔNG bắt đầu từ opacity 0 (trình duyệt hoãn tính LCP tới
+   khi chữ hiện hẳn) — chỉ trượt lên. */
+@keyframes landing-rise-lcp {
+  from {
+    transform: translateY(18px);
+  }
+}
+
+@keyframes landing-underline {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* Ảnh nền hero lùi chậm về vị trí; dừng ở scale 1.03 để mép ảnh mờ (blur) không lộ. */
+@keyframes landing-backdrop {
+  from {
+    transform: scale(1.1);
+  }
+}
+
+.landing-backdrop {
+  transform: scale(1.03);
+  animation: landing-backdrop 1400ms var(--ease-out-expo) both;
+}
+
+.landing-in {
+  animation: landing-rise var(--duration-slow) var(--ease-out-expo) both;
+  animation-delay: calc(var(--reveal-index, 0) * var(--stagger-step));
+}
+
+.landing-in-lcp {
+  animation: landing-rise-lcp var(--duration-slow) var(--ease-out-expo) both;
+}
+
+/* Gạch chân kẻ ra sau khi tiêu đề đã vào chỗ — nhấn "đúng người", "đúng lúc". */
+.landing-mark {
+  position: relative;
+  white-space: nowrap;
+}
+
+.landing-mark::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0.04em;
+  height: 0.09em;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.45;
+  transform-origin: left center;
+  animation: landing-underline var(--duration-slow) var(--ease-out-expo) both;
+  animation-delay: calc(var(--duration-normal) + var(--reveal-index, 0) * var(--duration-normal));
+}
+
+[data-reveal] {
+  transition:
+    opacity var(--duration-slow) var(--ease-out-expo),
+    transform var(--duration-slow) var(--ease-out-expo);
+  transition-delay: calc(var(--reveal-index, 0) * var(--stagger-step));
+}
+
+[data-reveal='pending'] {
+  opacity: 0;
+  transform: translateY(24px);
+}
+
+/* Người dùng xin giảm chuyển động → tắt mọi animation/transition toàn trang,
+   kể cả badge nhấp nháy. Nội dung hiện ngay ở trạng thái cuối. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  [data-reveal='pending'] {
+    opacity: 1;
+    transform: none;
+  }
+}

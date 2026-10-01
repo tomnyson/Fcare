@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  type OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -20,6 +25,11 @@ import type {
   UpdateMailSettingsInput,
 } from './mail-settings.types';
 import { isExternalNotificationsDisabled } from '../../common/utils/external-notifications';
+import {
+  isLocalWebUrl,
+  normalizePublicWebUrl,
+  resolvePublicWebUrl,
+} from './public-web-url';
 
 const SETTINGS_ID = 'default';
 const CACHE_TTL_MS = 60_000;
@@ -31,7 +41,7 @@ type MailSettingRow = NonNullable<
 > & { updatedBy: { id: string; fullName: string } | null };
 
 @Injectable()
-export class MailSettingsService {
+export class MailSettingsService implements OnModuleInit {
   private readonly logger = new Logger(MailSettingsService.name);
   private cache: { config: EffectiveMailConfig; expiresAt: number } | null =
     null;
@@ -43,6 +53,31 @@ export class MailSettingsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
   ) {}
+
+  /** Link trong mail theo cấu hình (DB → env). */
+  private publicWebUrlFrom(dbValue: string | null | undefined): string {
+    return resolvePublicWebUrl(dbValue, {
+      WEB_BASE_URL: this.config.get<string>('WEB_BASE_URL'),
+      WEB_ORIGIN: this.config.get<string>('WEB_ORIGIN'),
+    });
+  }
+
+  /** Cảnh báo sớm lúc khởi động: prod mà link mail vẫn là localhost thì người nhận bấm không được. */
+  async onModuleInit(): Promise<void> {
+    if (this.config.get<string>('NODE_ENV') !== 'production') return;
+    try {
+      const { publicWebUrl } = await this.getEffectiveConfig();
+      if (isLocalWebUrl(publicWebUrl)) {
+        this.logger.warn(
+          `Link trong email đang trỏ về ${publicWebUrl}. Đặt "Địa chỉ web FCare" ở Cấu hình mail hoặc biến WEB_ORIGIN.`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Không kiểm tra được địa chỉ web công khai: ${(error as Error).message}`,
+      );
+    }
+  }
 
   private get encryptionKey(): string {
     return this.config.get<string>('SETTINGS_ENCRYPTION_KEY', '');
@@ -69,6 +104,7 @@ export class MailSettingsService {
       fromEmail: this.config.get<string>('SMTP_FROM', DEFAULT_FROM_EMAIL),
       enabled: true,
       source: 'ENV',
+      publicWebUrl: this.publicWebUrlFrom(null),
     };
   }
 
@@ -87,6 +123,8 @@ export class MailSettingsService {
         fromEmail: env.fromEmail,
         enabled: true,
         source: 'ENV',
+        publicWebUrl: null,
+        envPublicWebUrl: env.publicWebUrl,
         encryptionReady,
         externalDisabled: isExternalNotificationsDisabled(this.config),
         lastTestedAt: null,
@@ -112,6 +150,8 @@ export class MailSettingsService {
       fromEmail: row.fromEmail,
       enabled: row.enabled,
       source: 'DATABASE',
+      publicWebUrl: row.publicWebUrl,
+      envPublicWebUrl: this.publicWebUrlFrom(null),
       encryptionReady,
       externalDisabled: isExternalNotificationsDisabled(this.config),
       lastTestedAt: row.lastTestedAt?.toISOString() ?? null,
@@ -135,6 +175,7 @@ export class MailSettingsService {
       fromName: input.fromName.trim(),
       fromEmail: input.fromEmail.trim().toLowerCase(),
       enabled: input.enabled,
+      publicWebUrl: normalizePublicWebUrl(input.publicWebUrl),
       updatedById: actorId,
     };
     const row = await this.prisma.mailSetting.upsert({
@@ -230,6 +271,7 @@ export class MailSettingsService {
       fromEmail: row.fromEmail,
       enabled: row.enabled,
       source: 'DATABASE',
+      publicWebUrl: this.publicWebUrlFrom(row.publicWebUrl),
     };
   }
 
@@ -330,6 +372,7 @@ export class MailSettingsService {
       fromEmail: draft.fromEmail.trim().toLowerCase(),
       enabled: draft.enabled,
       source: 'DATABASE',
+      publicWebUrl: this.publicWebUrlFrom(draft.publicWebUrl),
       version: this.version,
     };
   }

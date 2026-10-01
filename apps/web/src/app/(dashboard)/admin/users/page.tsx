@@ -103,6 +103,7 @@ function AdminUsersPageContent() {
   const [bulkEmailFile, setBulkEmailFile] = useState<File | null>(null);
   const [overrideExistingEmail, setOverrideExistingEmail] = useState(true);
   const [error, setError] = useState('');
+  const [pinResetFor, setPinResetFor] = useState<string | null>(null);
   const [viewingStaff, setViewingStaff] = useState<StaffMember | null>(null);
   const [staffEmailDraft, setStaffEmailDraft] = useState('');
   const [emailSaveSuccess, setEmailSaveSuccess] = useState(false);
@@ -189,6 +190,24 @@ function AdminUsersPageContent() {
     onError: (err) =>
       setError(err instanceof ApiError ? err.message : 'Không thể cấp lại mật khẩu.'),
   });
+
+  const resetPinMutation = useMutation({
+    mutationFn: (member: { id: string; staffCode: string }) =>
+      apiFetch(`/auth/pin/reset/${member.id}`, { method: 'POST' }),
+    onSuccess: (_result, member) => {
+      setError('');
+      setPinResetFor(member.staffCode);
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Không thể đặt lại PIN.'),
+  });
+
+  function confirmResetPin(member: { id: string; staffCode: string; fullName: string }) {
+    setPinResetFor(null);
+    const ok = window.confirm(
+      `Xoá mã PIN của ${member.fullName} (${member.staffCode})? Mọi phiên của họ bị đăng xuất, lần đăng nhập sau phải tạo PIN mới.`,
+    );
+    if (ok) resetPinMutation.mutate(member);
+  }
 
   const toggleActiveMutation = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
@@ -547,6 +566,11 @@ function AdminUsersPageContent() {
               : 'Không tải được danh sách nhân viên.'}
           </FormError>
         ) : null}
+        {pinResetFor ? (
+          <FormSuccess>
+            Đã đặt lại PIN của <strong>{pinResetFor}</strong> — lần đăng nhập sau họ sẽ tạo PIN mới.
+          </FormSuccess>
+        ) : null}
         {tempPasswordInfo ? (
           <FormSuccess>
             Mật khẩu tạm của <strong>{tempPasswordInfo.staffCode}</strong>:{' '}
@@ -738,6 +762,13 @@ function AdminUsersPageContent() {
                   onClick={() => resetMutation.mutate(member.id)}
                 >
                   Cấp lại mật khẩu
+                </button>
+                <button
+                  type="button"
+                  className="text-fpt-blue hover:underline"
+                  onClick={() => confirmResetPin(member)}
+                >
+                  Đặt lại PIN
                 </button>
                 <button
                   type="button"
@@ -1238,6 +1269,13 @@ function AdminUsersPageContent() {
                   onClick={() => resetMutation.mutate(viewingStaff.id)}
                 >
                   Cấp lại mật khẩu
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => confirmResetPin(viewingStaff)}
+                >
+                  Đặt lại PIN
                 </Button>
                 <Button
                   type="button"

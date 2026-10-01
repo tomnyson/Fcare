@@ -1,18 +1,15 @@
 'use client';
 
+import { PIN_LENGTH } from '@fcare/shared-types';
 import { Badge, Button } from '@fcare/ui-kit';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState, type FormEvent } from 'react';
 import { bulkDeletionPreviewLines } from '../../lib/alert-actions';
 import { apiFetch, ApiError } from '../../lib/api';
 import { ALERT_LEVEL_LABELS, ALERT_LEVEL_TONES, ALERT_STATUS_LABELS } from '../../lib/labels';
-import {
-  checkRestoreGate,
-  remainingRestoreAttempts,
-  resolveRestoreGate,
-} from '../../lib/restore-gate';
+import { requestPinProof } from '../../lib/pin-lock';
 import type { AlertBulkDeletionPreview } from '../../lib/types';
-import { FormError, Input, Label } from '../ui/form';
+import { FormError, Label } from '../ui/form';
 import { Modal } from '../ui/modal';
 import { PinCodeInput } from '../ui/pin-code-input';
 
@@ -21,27 +18,26 @@ interface DeleteAlertModalProps {
   ids: string[];
   open: boolean;
   onClose: () => void;
-  /** Ném lỗi nếu API từ chối — modal hiển thị và giữ hộp thoại mở. */
-  onConfirmDelete: (ids: string[]) => Promise<void>;
+  /**
+   * `pinProof` = bằng chứng server cấp sau khi kiểm PIN (header `X-Pin-Proof`).
+   * Ném lỗi nếu API từ chối — modal hiển thị và giữ hộp thoại mở.
+   */
+  onConfirmDelete: (ids: string[], pinProof: string) => Promise<void>;
 }
 
 /**
  * Xoá cảnh báo kèm nhận xét + trao đổi của sinh viên — chỉ ADMIN. Cùng cửa
- * xác nhận với phục hồi database: PIN hệ thống 6 số, rơi về từ khoá khi PIN
- * chưa cấu hình. Danh sách sinh viên và "sẽ mất gì" lấy từ API để không đoán
+ * xác nhận với phục hồi database: PIN cá nhân kiểm ở server. Danh sách sinh viên và "sẽ mất gì" lấy từ API để không đoán
  * mò — id đã chọn ở trang khác vẫn hiện đúng tên.
  */
 export function DeleteAlertModal({ ids, open, onClose, onConfirmDelete }: DeleteAlertModalProps) {
-  const gate = resolveRestoreGate();
   const [input, setInput] = useState('');
-  const [failedAttempts, setFailedAttempts] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       setInput('');
-      setFailedAttempts(0);
       setError(null);
     }
   }, [open]);
@@ -59,43 +55,32 @@ export function DeleteAlertModal({ ids, open, onClose, onConfirmDelete }: Delete
 
   if (ids.length === 0) return null;
 
-  const remaining = remainingRestoreAttempts(failedAttempts);
-  const isLocked = remaining === 0;
-  const isComplete =
-    gate.kind === 'pin' ? input.length === gate.length : checkRestoreGate(gate, input).ok;
+  const isComplete = input.length === PIN_LENGTH;
   const previewError =
     preview.error instanceof ApiError
       ? preview.error.message
       : preview.error
         ? 'Không tải được.'
         : null;
-  const canSubmit = isComplete && !isSubmitting && !isLocked && preview.isSuccess;
+  const canSubmit = isComplete && !isSubmitting && preview.isSuccess;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (isLocked || !preview.isSuccess) return;
-
-    const verdict = checkRestoreGate(gate, input);
-    if (!verdict.ok) {
-      if (verdict.reason === 'wrong') {
-        const left = remainingRestoreAttempts(failedAttempts + 1);
-        setFailedAttempts(failedAttempts + 1);
-        setInput('');
-        setError(
-          left > 0
-            ? `${verdict.message} Còn ${left} lần thử.`
-            : 'Đã nhập sai nhiều lần. Đóng hộp thoại và thử lại sau.',
-        );
-      } else {
-        setError(verdict.message);
-      }
-      return;
-    }
+    if (!canSubmit) return;
 
     setIsSubmitting(true);
     setError(null);
+    let proof: string;
     try {
-      await onConfirmDelete(ids);
+      proof = await requestPinProof(input, 'ALERT_DELETE');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Không kiểm tra được mã PIN.');
+      setInput('');
+      setIsSubmitting(false);
+      return;
+    }
+    try {
+      await onConfirmDelete(ids, proof);
       setInput('');
       onClose();
     } catch (err: unknown) {
@@ -190,43 +175,27 @@ export function DeleteAlertModal({ ids, open, onClose, onConfirmDelete }: Delete
           </p>
         ) : null}
 
-        {gate.kind === 'pin' ? (
-          <div>
-            <Label htmlFor="delete-alert-pin-0" className="text-center">
-              Nhập <span className="font-bold text-danger">mã PIN hệ thống</span> ({gate.length} chữ
-              số) để xác nhận xoá:
-            </Label>
-            <div className="mt-3">
-              <PinCodeInput
-                id="delete-alert-pin"
-                value={input}
-                length={gate.length}
-                onChange={(next) => {
-                  setInput(next);
-                  if (error) setError(null);
-                }}
-                disabled={isSubmitting || isLocked}
-                invalid={Boolean(error) && !isSubmitting}
-                autoFocus
-              />
-            </div>
-          </div>
-        ) : (
-          <div>
-            <Label htmlFor="delete-alert-confirmation">
-              Để xác nhận, nhập{' '}
-              <span className="font-mono font-bold text-danger">{gate.keyword}</span>:
-            </Label>
-            <Input
-              id="delete-alert-confirmation"
-              placeholder={`Nhập ${gate.keyword}`}
+        <div>
+          <Label htmlFor="delete-alert-pin-0" className="text-center">
+            Nhập <span className="font-bold text-danger">mã PIN của bạn</span> ({PIN_LENGTH} chữ số)
+            để xác nhận xoá:
+          </Label>
+          <div className="mt-3">
+            <PinCodeInput
+              id="delete-alert-pin"
+              label="Mã PIN xác nhận xoá"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              disabled={isSubmitting || isLocked}
-              className="font-mono uppercase tracking-wider"
+              length={PIN_LENGTH}
+              onChange={(next) => {
+                setInput(next);
+                if (error) setError(null);
+              }}
+              disabled={isSubmitting}
+              invalid={Boolean(error) && !isSubmitting}
+              autoFocus
             />
           </div>
-        )}
+        </div>
 
         {error && <FormError>{error}</FormError>}
 

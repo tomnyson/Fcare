@@ -1042,6 +1042,71 @@ describe('AlertsService.resolve — chốt cảnh báo kèm kết quả Đạt /
   });
 });
 
+describe('AlertsService.acknowledge — GV tiếp nhận cảnh báo hệ thống / người khác phát', () => {
+  const otherLecturer: AuthUser = { ...lecturerUser, id: 'l-2' };
+
+  function setup(found: Record<string, unknown>) {
+    const update = jest.fn(({ data }: { data: object }) =>
+      Promise.resolve({ id: 'al-1', ...data }),
+    );
+    const prisma = {
+      alert: { findUnique: jest.fn().mockResolvedValue(found), update },
+      // Sinh viên luôn trong phạm vi — test này chỉ kiểm quyền TIẾP NHẬN.
+      student: { count: jest.fn().mockResolvedValue(1) },
+    } as unknown as PrismaService;
+    const service = new AlertsService(
+      prisma,
+      {} as EscalationService,
+      { log: jest.fn() } as unknown as AuditService,
+      {} as NotificationDispatchService,
+      { on: jest.fn(), add: jest.fn() } as unknown as Queue<EscalationJobData>,
+      {} as RiskScoreService,
+    );
+    return { service, update };
+  }
+
+  const openAlert = {
+    id: 'al-1',
+    studentId: 'st-1',
+    status: 'OPEN',
+    raisedById: null,
+    classSection: { lecturerId: 'l' },
+    student: { departmentId: 'dept-se' },
+  };
+
+  it('cảnh báo hệ thống tự phát (raisedById null) → GV tiếp nhận được', async () => {
+    const { service, update } = setup(openAlert);
+    await service.acknowledge(lecturerUser, 'al-1');
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'al-1' },
+      data: { status: 'ACKNOWLEDGED' },
+    });
+  });
+
+  it('cảnh báo GV khác phát → GV tiếp nhận được', async () => {
+    const { service, update } = setup({ ...openAlert, raisedById: 'l-2' });
+    await service.acknowledge(lecturerUser, 'al-1');
+    expect(update).toHaveBeenCalled();
+  });
+
+  it('cảnh báo chính GV đó phát → 403, không cập nhật', async () => {
+    const { service, update } = setup({ ...openAlert, raisedById: 'l-2' });
+    await expect(service.acknowledge(otherLecturer, 'al-1')).rejects.toThrow(
+      'không tự tiếp nhận',
+    );
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('ADMIN vẫn tiếp nhận được cả cảnh báo mình phát', async () => {
+    const { service, update } = setup({
+      ...openAlert,
+      raisedById: adminUser.id,
+    });
+    await service.acknowledge(adminUser, 'al-1');
+    expect(update).toHaveBeenCalled();
+  });
+});
+
 describe('AlertsService.previewRecipients — chọn mức thì ai nhận', () => {
   const groups = [
     { key: 'TEACHING_LECTURERS', minLevel: 1, members: [] },

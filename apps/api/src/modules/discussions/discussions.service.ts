@@ -5,7 +5,13 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { RECALLED_MESSAGE_TEXT, type RoleKey } from '@fcare/shared-types';
+import {
+  extractMentions,
+  RECALLED_MESSAGE_TEXT,
+  stripFormatting,
+  type ExtractedMentions,
+  type RoleKey,
+} from '@fcare/shared-types';
 import { isStudentInScope, studentScope } from '../../common/utils/dept-scope';
 import { assertNoPii } from '../../common/utils/pii-text';
 import type { AuthUser } from '../../common/types/auth-user';
@@ -20,6 +26,30 @@ const NOTIFICATION_BODY_LIMIT = 120;
 const AUTHOR_SELECT = {
   select: { id: true, staffCode: true, fullName: true },
 } as const;
+
+/** Cột cần để kiểm phạm vi của từng người nhận. */
+const SCOPE_STAFF_SELECT = {
+  id: true,
+  staffCode: true,
+  fullName: true,
+  departmentId: true,
+  roles: { select: { role: { select: { key: true } } } },
+} as const;
+
+type ScopeStaffRow = {
+  id: string;
+  staffCode: string;
+  fullName: string;
+  departmentId: string | null;
+  roles: { role: { key: string } }[];
+};
+
+/** Người nhắc được — chỉ mã + tên (RULE 1). */
+export interface Mentionable {
+  id: string;
+  staffCode: string;
+  fullName: string;
+}
 
 const MESSAGE_SELECT = {
   id: true,
@@ -50,7 +80,12 @@ export class DiscussionsService {
   private async requireStudent(user: AuthUser, studentId: string) {
     const student = await this.prisma.student.findFirst({
       where: { id: studentId, ...studentScope(user) },
-      select: { id: true, studentCode: true, fullName: true },
+      select: {
+        id: true,
+        studentCode: true,
+        fullName: true,
+        departmentId: true,
+      },
     });
     if (!student) {
       throw new NotFoundException(
@@ -106,23 +141,7 @@ export class DiscussionsService {
     // phần tính người nhận (participantsExcept/recipientsInScope, 3+N truy
     // vấn) lẫn phần deliver — lỗi ở bất kỳ bước nào cũng chỉ log.
     try {
-      const participants = await this.participantsExcept(studentId, user.id);
-      const recipientIds = await this.recipientsInScope(
-        studentId,
-        participants,
-      );
-      if (recipientIds.length > 0 && !(await this.wasRecalled(message.id))) {
-        await this.notifications.deliver({
-          recipientIds,
-          title: `Trao đổi mới về SV ${student.studentCode}`,
-          body: `${user.fullName}: ${this.preview(dto.body)}`,
-          source: {
-            kind: 'discussion',
-            discussionMessageId: message.id,
-            targetUrl: `/students/${studentId}?tab=discussion`,
-          },
-        });
-      }
+      await this.fanOut(user, student, message.id, dto.body);
     } catch (error) {
       // KHÔNG log `error.message`: `PrismaClientValidationError` in cả đối số
       // gọi hàm, kể cả trường `body` đang mang nội dung người dùng gõ — và
@@ -133,6 +152,145 @@ export class DiscussionsService {
       );
     }
     return message;
+  }
+
+  /**
+   * Người nhắc tên nhận thông báo "X nhắc đến bạn…"; người tham gia còn lại
+   * nhận thông báo chung. Mỗi người tối đa một thông báo, không gửi cho tác giả.
+   * Tất cả cùng lọc qua `recipientsInScope` MỘT lượt (RULE 2).
+   */
+  private async fanOut(
+    user: AuthUser,
+    student: { id: string; studentCode: string; departmentId: string },
+    messageId: string,
+    body: string,
+  ): Promise<void> {
+    const mentions = extractMentions(body);
+    const [participants, mentioned] = await Promise.all([
+      this.participantsExcept(student.id, user.id),
+      this.mentionedIds(student, mentions, user.id),
+    ]);
+    const inScope = new Set(
+      await this.recipientsInScope(student.id, [
+        ...new Set([...participants, ...mentioned]),
+      ]),
+    );
+    const mentionIds = mentioned.filter((id) => inScope.has(id));
+    const mentionSet = new Set(mentionIds);
+    const generalIds = participants.filter(
+      (id) => inScope.has(id) && !mentionSet.has(id),
+    );
+    if (mentionIds.length + generalIds.length === 0) {
+      return;
+    }
+    if (await this.wasRecalled(messageId)) {
+      return;
+    }
+    const preview = `${user.fullName}: ${this.preview(stripFormatting(body))}`;
+    const source = {
+      kind: 'discussion' as const,
+      discussionMessageId: messageId,
+      targetUrl: `/students/${student.id}?tab=discussion`,
+    };
+    if (mentionIds.length > 0) {
+      await this.notifications.deliver({
+        recipientIds: mentionIds,
+        title: `${user.fullName} nhắc đến bạn trong trao đổi về SV ${student.studentCode}`,
+        body: preview,
+        source,
+      });
+    }
+    if (generalIds.length > 0) {
+      await this.notifications.deliver({
+        recipientIds: generalIds,
+        title: `Trao đổi mới về SV ${student.studentCode}`,
+        body: preview,
+        source,
+      });
+    }
+  }
+
+  /** Id người được nhắc (chưa lọc phạm vi), đã bỏ tác giả. */
+  private async mentionedIds(
+    student: { id: string; departmentId: string },
+    mentions: ExtractedMentions,
+    authorId: string,
+  ): Promise<string[]> {
+    const [related, byCode] = await Promise.all([
+      mentions.all ? this.relatedStaffIds(student) : Promise.resolve([]),
+      this.staffIdsByCode(mentions.staffCodes),
+    ]);
+    return [...new Set([...related, ...byCode])].filter(
+      (id) => id !== authorId,
+    );
+  }
+
+  private async staffIdsByCode(codes: string[]): Promise<string[]> {
+    if (codes.length === 0) {
+      return [];
+    }
+    const rows = await this.prisma.staff.findMany({
+      where: {
+        isActive: true,
+        OR: codes.map((code) => ({
+          staffCode: { equals: code, mode: 'insensitive' as const },
+        })),
+      },
+      select: { id: true },
+    });
+    return rows.map((row) => row.id);
+  }
+
+  /**
+   * Nhóm `@all`: GV đang dạy SV (enrollment còn IN_PROGRESS) + người đã tham
+   * gia luồng + TBM của bộ môn SV. Chưa lọc phạm vi — nơi gọi lọc.
+   */
+  private async relatedStaffIds(student: {
+    id: string;
+    departmentId: string;
+  }): Promise<string[]> {
+    const [sections, participants, heads] = await Promise.all([
+      this.prisma.classSection.findMany({
+        where: {
+          lecturerId: { not: null },
+          enrollments: {
+            some: { studentId: student.id, result: 'IN_PROGRESS' },
+          },
+        },
+        distinct: ['lecturerId'],
+        select: { lecturerId: true },
+      }),
+      this.participantsExcept(student.id, ''),
+      this.prisma.staff.findMany({
+        where: {
+          isActive: true,
+          departmentId: student.departmentId,
+          roles: { some: { role: { key: 'HEAD_OF_DEPT' } } },
+        },
+        select: { id: true },
+      }),
+    ]);
+    const lecturers = sections
+      .map((row) => row.lecturerId)
+      .filter((id): id is string => id !== null);
+    return [
+      ...new Set([...lecturers, ...participants, ...heads.map((h) => h.id)]),
+    ];
+  }
+
+  /** Danh sách gợi ý khi gõ `@` — cùng nhóm với `@all`, đã lọc phạm vi. */
+  async mentionables(
+    user: AuthUser,
+    studentId: string,
+  ): Promise<Mentionable[]> {
+    const student = await this.requireStudent(user, studentId);
+    const ids = (await this.relatedStaffIds(student)).filter(
+      (id) => id !== user.id,
+    );
+    const rows = await this.staffInScope(studentId, ids);
+    return rows
+      .map(({ id, staffCode, fullName }) => ({ id, staffCode, fullName }))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName, 'vi'));
   }
 
   /**
@@ -277,6 +435,14 @@ export class DiscussionsService {
     studentId: string,
     staffIds: string[],
   ): Promise<string[]> {
+    const rows = await this.staffInScope(studentId, staffIds);
+    return rows.map((row) => row.id);
+  }
+
+  private async staffInScope(
+    studentId: string,
+    staffIds: string[],
+  ): Promise<ScopeStaffRow[]> {
     if (staffIds.length === 0) {
       return [];
     }
@@ -284,13 +450,7 @@ export class DiscussionsService {
       // Nhân sự đã nghỉ việc (isActive=false) không nhận thông báo — tài
       // khoản đó không còn đăng nhập được nữa, giữ lại chỉ rò thêm dữ liệu.
       where: { id: { in: staffIds }, isActive: true },
-      select: {
-        id: true,
-        staffCode: true,
-        fullName: true,
-        departmentId: true,
-        roles: { select: { role: { select: { key: true } } } },
-      },
+      select: SCOPE_STAFF_SELECT,
     });
     const checked = await Promise.all(
       staff.map(async (row) => {
@@ -299,10 +459,10 @@ export class DiscussionsService {
           this.asScopeUser(row),
           studentId,
         );
-        return inScope ? row.id : null;
+        return inScope ? row : null;
       }),
     );
-    return checked.filter((id): id is string => id !== null);
+    return checked.filter((row): row is ScopeStaffRow => row !== null);
   }
 
   /**
@@ -311,13 +471,7 @@ export class DiscussionsService {
    * chính người đó) nên đặt giá trị trung tính; vai trò + bộ môn + id mới là
    * thứ `studentScope` dùng.
    */
-  private asScopeUser(row: {
-    id: string;
-    staffCode: string;
-    fullName: string;
-    departmentId: string | null;
-    roles: { role: { key: string } }[];
-  }): AuthUser {
+  private asScopeUser(row: ScopeStaffRow): AuthUser {
     return {
       id: row.id,
       staffCode: row.staffCode,

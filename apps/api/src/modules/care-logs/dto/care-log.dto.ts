@@ -55,6 +55,38 @@ export class CreateCareLogDto {
   classSectionId?: string;
 }
 
+/**
+ * Sửa lượt chăm sóc: chỉ phần nội dung. Cố ý KHÔNG cho đổi sinh viên, cảnh
+ * báo hay lớp học phần — các trường đó quyết định `ownerCaredAt` và số liệu
+ * "đã chăm sóc", sửa sau sẽ làm lệch thống kê.
+ */
+export class UpdateCareLogDto {
+  @ApiPropertyOptional({ enum: CareChannel })
+  @IsOptional()
+  @IsEnum(CareChannel)
+  channel?: CareChannel;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(5, { message: 'Nội dung chăm sóc quá ngắn.' })
+  @MaxLength(4000)
+  content?: string;
+
+  @ApiPropertyOptional({ description: 'Chuỗi rỗng → xoá kết quả' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  outcome?: string;
+
+  @ApiPropertyOptional({ description: 'Chuỗi rỗng → xoá hành động tiếp theo' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  nextAction?: string;
+}
+
 export class ListCareLogsQuery {
   @ApiPropertyOptional()
   @IsOptional()

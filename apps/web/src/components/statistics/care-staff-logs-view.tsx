@@ -120,6 +120,7 @@ export function CareStaffLogsView({ staffId }: { staffId: string }) {
   return (
     <>
       <PageHeader
+        backHref="/statistics/care"
         title={title}
         description={description}
         actions={

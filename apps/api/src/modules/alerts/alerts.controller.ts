@@ -10,11 +10,14 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { AppAbility } from '../../casl/ability.factory';
 import { CheckPolicies } from '../../common/decorators/check-policies.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequirePinProof } from '../../common/decorators/require-pin-proof.decorator';
+import { PinProofGuard } from '../../common/guards/pin.guard';
 import type { AuthUser } from '../../common/types/auth-user';
 import { AlertsService } from './alerts.service';
 import {
@@ -89,6 +92,8 @@ export class AlertsController {
   @Post('bulk-delete')
   @HttpCode(HttpStatus.OK)
   @CheckPolicies((ability: AppAbility) => ability.can('delete', 'Alert'))
+  @RequirePinProof('ALERT_DELETE')
+  @UseGuards(PinProofGuard)
   removeMany(@CurrentUser() user: AuthUser, @Body() dto: BulkAlertIdsDto) {
     return this.alertsService.removeMany(user, dto.ids);
   }
@@ -105,10 +110,12 @@ export class AlertsController {
 
   /**
    * Xoá cảnh báo kèm nhận xét + trao đổi của sinh viên — chỉ ADMIN.
-   * Web chặn thêm bằng mã PIN hệ thống; API chỉ tin CASL.
+   * Ngoài CASL còn cần `X-Pin-Proof` — PIN cá nhân kiểm ở server, không ở trình duyệt.
    */
   @Delete(':id')
   @CheckPolicies((ability: AppAbility) => ability.can('delete', 'Alert'))
+  @RequirePinProof('ALERT_DELETE')
+  @UseGuards(PinProofGuard)
   remove(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,

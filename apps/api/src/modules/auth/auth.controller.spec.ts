@@ -2,7 +2,9 @@
 import type { Response } from 'express';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import type { PinService } from './pin.service';
 import { RecaptchaService } from './recaptcha.service';
+import type { SecuritySettingsService } from '../security-settings/security-settings.service';
 
 function setup() {
   const authService = {
@@ -16,8 +18,19 @@ function setup() {
     verifyLogin: jest.fn().mockResolvedValue(undefined),
   } as unknown as jest.Mocked<RecaptchaService>;
   const response = { cookie: jest.fn() } as unknown as Response;
-  const controller = new AuthController(authService, recaptcha);
-  return { controller, authService, recaptcha, response };
+  const pins = {
+    sessionState: jest.fn().mockResolvedValue({ hasPin: false, locked: false }),
+  } as unknown as jest.Mocked<PinService>;
+  const securitySettings = {
+    getIdleLockMinutes: jest.fn().mockResolvedValue(10),
+  } as unknown as jest.Mocked<SecuritySettingsService>;
+  const controller = new AuthController(
+    authService,
+    recaptcha,
+    pins,
+    securitySettings,
+  );
+  return { controller, authService, recaptcha, response, pins };
 }
 
 describe('AuthController.login — reCAPTCHA', () => {
@@ -43,5 +56,48 @@ describe('AuthController.login — reCAPTCHA', () => {
     ).rejects.toThrow('RECAPTCHA_REQUIRED');
     expect(authService.login).not.toHaveBeenCalled();
     expect(response.cookie).not.toHaveBeenCalled();
+  });
+});
+
+describe('AuthController.me — trạng thái PIN', () => {
+  const user = {
+    id: 'u1',
+    staffCode: 'GV01',
+    fullName: 'GV',
+    roles: ['LECTURER' as const],
+    departmentId: null,
+    consented: true,
+    mustChangePassword: false,
+  };
+
+  it('trả cờ tạo PIN, trạng thái khoá của phiên và thời gian khoá ADMIN đặt', async () => {
+    const { controller, pins } = setup();
+    pins.sessionState.mockResolvedValueOnce({ hasPin: true, locked: true });
+
+    const result = await controller.me(user, {
+      cookies: { fcare_refresh: 'rt' },
+      headers: {},
+    });
+
+    expect(pins.sessionState).toHaveBeenCalledWith('u1', 'rt');
+    expect(result).toEqual(
+      expect.objectContaining({
+        requiresPinSetup: false,
+        locked: true,
+        idleLockMinutes: 10,
+      }),
+    );
+  });
+
+  it('chưa ký cam kết → chưa hỏi PIN (đúng thứ tự: mật khẩu → cam kết → PIN)', async () => {
+    const { controller, pins } = setup();
+    const result = await controller.me(
+      { ...user, consented: false },
+      { headers: {} },
+    );
+    expect(pins.sessionState).not.toHaveBeenCalled();
+    expect(result).toEqual(
+      expect.objectContaining({ requiresPinSetup: false, locked: false }),
+    );
   });
 });

@@ -40,6 +40,15 @@ export class DiscussionsController {
     return this.discussions.list(user, studentId, query);
   }
 
+  /** Gợi ý khi gõ `@` — chỉ id, mã, tên; đã lọc theo phạm vi từng người. */
+  @Get(':studentId/mentionables')
+  mentionables(
+    @CurrentUser() user: AuthUser,
+    @Param('studentId', ParseUUIDPipe) studentId: string,
+  ) {
+    return this.discussions.mentionables(user, studentId);
+  }
+
   @Post(':studentId/messages')
   @CheckPolicies((ability: AppAbility) => ability.can('create', 'Discussion'))
   create(

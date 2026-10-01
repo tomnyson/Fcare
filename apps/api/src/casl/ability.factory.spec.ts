@@ -16,6 +16,25 @@ function makeUser(roles: AuthUser['roles']): AuthUser {
 describe('AbilityFactory — ma trận phân quyền theo Quy định chung', () => {
   const factory = new AbilityFactory();
 
+  it('chỉ ADMIN chỉnh thời gian khoá PIN và đặt lại PIN của người khác', () => {
+    expect(
+      factory
+        .createForUser(makeUser(['ADMIN']))
+        .can('manage', 'SecuritySettings'),
+    ).toBe(true);
+    for (const role of [
+      'LECTURER',
+      'HEAD_OF_DEPT',
+      'TRAINING_OFFICER',
+      'SA_OFFICER',
+      'SA_HEAD',
+    ] as const) {
+      const ability = factory.createForUser(makeUser([role]));
+      expect(ability.can('manage', 'SecuritySettings')).toBe(false);
+      expect(ability.can('manage', 'Staff')).toBe(false);
+    }
+  });
+
   it('giảng viên KHÔNG được import/export Excel', () => {
     const ability = factory.createForUser(makeUser(['LECTURER']));
     expect(ability.can('import', 'Excel')).toBe(false);
@@ -43,7 +62,8 @@ describe('AbilityFactory — ma trận phân quyền theo Quy định chung', ()
     expect(ability.can('update', 'MasterData')).toBe(false);
     // Được gọi chốt; service chặn tiếp nếu không đứng lớp của cảnh báo.
     expect(ability.can('resolve', 'Alert')).toBe(true);
-    expect(ability.can('acknowledge', 'Alert')).toBe(false);
+    // Được gọi tiếp nhận; service chặn cảnh báo do chính GV đó phát.
+    expect(ability.can('acknowledge', 'Alert')).toBe(true);
   });
 
   it('chốt cảnh báo: chỉ ADMIN, TBM, GV — CTSV và Đào tạo chỉ tiếp nhận', () => {
@@ -62,6 +82,7 @@ describe('AbilityFactory — ma trận phân quyền theo Quy định chung', ()
       'HEAD_OF_DEPT',
       'TRAINING_OFFICER',
       'SA_HEAD',
+      'LECTURER',
     ] as const) {
       expect(
         factory.createForUser(makeUser([role])).can('acknowledge', 'Alert'),
@@ -133,6 +154,24 @@ describe('AbilityFactory — ma trận phân quyền theo Quy định chung', ()
         factory.createForUser(makeUser([role])).can('delete', 'CareLog'),
       ).toBe(false);
     }
+  });
+
+  it('ai ghi được lượt chăm sóc thì cũng sửa được (service chỉ cho tác giả/ADMIN)', () => {
+    for (const role of [
+      'LECTURER',
+      'HEAD_OF_DEPT',
+      'SA_OFFICER',
+      'SA_HEAD',
+    ] as const) {
+      expect(
+        factory.createForUser(makeUser([role])).can('update', 'CareLog'),
+      ).toBe(true);
+    }
+    expect(
+      factory
+        .createForUser(makeUser(['TRAINING_OFFICER']))
+        .can('update', 'CareLog'),
+    ).toBe(false);
   });
 
   it('nhiều vai trò được cộng gộp quyền', () => {

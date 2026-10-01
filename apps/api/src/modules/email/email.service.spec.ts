@@ -23,6 +23,7 @@ const effective: EffectiveMailConfig = {
   fromEmail: 'fcare-noreply@fpt.edu.vn',
   enabled: true,
   source: 'ENV',
+  publicWebUrl: 'https://fcare.fpt.edu.vn',
   version: 1,
 };
 
@@ -159,6 +160,25 @@ describe('EmailService', () => {
         subject: expect.stringContaining('SE123456') as string,
       }),
     );
+  });
+
+  it('link "Xem chi tiết" dùng địa chỉ web công khai của cấu hình, không phải localhost', async () => {
+    prisma.alert.findUnique.mockResolvedValue({
+      id: 'alert-2',
+      level: 2,
+      reason: 'Vắng 3 buổi',
+      student: { fullName: 'Nguyễn Văn A', studentCode: 'SE123456' },
+      raisedBy: { fullName: 'ThS. Trần Minh' },
+    });
+    prisma.staff.findMany.mockResolvedValue([
+      { id: 'staff-1', email: 'minhtm@fpt.edu.vn', fullName: 'Trần Minh' },
+    ]);
+
+    await service.sendAlertEmail('alert-2', ['staff-1']);
+    const [[mail]] = sendMailMock.mock.calls as [[{ html: string }]];
+    const html = mail.html;
+    expect(html).toContain('https://fcare.fpt.edu.vn/alerts');
+    expect(html).not.toContain('localhost');
   });
 
   it('filters out staff without email and does not crash', async () => {

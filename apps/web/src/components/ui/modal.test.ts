@@ -1,7 +1,7 @@
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { Modal } from './modal';
+import { hasUnsavedInput, Modal } from './modal';
 
 const noop = () => undefined;
 
@@ -40,5 +40,32 @@ describe('Modal', () => {
     // Nút đóng nằm trước (ngoài) vùng cuộn, nội dung nằm trong.
     expect(html.indexOf('aria-label="Đóng"')).toBeLessThan(html.indexOf('data-modal-body'));
     expect(html.indexOf('nội dung')).toBeGreaterThan(html.indexOf('data-modal-body'));
+  });
+
+  it('bấm ra ngoài (lớp nền) KHÔNG gắn onClick đóng hộp thoại — tránh mất form đang nhập', () => {
+    const html = renderToStaticMarkup(
+      h(Modal, { title: 'T', open: true, onClose: noop, children: h('p', null, 'x') }),
+    );
+    const backdrop = openingTag(html, 'role="presentation"');
+    expect(backdrop).toContain('data-modal-backdrop');
+  });
+});
+
+describe('hasUnsavedInput', () => {
+  it('false khi mọi ô vẫn đúng giá trị ban đầu', () => {
+    expect(
+      hasUnsavedInput([
+        { value: '', defaultValue: '' },
+        { value: 'soạn sẵn', defaultValue: 'soạn sẵn' },
+      ]),
+    ).toBe(false);
+  });
+
+  it('true khi có ô đã gõ khác giá trị ban đầu', () => {
+    expect(hasUnsavedInput([{ value: '', defaultValue: '' }, { value: 'đã gõ', defaultValue: '' }])).toBe(true);
+  });
+
+  it('bỏ qua khác biệt chỉ do khoảng trắng', () => {
+    expect(hasUnsavedInput([{ value: '   ', defaultValue: '' }])).toBe(false);
   });
 });

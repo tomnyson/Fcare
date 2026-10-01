@@ -33,6 +33,7 @@ export type Subjects =
   | 'Statistics'
   | 'Excel'
   | 'Backup'
+  | 'SecuritySettings'
   | 'all';
 
 export type AppAbility = MongoAbility<[Action, Subjects]>;
@@ -82,6 +83,8 @@ export class AbilityFactory {
           can(['create', 'update'], ['Evaluation', 'CareLog', 'Alert']);
           // Chỉ chốt cảnh báo của lớp mình đứng — service kiểm từng cảnh báo.
           can('resolve', 'Alert');
+          // Tiếp nhận cảnh báo hệ thống / người khác phát — service chặn cảnh báo tự phát.
+          can('acknowledge', 'Alert');
           can(['read', 'create'], 'Discussion');
           break;
         case 'TRAINING_OFFICER':
@@ -108,7 +111,7 @@ export class AbilityFactory {
             'MasterData',
             'Statistics',
           ]);
-          can('create', 'CareLog');
+          can(['create', 'update'], 'CareLog');
           // CTSV được phát cảnh báo; service chặn mức dưới mức CTSV được xem.
           can('create', 'Alert');
           can(['import', 'export'], 'Excel');
@@ -123,7 +126,7 @@ export class AbilityFactory {
             'MasterData',
             'Statistics',
           ]);
-          can('create', 'CareLog');
+          can(['create', 'update'], 'CareLog');
           can(['create', 'acknowledge'], 'Alert');
           can(['import', 'export'], 'Excel');
           can(['read', 'create'], 'Discussion');

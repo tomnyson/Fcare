@@ -4,6 +4,8 @@ import { Badge, Button } from '@fcare/ui-kit';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { apiFetch } from '../../lib/api';
+import { canEditCareLog } from '../../lib/care-log-actions';
+import { useMe } from '../../lib/hooks';
 import { ALERT_LEVEL_TONES, CARE_CHANNEL_LABELS, formatDateTime } from '../../lib/labels';
 import type { CareLog } from '../../lib/types';
 import { CareContextTag } from '../care-logs/care-context-tag';
@@ -12,7 +14,21 @@ import { CareLogFormModal } from './care-log-form-modal';
 
 export function CareLogsTab({ studentId, term = '' }: { studentId: string; term?: string }) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<CareLog | null>(null);
   const [notice, setNotice] = useState('');
+  const { data: me } = useMe();
+  const currentUser = me ? { id: me.user.id, roles: me.user.roles } : undefined;
+
+  function openCreate() {
+    setEditing(null);
+    setOpen(true);
+  }
+
+  function openEdit(log: CareLog) {
+    setNotice('');
+    setEditing(log);
+    setOpen(true);
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['care-logs', studentId],
@@ -31,7 +47,7 @@ export function CareLogsTab({ studentId, term = '' }: { studentId: string; term?
       ) : null}
 
       <div className="mb-4 flex justify-end">
-        <Button type="button" onClick={() => setOpen(true)}>
+        <Button type="button" onClick={openCreate}>
           + Ghi nhật ký chăm sóc
         </Button>
       </div>
@@ -62,6 +78,16 @@ export function CareLogsTab({ studentId, term = '' }: { studentId: string; term?
                     </Badge>
                   ) : null}
                   <Badge tone="info">{CARE_CHANNEL_LABELS[log.channel]}</Badge>
+                  {canEditCareLog(log, currentUser) ? (
+                    <button
+                      type="button"
+                      onClick={() => openEdit(log)}
+                      className="rounded-sm px-1.5 py-0.5 text-xs font-semibold text-fpt-blue transition-colors hover:bg-fpt-blue-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fpt-blue active:translate-y-px"
+                      aria-label={`Sửa nhật ký chăm sóc lúc ${formatDateTime(log.createdAt)}`}
+                    >
+                      Sửa
+                    </button>
+                  ) : null}
                   <DeleteCareLogButton log={log} onDeleted={setNotice} />
                 </div>
               </div>
@@ -88,8 +114,13 @@ export function CareLogsTab({ studentId, term = '' }: { studentId: string; term?
       <CareLogFormModal
         studentId={studentId}
         term={term}
+        editing={editing}
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={() => {
+          setOpen(false);
+          setEditing(null);
+        }}
+        onSaved={() => setNotice(editing ? 'Đã cập nhật nhật ký chăm sóc.' : '')}
       />
     </>
   );

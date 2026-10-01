@@ -9,6 +9,7 @@ import {
   Put,
   StreamableFile,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiConsumes, ApiTags } from '@nestjs/swagger';
@@ -18,6 +19,8 @@ import * as fs from 'fs';
 import type { AppAbility } from '../../casl/ability.factory';
 import { CheckPolicies } from '../../common/decorators/check-policies.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequirePinProof } from '../../common/decorators/require-pin-proof.decorator';
+import { PinProofGuard } from '../../common/guards/pin.guard';
 import type { AuthUser } from '../../common/types/auth-user';
 import { BackupSchedulerService } from './backup-scheduler.service';
 import { BackupService } from './backup.service';
@@ -111,6 +114,8 @@ export class BackupController {
 
   @Post(':id/restore')
   @Throttle({ default: { limit: 2, ttl: 60_000 } })
+  @RequirePinProof('BACKUP_RESTORE')
+  @UseGuards(PinProofGuard)
   restore(
     @Param('id') id: string,
     @CurrentUser() user: AuthUser,
